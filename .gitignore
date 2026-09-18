@@ -1,0 +1,20 @@
+# Local databases and SQLite sidecar files
+database.db*
+**/database.db*
+**/*.sqlite
+**/*.sqlite-*
+**/*.db-wal
+**/*.db-shm
+
+# Local browser sessions, cookies, and runtime logs
+**/browser-data/
+**/cookies-*.json
+**/logs*.log
+**/equinox-debug.log*
+
+# Workspace-only uploads and exported archives
+/attached_assets/
+/zipFile.zip
+
+# Generated TypeScript compiler state
+*.tsbuildinfo
