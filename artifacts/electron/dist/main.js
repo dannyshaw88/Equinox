@@ -8284,7 +8284,7 @@ function setupAutoUpdater() {
   import_electron_updater.autoUpdater.setFeedURL({
     provider: "github",
     owner: "dannyshaw88",
-    repo: "dannys-bot",
+    repo: "Equinox",
     token: ""
   });
   import_electron_updater.autoUpdater.on("update-downloaded", () => {
