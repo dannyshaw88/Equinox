@@ -93,7 +93,7 @@ import {
 import { tlsRequest, CHROME120_JA3, OKHTTP4_JA3 } from "../instagram/tlsTransport";
 import { automationEngine } from "../instagram/automationEngine";
 import { MOBILE_VERSION_CODE } from "../instagram/instagramWebClient";
-import { userAgents as UA_POOL, desktopUserAgents as DESKTOP_UA_POOL } from "../shared/userAgents";
+import { userAgents as UA_POOL } from "../shared/userAgents";
 
 // ── Proxy locale helper ──────────────────────────────────────────────────────
 // Looks up the proxy for proxyId, resolves the exit-IP country via ip-api.com,
@@ -132,24 +132,10 @@ function pickUAForAccount(username: string): { api: string; embedded: string } {
   return UA_POOL[hash % UA_POOL.length];
 }
 
-// Deterministic desktop UA picker — same hash algorithm as pickUAForAccount so
-// each username always maps to the same desktop entry.  Used when disableApi=true
-// (browser-only mode) where the EB is the sole consumer of the session — one
-// device, one identity, desktop Chrome UA → full Instagram desktop layout.
-function pickDesktopUAForAccount(username: string): { api: string; embedded: string } {
-  if (!username || DESKTOP_UA_POOL.length === 0) return DESKTOP_UA_POOL[0];
-  let hash = 5381;
-  for (let i = 0; i < username.length; i++) {
-    hash = ((hash << 5) + hash) ^ username.charCodeAt(i);
-    hash = hash >>> 0;
-  }
-  return DESKTOP_UA_POOL[hash % DESKTOP_UA_POOL.length];
-}
-
 // Last-resort desktop Chrome UA — used ONLY for the Clear EB Session cleanup path when
 // no per-account UA is stored (so the session can still be wiped even if UA is unset).
 // NEVER use this for a new login, verify, or WS attach — those must block instead.
-const DESKTOP_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+const DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
 // Per-account verify lock — prevents concurrent logins for the same account.
 // Multiple simultaneous IgApiClient instances logging in with the same device
@@ -249,81 +235,6 @@ async function resumeStuckVerifyingAccounts(): Promise<void> {
       releaseSilentVerifySlot();
     }
   }
-}
-
-// ── Stage Bootstrap — deferred API cold-start after EB login ─────────────────
-// Accounts with stageBootstrapEnabled sit in "staging" status after the browser
-// login harvests cookies.  A per-account timer fires verifyInstagramCredentials
-// after a random delay (stageBootstrapDelayMin–Max minutes) so the EB session
-// has time to "settle" before the mobile API cold-start runs.
-// The fire timestamp (stagingBootstrapFiresAt) is persisted in the DB so the
-// timer survives server restarts — on startup, remaining delay is recomputed.
-
-const stagingTimers = new Map<number, ReturnType<typeof setTimeout>>();
-
-async function runStagedBootstrap(profileId: number): Promise<void> {
-  stagingTimers.delete(profileId);
-  let profile: Awaited<ReturnType<typeof storage.getProfile>>;
-  try { profile = await storage.getProfile(profileId); } catch { return; }
-  if (!profile || profile.accountStatus !== "staging") return; // cancelled or re-verified
-
-  console.log(`[staging:${profileId}] @${profile.username} — delay expired, running API bootstrap`);
-  await storage.updateProfile(profileId, { accountStatus: "verifying" } as any).catch(() => {});
-
-  try {
-    // Resolve proxy (same as verify route)
-    let effectiveProfile: any = { ...profile };
-    if (profile.proxyId) {
-      const allProxies = await storage.getProxies().catch(() => [] as any[]);
-      const linked = allProxies.find((p: any) => p.id === profile!.proxyId);
-      if (linked) {
-        effectiveProfile = {
-          ...effectiveProfile,
-          proxyHost: linked.host,
-          proxyPort: linked.port,
-          proxyUsername: linked.username ?? "",
-          proxyPassword: linked.password ?? "",
-        };
-      }
-    }
-
-    await acquireSilentVerifySlot();
-    let apiResult: Awaited<ReturnType<typeof verifyInstagramCredentials>>;
-    try {
-      apiResult = await verifyInstagramCredentials(effectiveProfile);
-    } finally {
-      releaseSilentVerifySlot();
-    }
-
-    await storage.updateProfile(profileId, {
-      accountStatus: apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending"),
-      statusMessage: apiResult.message,
-      stagingBootstrapFiresAt: null,
-      ...(apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}),
-      ...(apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {}),
-      ...(apiResult.ok ? { credentialsDirty: false, validSince: new Date().toISOString() } : {}),
-    } as any);
-
-    sendLoginDone(profileId, apiResult.ok, apiResult.message ?? "");
-    console.log(`[staging:${profileId}] @${profile.username} — bootstrap complete → ${apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending")}`);
-  } catch (e: any) {
-    console.error(`[staging:${profileId}] @${profile.username} — bootstrap threw:`, e?.message);
-    await storage.updateProfile(profileId, { accountStatus: "pending", statusMessage: `Stage bootstrap failed: ${e?.message ?? "unknown"}`, stagingBootstrapFiresAt: null } as any).catch(() => {});
-  }
-}
-
-function scheduleStagingBootstrap(profileId: number, delayMs: number): void {
-  const existing = stagingTimers.get(profileId);
-  if (existing) clearTimeout(existing);
-  // Node.js setTimeout uses a 32-bit signed integer internally; anything above
-  // 2,147,483,647 ms (~24.8 days) overflows to 1 ms and fires immediately.
-  // Clamp to the safe maximum so a corrupted DB value can never trigger an
-  // instant bootstrap.
-  const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
-  const safeDelay = Math.min(Math.max(0, delayMs), MAX_SAFE_TIMEOUT_MS);
-  const timer = setTimeout(() => runStagedBootstrap(profileId), safeDelay);
-  stagingTimers.set(profileId, timer);
-  console.log(`[staging:${profileId}] bootstrap scheduled in ${Math.round(safeDelay / 60_000)}m (raw=${Math.round(delayMs / 60_000)}m)`);
 }
 
 // Persisted across restarts within the same calendar day so the dashboard
@@ -943,11 +854,8 @@ export async function registerInstagramRoutes(
       }
 
       // Auto-assign paired UAs when the user leaves them blank on manual add.
-      // All accounts — including disableApi=true (browser-only) — get a mobile
-      // Android Chrome UA.  The EB fingerprint stack (GPU pool, client hints,
-      // viewport, canvas/audio noise) was built for mobile and is most coherent
-      // there.  Desktop UAs on an ARM Mac server leak real hardware signals
-      // (Architecture: arm, Apple Silicon GPU) that contradict an Intel Mac UA.
+      // The EB fingerprint stack (GPU pool, client hints, viewport, canvas/audio
+      // noise) is kept coherent with the mobile Android UA pool.
       if (!input.userAgentEmbedded || !input.userAgentApi) {
         const autoUA = pickUAForAccount(input.username || "");
         if (!input.userAgentEmbedded) input.userAgentEmbedded = autoUA.embedded;
@@ -1073,10 +981,8 @@ export async function registerInstagramRoutes(
     // Accept an optional specific UA from the body (device-picker flow).
     // Falls back to a random pool entry when no UA is supplied (existing Reset button flow).
     const { userAgentApi, userAgentEmbedded } = (req.body ?? {}) as { userAgentApi?: string; userAgentEmbedded?: string };
-    // When the caller doesn't supply a specific UA, always pick a mobile Android
-    // Chrome UA — even for disableApi=true accounts.  The EB fingerprint stack is
-    // built for mobile and desktop UAs cause hardware-mismatch signals on the ARM
-    // Mac server (Architecture: arm leaks through Sec-CH-UA when UA claims Intel).
+    // When the caller doesn't supply a specific UA, pick a mobile Android Chrome
+    // UA so the EB fingerprint stack remains hardware-coherent.
     let ua: { api: string; embedded: string };
     if (userAgentApi && userAgentEmbedded) {
       ua = { api: userAgentApi, embedded: userAgentEmbedded };
@@ -1260,7 +1166,7 @@ export async function registerInstagramRoutes(
         status: hasApiUA ? "pass" : "info",
         label:  hasApiUA
           ? "API UA present — Instagram app format (Chrome version not embedded in this format)"
-          : "No API UA stored — account may be EB-only (disableApi)",
+          : "No API UA stored — mobile API verification is unavailable",
         detail: {
           apiUA:      apiUA ?? "none",
           note:       "The Instagram private API UA uses its own versioning (app/SDK version), not Chrome. Chrome version staleness only applies to the browser (EB) UA above.",
@@ -1280,35 +1186,6 @@ export async function registerInstagramRoutes(
     });
   });
 
-  // Migration: reset all disableApi accounts that still carry a desktop Chrome UA
-  // (no "Mobile" in the UA string) back to a mobile Android Chrome UA + fresh fingerprint.
-  // Credentials (cookies, device state) are NOT cleared so active sessions survive.
-  // This is a one-time repair for accounts assigned desktop UAs before the policy change.
-  app.post("/api/admin/migrate-desktop-to-mobile-uas", async (req, res) => {
-    const all = await storage.getProfiles();
-    const targets = all.filter(p =>
-      (p.apiLimits as any)?.disableApi === true &&
-      p.userAgentEmbedded &&
-      !p.userAgentEmbedded.includes("Mobile"),
-    );
-    const results: { id: number; username: string; ok: boolean; error?: string }[] = [];
-    for (const p of targets) {
-      try {
-        const ua = pickUAForAccount(p.username || "");
-        const fp = JSON.stringify(generateEbFingerprint(ua.api, false, ua.embedded));
-        await storage.updateProfile(p.id, {
-          userAgentApi:      ua.api,
-          userAgentEmbedded: ua.embedded,
-          ebFingerprint:     fp,
-        });
-        results.push({ id: p.id, username: p.username || String(p.id), ok: true });
-      } catch (err: any) {
-        results.push({ id: p.id, username: p.username || String(p.id), ok: false, error: String(err?.message) });
-      }
-    }
-    res.json({ migrated: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results });
-  });
-
   // Bulk-update: apply one patch to many profiles in a single request.
   // Must be registered BEFORE /api/profiles/:id so "bulk-update" isn't treated as an ID.
   app.post("/api/profiles/bulk-update", async (req, res) => {
@@ -1325,7 +1202,6 @@ export async function registerInstagramRoutes(
       "tags",
       "apiLimits",
       "activeTimerEnabled", "activeTimerStart", "activeTimerEnd",
-      "followViaBrowser", "postViaBrowser",
       "syncEnabled", "syncIntervalMin", "syncIntervalMax", "syncUseHiker",
     ]);
     const safePatch: Record<string, unknown> = {};
@@ -2247,7 +2123,6 @@ export async function registerInstagramRoutes(
       apiUA:         profile.userAgentApi      ?? null,
       ebFingerprint: profile.ebFingerprint     ?? null,
       useHomeIp:     !!(profile as any).useHomeIp,
-      disableApi:    !!((profile.apiLimits as any)?.disableApi),
     });
   });
 
@@ -2363,7 +2238,7 @@ export async function registerInstagramRoutes(
 
     // ── UA BLOCK — per USER-AGENT RULE (non-negotiable) ─────────────────────────
     // A null userAgentEmbedded means every null-UA account uses the same shared
-    // DESKTOP_BROWSER_UA string. Instagram fingerprint-links them, flags the login
+    // fallback browser UA. Instagram fingerprint-links them, flags the login
     // as a bot cluster, and fires update_risky_contactpoint in an infinite redirect.
     // Block here so the user is forced to assign a unique UA before verifying.
     if (!effectiveProfile.userAgentEmbedded) {
@@ -2532,48 +2407,6 @@ export async function registerInstagramRoutes(
         // Persist the EB cookies before the API validation so they survive even if
         // the mobile API call temporarily fails (network hiccup, proxy lag, etc.)
         await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
-
-        // Disable API mode: skip mobile API entirely — EB login + cookie harvest is
-        // sufficient to mark the account valid.  No cold-start sequence is run.
-        if ((effectiveProfile.apiLimits as any)?.disableApi === true) {
-          console.log(`[verify:${profileId}] @${profile.username} — Disable API mode: skipping mobile API, marking valid from EB cookies`);
-          const disableApiMsg = `@${profile.username} — EB login confirmed (Disable API mode — browser-only)`;
-          sendLoginDone(profileId, true, disableApiMsg);
-          await storage.updateProfile(profile.id, { accountStatus: "valid", statusMessage: disableApiMsg, credentialsDirty: false });
-          verifyInFlight.delete(profileId);
-          return;
-        }
-
-        // Stage Bootstrap: if enabled, put the account in "staging" and schedule
-        // the API cold-start after a random delay so the fresh EB session settles
-        // before mobile API calls begin.  Survives restarts via stagingBootstrapFiresAt.
-        //
-        // BYPASS for re-verify: if the account already had igApiCookies before this
-        // verify run, it is a manual re-verify of an existing session (not a brand-new
-        // first-time EB login).  Staging delay is intended for fresh cold-starts only —
-        // forcing a re-verify through the staging gate means the user has to wait 5–15
-        // minutes just to get fresh Bearer tokens after the previous session expired.
-        // Skip staging and run the bootstrap immediately in that case.
-        const _hadPreviousSession = !!(profile.igApiCookies ?? "").includes("sessionid=");
-        if ((effectiveProfile.apiLimits as any)?.stageBootstrapEnabled === true && !_hadPreviousSession) {
-          // Clamp raw DB values to [1, 9999] minutes before converting to ms.
-          // A corrupted value (e.g. 1,185,334 min) would produce >2^31 ms and
-          // overflow Node's setTimeout to 1 ms, firing the bootstrap instantly.
-          // Also guard against NaN/Infinity from non-numeric stored values.
-          const _parseMin = Number((effectiveProfile.apiLimits as any)?.stageBootstrapDelayMin ?? 5);
-          const _parseMax = Number((effectiveProfile.apiLimits as any)?.stageBootstrapDelayMax ?? 15);
-          const _rawMin = Math.min(9999, Math.max(1, Number.isFinite(_parseMin) ? _parseMin : 5));
-          const _rawMax = Math.min(9999, Math.max(_rawMin, Number.isFinite(_parseMax) ? _parseMax : 15));
-          const _stMinMs = _rawMin * 60_000;
-          const _stMaxMs = _rawMax * 60_000;
-          const _stDelayMs = _stMinMs + Math.floor(Math.random() * (_stMaxMs - _stMinMs + 1));
-          const _stFiresAt = new Date(Date.now() + _stDelayMs).toISOString();
-          await storage.updateProfile(profile.id, { accountStatus: "staging", stagingBootstrapFiresAt: _stFiresAt } as any);
-          console.log(`[verify:${profileId}] @${profile.username} — Stage Bootstrap: API cold-start in ${Math.round(_stDelayMs / 60_000)} min (fires at ${_stFiresAt})`);
-          scheduleStagingBootstrap(profileId, _stDelayMs);
-          verifyInFlight.delete(profileId);
-          return;
-        }
 
         // Fire-and-forget: run the full leak test (WebRTC, Bot, Canvas, etc.) in a
         // hidden background context while verifyInstagramCredentials runs in parallel.
@@ -2895,9 +2728,8 @@ export async function registerInstagramRoutes(
             proxyPassword: (p.proxyPassword || null) as string | null,
             // Auto-assign a paired mobile Android Chrome UA when the import source
             // doesn't supply one.  Deterministic so the same username always gets the
-            // same device profile — stable across re-imports.  All accounts (including
-            // disableApi=true) get mobile UAs; desktop UAs cause hardware-mismatch
-            // fingerprint signals on the ARM Mac server.
+            // same device profile — stable across re-imports. All imported accounts
+            // use the mobile UA pool when the source does not provide a UA.
             userAgentApi: p.userAgentApi || pickUAForAccount(p.username || "").api,
             userAgentEmbedded: p.userAgentEmbedded || pickUAForAccount(p.username || "").embedded,
             tags: p.tags || "",
@@ -3504,7 +3336,7 @@ export async function registerInstagramRoutes(
     if (profile && !profile.userAgentEmbedded) {
       console.warn(`[UA-WARN] profile ${profileId} has no userAgentEmbedded — clear-session proceeding with fallback UA (cleanup only, no Instagram connection made here)`);
     }
-    const ua = profile ? ((profile.userAgentEmbedded as string | null) || DESKTOP_BROWSER_UA) : DESKTOP_BROWSER_UA;
+    const ua = profile ? ((profile.userAgentEmbedded as string | null) || DEFAULT_BROWSER_UA) : DEFAULT_BROWSER_UA;
     await clearSession(profileId, ua, proxy);
     res.json({ ok: true });
   });
@@ -5214,15 +5046,9 @@ export async function registerInstagramRoutes(
             if (mid)       cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
             await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
-            // Disable API mode: skip mobile API — mark valid from EB cookies alone.
-            if ((effectiveP.apiLimits as any)?.disableApi === true) {
-              console.log(`[verify-all] @${profile.username} — Disable API mode: skipping mobile API, marking valid from EB cookies`);
-              result = { ok: true, accountStatus: "valid", message: `@${profile.username} — EB login confirmed (Disable API mode — browser-only)`, igApiCookies: freshCookies };
-            } else {
-              const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies } as typeof effectiveP;
-              const apiResult = await verifyInstagramCredentials(profileWithCookies);
-              result = { ...apiResult, igApiCookies: freshCookies };
-            }
+            const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies } as typeof effectiveP;
+            const apiResult = await verifyInstagramCredentials(profileWithCookies);
+            result = { ...apiResult, igApiCookies: freshCookies };
           }
         } else {
           const msg = bulkLoginResult.message ?? "";
@@ -6123,7 +5949,7 @@ If asked about something outside Equinox, say: "I can only help with Equinox-rel
 
       // Auto-assign UAs if the EQX file was exported before UAs were tracked
       // (older exports) or if the account never had one assigned.
-      // All accounts (including disableApi=true) get mobile Android Chrome UAs.
+      // Imported accounts without tracked UAs get mobile Android Chrome UAs.
       if (!cleanProfile.userAgentEmbedded || !cleanProfile.userAgentApi) {
         const autoUA = pickUAForAccount(cleanProfile.username || "");
         if (!cleanProfile.userAgentEmbedded) cleanProfile.userAgentEmbedded = autoUA.embedded;
@@ -6405,8 +6231,7 @@ If asked about something outside Equinox, say: "I can only help with Equinox-rel
       for (const ja of jarveeAccounts) {
         try {
           // Jarvee imports don't carry an apiLimits field, so they always get
-          // a mobile UA here.  All accounts (including disableApi=true after import)
-          // stay on mobile UAs — Reset Device IDs will assign a fresh mobile UA.
+          // a mobile UA here. Reset Device IDs will assign a fresh mobile UA.
           const autoUA = pickUAForAccount(ja.username);
           const igDeviceState = ja.deviceString
             ? JSON.stringify({ deviceString: ja.deviceString })
@@ -7071,48 +6896,25 @@ If asked about something outside Equinox, say: "I can only help with Equinox-rel
     }
   })();
 
-  // ── Startup: reschedule staging accounts whose bootstrap timer was lost on restart ──
+  // ── Startup: release legacy staging accounts ───────────────────────────────
+  // The retired delayed-start flow is no longer supported. Accounts left in the
+  // old staging state must not remain stuck waiting for a timer that will never be created.
   (async () => {
     try {
       await new Promise(resolve => setTimeout(resolve, 4000)); // let other migrations finish first
       const allProfiles = await storage.getProfiles();
-      let rescheduled = 0;
+      let released = 0;
       for (const p of allProfiles) {
         if (p.accountStatus !== "staging") continue;
-        const firesAt = (p as any).stagingBootstrapFiresAt as string | null;
-        if (!firesAt) {
-          // No fire timestamp — run immediately (shouldn't normally happen)
-          scheduleStagingBootstrap(p.id, 0);
-          rescheduled++;
-          continue;
-        }
-        const firesAtMs = new Date(firesAt).getTime();
-        if (!Number.isFinite(firesAtMs)) {
-          // Malformed timestamp — run immediately and clear the bad value
-          console.warn(`[startup:staging] @${p.username} — stagingBootstrapFiresAt is malformed ("${firesAt}"), running bootstrap immediately`);
-          scheduleStagingBootstrap(p.id, 0);
-          rescheduled++;
-          continue;
-        }
-        const remainingMs = Math.max(0, firesAtMs - Date.now());
-        // If the stored timestamp is > 7 days in the future it is almost certainly
-        // an overflow artifact (the old overflowed setTimeout stored a fire time
-        // years from now).  Treat it as "run immediately" rather than re-scheduling
-        // a 2+ year wait.
-        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-        if (remainingMs > SEVEN_DAYS_MS) {
-          console.warn(`[startup:staging] @${p.username} — stagingBootstrapFiresAt is ${Math.round(remainingMs / 86_400_000)}d away (overflow artifact?), running bootstrap immediately`);
-          scheduleStagingBootstrap(p.id, 0);
-          rescheduled++;
-          continue;
-        }
-        scheduleStagingBootstrap(p.id, remainingMs);
-        console.log(`[startup:staging] @${p.username} — rescheduled bootstrap in ${Math.round(remainingMs / 60_000)}m`);
-        rescheduled++;
+        await storage.updateProfile(p.id, {
+          accountStatus: "pending",
+          stagingBootstrapFiresAt: null,
+        } as any);
+        released++;
       }
-      if (rescheduled > 0) console.log(`[startup:staging] Rescheduled ${rescheduled} staging account(s)`);
+      if (released > 0) console.log(`[startup:legacy-cleanup] Released ${released} account(s) from the retired staging state`);
     } catch (e) {
-      console.warn("[startup:staging] Staging recovery failed (non-fatal):", e);
+      console.warn("[startup:legacy-cleanup] Legacy staging cleanup failed (non-fatal):", e);
     }
   })();
 
