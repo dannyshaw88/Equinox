@@ -153,6 +153,22 @@ function migrateLegacyDataIfNeeded(): void {
   }
 }
 
+// electron-updater can replace the install directory before the new build
+// starts. That makes a startup-only migration too late for older installs
+// whose database still lives beside Equinox.exe. Copy the legacy state while
+// the old process is still running, before quitAndInstall hands control to
+// the installer. This is intentionally idempotent and never overwrites a
+// database already migrated into userData.
+function preserveLegacyDataBeforeUpdate(): void {
+  if (!app.isPackaged) return;
+  try {
+    migrateLegacyDataIfNeeded();
+    appendToMainLog("[data] preserved legacy state before Windows update");
+  } catch (err) {
+    appendToMainLog(`[data] pre-update legacy state preservation failed: ${String(err)}`);
+  }
+}
+
 function getDatabasePath(): string {
   migrateLegacyDataIfNeeded();
   return path.join(getInstallDataPath(), "database.db");
@@ -552,6 +568,10 @@ declare const __UPDATER_TOKEN__: string;
 
 // true while a user-initiated check is in progress — background checks are silent
 let _updaterManualCheck = false;
+// Set once an update has downloaded. autoInstallOnAppQuit can install it even
+// when the user chose "Later", so the shutdown handler must preserve legacy
+// install-folder state for both paths.
+let _updatePendingForInstall = false;
 
 function setupAutoUpdater(): void {
   autoUpdater.autoDownload = true;
@@ -569,6 +589,7 @@ function setupAutoUpdater(): void {
   // Always show the "restart to apply" dialog — an update being ready is
   // important regardless of whether the check was automatic or manual.
   autoUpdater.on("update-downloaded", () => {
+    _updatePendingForInstall = true;
     if (!win) return;
     dialog.showMessageBox(win, {
       type: "info",
@@ -577,7 +598,12 @@ function setupAutoUpdater(): void {
       buttons: ["Restart Now", "Later"],
       defaultId: 0,
     }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall(false, true);
+      if (response === 0) {
+        // Copy before quitAndInstall as the installer may remove the old
+        // install directory before the new process gets its first startup.
+        preserveLegacyDataBeforeUpdate();
+        autoUpdater.quitAndInstall(false, true);
+      }
     });
   });
 
@@ -1463,6 +1489,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", (event) => {
   isQuitting = true;
+  const preserveUpdateState = _updatePendingForInstall;
   // Destroy the tray icon immediately so it disappears from the Windows system
   // tray right away. Without this explicit destroy() the icon lingers after the
   // process exits and produces an error when the user right-clicks the ghost icon.
@@ -1470,7 +1497,10 @@ app.on("before-quit", (event) => {
   trayPopup = null;
   tray?.destroy();
   tray = null;
-  if (!serverProc) return;
+  if (!serverProc) {
+    if (preserveUpdateState) preserveLegacyDataBeforeUpdate();
+    return;
+  }
   // Give the server process a moment to flush and close the SQLite database
   // cleanly before Electron exits. better-sqlite3 is synchronous so the
   // database is always in a consistent state, but sending SIGTERM first gives
@@ -1488,6 +1518,7 @@ app.on("before-quit", (event) => {
     // process.exit(0) is unconditional — the updater's process scan won't see
     // a lingering Equinox.exe after this point.
     try { BrowserWindow.getAllWindows().forEach(w => { try { w.destroy(); } catch {} }); } catch {}
+    if (preserveUpdateState) preserveLegacyDataBeforeUpdate();
     process.exit(0);
   }, 2500);
 });
