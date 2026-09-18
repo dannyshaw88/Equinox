@@ -10,7 +10,7 @@
  * server at serverPort via HTTP.
  */
 
-import { BrowserWindow, BrowserView, Menu, session as electronSession, ipcMain, WebContents, dialog, shell, screen as eScreen } from "electron";
+import { BrowserWindow, BrowserView, Menu, session as electronSession, ipcMain, WebContents, dialog, shell } from "electron";
 import http from "http";
 import https from "https";
 import fs from "fs";
@@ -2637,25 +2637,12 @@ export async function openEbWindow(opts: {
   useHomeIp?: boolean;
   /**
    * When true the window is created and fully driven (navigate/evaluate/CDP)
-   * exactly like a normal EB, but is NEVER shown to the user — the
-   * ready-to-show handler skips show()/maximize() entirely. Used by the
-   * automation engine's browser-only Human Session (Disable API mode) so
-   * follow/unfollow/scroll/like/DM actions can run in the background without
-   * a visible window. The window still lives in ebMap under the account's
-   * normal partition, so it shares cookies/session with the regular EB.
+   * without being shown to the user. The window still lives in ebMap under
+   * the account's normal partition, so it shares cookies/session with the EB.
    */
   silentMode?: boolean;
-  /**
-   * Whether this account has "Disable API" enabled in settings.
-   * When true (API disabled) the close handler parks the window off-screen so
-   * the automation engine can keep using the live EB session in the background.
-   * When false (API active) the close handler allows the window to actually
-   * close — no background browser session is needed, so the user gets a normal
-   * maximised window on next open instead of restoring an off-screen one.
-   */
-  disableApi?: boolean;
 }): Promise<void> {
-  const { profileId, username, proxy, userAgent, apiUA, password, twoFAKey, ebFingerprint, initialUrl, verifyMode, useHomeIp, silentMode, disableApi } = opts;
+  const { profileId, username, proxy, userAgent, apiUA, password, twoFAKey, ebFingerprint, initialUrl, verifyMode, useHomeIp, silentMode } = opts;
   const isGhostBrowser = profileId === -1;
   // Per-session random token baked into every __eq_* global injected into the Instagram page.
   // Using a random suffix prevents Instagram's JS from fingerprinting us by a fixed symbol name.
@@ -3526,8 +3513,8 @@ export async function openEbWindow(opts: {
   // setDeviceMetricsOverride is NOT used — it causes a SIGSEGV crash in
   // Electron 33 on Windows regardless of call serialisation.
   // Touch emulation only applies when the account's UA is actually mobile.
-  // Accounts with disableApi=true are assigned desktop UAs (_fpIsMobile=false)
-  // and never reach this block.  Ghost/verify windows may still use a mobile UA.
+  // Desktop UAs do not reach this block. Ghost/verify windows may still use a
+  // mobile UA.
   if (_fpIsMobile && !win.isDestroyed()) {
     _ebCrashLog(profileId, `STEP-20: setTouchEmulationEnabled (mobile ghost/verify window)`);
     try {
@@ -3577,49 +3564,6 @@ export async function openEbWindow(opts: {
       win.webContents.loadURL(url).catch(() => {});
     }
     return { action: "deny" };
-  });
-
-  // On close, move off-screen instead of hiding — win.hide() fully suspends
-  // Chromium's compositor at the OS level.  Beyond what backgroundThrottling
-  // covers: a hidden window gets zero frames composed, IntersectionObserver
-  // reports nothing intersecting (viewport is effectively 0×0), and Instagram's
-  // React SPA never mounts <article>/story-tray/Follow DOM nodes because its
-  // virtualised lists skip off-viewport content.  That is the root cause of
-  // "No Follow button found" / "0 story tray items" on hidden windows.
-  //
-  // Jarvee/SuSocial never call hide() on automation windows; they position them
-  // far off the visible screen so Windows treats them as fully visible:
-  //   • Chromium compositor keeps running (frames are produced normally)
-  //   • IntersectionObserver sees real viewport intersections
-  //   • Instagram's SPA hydrates feed/story/profile DOM as usual
-  //   • backgroundThrottling:false keeps timers firing at full rate
-  //
-  // setSkipTaskbar(true) removes the window from the taskbar / alt-tab so the
-  // user cannot accidentally click it back into view while it is off-screen.
-  win.on("close", (event) => {
-    // When Disable API is active the automation engine keeps using this EB
-    // session in the background (silent follows, DMs, human jitter, etc.).
-    // Park the window off-screen instead of closing so Chromium's compositor
-    // keeps running and the live session stays warm.
-    //
-    // When Disable API is NOT active the automation engine uses the mobile API
-    // for all actions — no background browser session is needed.  Allow the
-    // window to close normally so the next manual open creates a fresh,
-    // maximised window instead of restoring a hidden off-screen one.
-    if (!disableApi) return; // let the window close naturally
-    event.preventDefault();
-    try {
-      const bounds = win.getBounds();
-      const _disp  = eScreen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y });
-      const sw = _disp.workAreaSize.width;
-      const sh = _disp.workAreaSize.height;
-      const offX = sw + 10;
-      const offY = Math.max(0, Math.floor((sh - bounds.height) / 2));
-      win.setPosition(offX, offY);
-      win.setSkipTaskbar(true);
-    } catch {
-      // Fallback: if setPosition fails (e.g. window already destroyed), ignore.
-    }
   });
 
   win.on("closed", () => {
