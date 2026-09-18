@@ -190,7 +190,7 @@ function GroupCombobox({ value, groups, onChange }: { value: string; groups: str
   return (
     <div className="max-w-[20%] relative" ref={ref}>
       <Input
-        className="h-8 text-xs font-bold pr-7 border-black"
+        className="h-8 text-xs font-bold pl-0 pr-6 border-0 shadow-none focus-visible:ring-0"
         placeholder="No group"
         value={value || ""}
         onFocus={() => setOpen(true)}
@@ -199,7 +199,7 @@ function GroupCombobox({ value, groups, onChange }: { value: string; groups: str
       />
       <button
         type="button"
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        className="absolute right-0 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
         tabIndex={-1}
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
       >
@@ -393,12 +393,6 @@ export function ProfileDetailsPage() {
       label: "API & Performance",
       options: [
         { key: "apiLimits", label: "API Limits & Control", description: "Min/max calls and interval settings" },
-        { key: "stageBootstrap", label: "Stage Bootstrap", description: "Enabled state and Min/Max delay — merged into each target's existing API limits without overwriting their rate settings" },
-        { key: "loginRandomEndpoints", label: "Fire Random Endpoints at Login", description: "Fire random endpoints to each login sequence — enabled state and min/max endpoint count merged into each target's existing API limits without overwriting their rate settings" },
-        { key: "loginMakePostChance", label: "Chance of Making a Post", description: "Enabled state, min/max % chance — merged into each target's existing API limits without overwriting their rate settings" },
-        { key: "variationSettings", label: "Variation %", description: "Enabled state, lower/upper chance % and seconds — merged into each target's existing API limits without overwriting their rate settings" },
-        { key: "momentumSettings", label: "Momentum", description: "Enabled state, chance % and spread % — merged into each target's existing API limits without overwriting their rate settings" },
-        { key: "attentionDrift", label: "Attention Drift", description: "Enabled state, chance % and min/max minutes — merged into each target's existing API limits without overwriting their rate settings" },
         { key: "fatigueSettings", label: "Fatigue", description: "Enabled state, strength % and ramp calls — merged into each target's existing API limits without overwriting their rate settings" },
       ],
     },
@@ -412,14 +406,6 @@ export function ProfileDetailsPage() {
       label: "Profile Sync",
       options: [
         { key: "profileSync", label: "Profile Sync", description: "Auto sync toggle, interval and HikerAPI option" },
-      ],
-    },
-    {
-      label: "Browser Actions",
-      options: [
-        { key: "disableApi", label: "Disable API", description: "Force all actions through the embedded browser (Ghost Browser) instead of the mobile API" },
-        { key: "followViaBrowser", label: "Do Actions Via Browser — Follows", description: "Use the embedded browser in the background for follow actions instead of the mobile API" },
-        { key: "postViaBrowser", label: "Do Actions Via Browser — Make a Post", description: "Use the embedded browser in the background to post instead of the mobile API" },
       ],
     },
   ];
@@ -474,21 +460,12 @@ export function ProfileDetailsPage() {
       patch.syncIntervalMax = formData.syncIntervalMax;
       patch.syncUseHiker = formData.syncUseHiker;
     }
-    if (expandedKeys.includes("followViaBrowser")) {
-      patch.followViaBrowser = formData.followViaBrowser ?? false;
-    }
-    if (expandedKeys.includes("postViaBrowser")) {
-      patch.postViaBrowser = formData.postViaBrowser ?? false;
-    }
-
-    // disableApi and the loginRandom*/variation/momentum/attentionDrift/fatigue
-    // fields all live inside the apiLimits JSON blob. When apiLimits itself isn't
-    // selected wholesale, merge just the selected sub-fields into each target's
-    // existing apiLimits (in a single pass) so the rest of their rate limit
-    // settings are never overwritten and concurrent merges can't clobber each other.
+    // Fatigue fields live inside the apiLimits JSON blob. When apiLimits itself
+    // isn't selected wholesale, merge just the selected sub-fields into each
+    // target's existing apiLimits so the rest of their rate limit settings are
+    // never overwritten.
     const needsLimitsMerge =
-      (expandedKeys.includes("disableApi") || expandedKeys.includes("stageBootstrap") || expandedKeys.includes("loginRandomEndpoints") || expandedKeys.includes("loginMakePostChance") || expandedKeys.includes("variationSettings") || expandedKeys.includes("momentumSettings") || expandedKeys.includes("attentionDrift") || expandedKeys.includes("fatigueSettings"))
-      && !expandedKeys.includes("apiLimits");
+      expandedKeys.includes("fatigueSettings") && !expandedKeys.includes("apiLimits");
 
     if (needsLimitsMerge) {
       const srcLimits = formData.apiLimits as any;
@@ -496,48 +473,6 @@ export function ProfileDetailsPage() {
         const target = allProfiles?.find(p => p.id === id);
         const existing = (target?.apiLimits as any) ?? {};
         const merged: Record<string, any> = { ...existing };
-        if (expandedKeys.includes("disableApi")) {
-          merged.disableApi = srcLimits.disableApi ?? false;
-        }
-        if (expandedKeys.includes("stageBootstrap")) {
-          merged.stageBootstrapEnabled  = srcLimits.stageBootstrapEnabled ?? false;
-          merged.stageBootstrapDelayMin = srcLimits.stageBootstrapDelayMin ?? 5;
-          merged.stageBootstrapDelayMax = srcLimits.stageBootstrapDelayMax ?? 15;
-        }
-        if (expandedKeys.includes("loginRandomEndpoints")) {
-          merged.loginRandomEndpointsEnabled = srcLimits.loginRandomEndpointsEnabled ?? false;
-          merged.loginRandomEndpointsMin     = srcLimits.loginRandomEndpointsMin ?? 1;
-          merged.loginRandomEndpointsMax     = srcLimits.loginRandomEndpointsMax ?? 5;
-        }
-        if (expandedKeys.includes("loginMakePostChance")) {
-          merged.loginMakePostChanceEnabled = srcLimits.loginMakePostChanceEnabled ?? false;
-          merged.loginMakePostChanceMin     = srcLimits.loginMakePostChanceMin ?? 5;
-          merged.loginMakePostChanceMax     = srcLimits.loginMakePostChanceMax ?? 10;
-        }
-        if (expandedKeys.includes("variationSettings")) {
-          merged.variationEnabled         = srcLimits.variationEnabled ?? false;
-          // Use new Min/Max field names; fall back to old single-value names for
-          // accounts that still have the legacy schema in the DB.
-          merged.variationLowerChanceMin  = srcLimits.variationLowerChanceMin  ?? srcLimits.variationLowerChance  ?? 10;
-          merged.variationLowerChanceMax  = srcLimits.variationLowerChanceMax  ?? srcLimits.variationLowerChance  ?? 10;
-          merged.variationLowerSecsMin    = srcLimits.variationLowerSecsMin    ?? srcLimits.variationLowerSecs    ?? 20;
-          merged.variationLowerSecsMax    = srcLimits.variationLowerSecsMax    ?? srcLimits.variationLowerSecs    ?? 30;
-          merged.variationUpperChanceMin  = srcLimits.variationUpperChanceMin  ?? srcLimits.variationUpperChance  ?? 10;
-          merged.variationUpperChanceMax  = srcLimits.variationUpperChanceMax  ?? srcLimits.variationUpperChance  ?? 10;
-          merged.variationUpperSecsMin    = srcLimits.variationUpperSecsMin    ?? srcLimits.variationUpperSecs    ?? 45;
-          merged.variationUpperSecsMax    = srcLimits.variationUpperSecsMax    ?? srcLimits.variationUpperSecs    ?? 60;
-        }
-        if (expandedKeys.includes("momentumSettings")) {
-          merged.momentumEnabled = srcLimits.momentumEnabled ?? false;
-          merged.momentumChance  = srcLimits.momentumChance ?? 70;
-          merged.momentumSpread  = srcLimits.momentumSpread ?? 20;
-        }
-        if (expandedKeys.includes("attentionDrift")) {
-          merged.attentionDriftEnabled  = srcLimits.attentionDriftEnabled ?? false;
-          merged.attentionDriftChance   = srcLimits.attentionDriftChance ?? 5;
-          merged.attentionDriftMinMins  = srcLimits.attentionDriftMinMins ?? 5;
-          merged.attentionDriftMaxMins  = srcLimits.attentionDriftMaxMins ?? 15;
-        }
         if (expandedKeys.includes("fatigueSettings")) {
           merged.fatigueEnabled    = srcLimits.fatigueEnabled ?? false;
           merged.fatigueStrength   = srcLimits.fatigueStrength ?? 50;
@@ -609,9 +544,6 @@ export function ProfileDetailsPage() {
           requestsMax: 1,
           everySecondsMin: 1,
           everySecondsMax: 30000,
-          loginRandomEndpointsEnabled: false,
-          loginRandomEndpointsMin: 1,
-          loginRandomEndpointsMax: 5,
         },
         // Account details
         accountLabel: profile.accountLabel || "",
@@ -636,10 +568,6 @@ export function ProfileDetailsPage() {
         syncIntervalMin: profile.syncIntervalMin ?? 60,
         syncIntervalMax: profile.syncIntervalMax ?? 120,
         syncUseHiker: profile.syncUseHiker ?? false,
-        // Browser actions
-        followViaBrowser: profile.followViaBrowser ?? false,
-        postViaBrowser: profile.postViaBrowser ?? false,
-
       });
     }
   }, [profile]);
@@ -730,7 +658,7 @@ export function ProfileDetailsPage() {
   const _executeVerify = async (bypassProxy = false) => {
     // Flush any pending autosave BEFORE verify reads from DB.
     // Without this, settings changed within the 800ms debounce window (e.g.
-    // enabling Stage Bootstrap, toggling syncUseHiker off) are not yet
+    // toggling syncUseHiker off) are not yet
     // persisted and the verify route reads stale values.
     // saveTimerRef.current is null-ed out when the timer fires naturally (see
     // scheduleAutoSave), so this block only runs when a save is genuinely pending.
@@ -751,7 +679,7 @@ export function ProfileDetailsPage() {
         if (!flushOk) {
           toast({
             title: "Save warning",
-            description: "Could not save account settings before verifying — some settings (e.g. Stage Bootstrap) may not be reflected in this verify run.",
+            description: "Could not save account settings before verifying — recent changes may not be reflected in this verify run.",
             variant: "destructive",
           });
         }
@@ -1148,7 +1076,7 @@ export function ProfileDetailsPage() {
           <div className="flex-1 min-w-0">
 
           {/* Group — top row */}
-          <div className="pb-2">
+          <div>
             <div className="flex items-center gap-3">
               <GroupCombobox
                 value={formData.tags || ""}
@@ -1207,21 +1135,6 @@ export function ProfileDetailsPage() {
                   onChange={e => updateField({ accountLabel: e.target.value })}
                 />
               </div>
-              <TooltipProvider delayDuration={300}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-bold shrink-0">
-                      <input type="checkbox" checked={!!(formData.apiLimits as any).disableApi} onChange={e => updateField({ apiLimits: { ...formData.apiLimits, disableApi: e.target.checked } })} className="h-3.5 w-3.5 accent-red-500 cursor-pointer" />
-                      <span className={(formData.apiLimits as any).disableApi ? "text-red-500" : ""}>Disable API</span>
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[300px] whitespace-normal leading-snug">
-                    <p className="font-semibold mb-1">Disable API</p>
-                    <p>Blocks all mobile API calls for this account. Every action runs via the embedded browser instead. Verify only harvests EB cookies and marks the account valid — no mobile API confirmation step.</p>
-                    <p className="mt-1.5 opacity-80 italic">Use when Instagram is flagging API fingerprints for this account. HikerAPI is unaffected.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
             </div>
           </div>
 
@@ -1323,7 +1236,7 @@ export function ProfileDetailsPage() {
                       </div>
                     </div>
 
-                    {/* Verify Account + Fire Random Endpoints — same row */}
+                    {/* Verify Account */}
                     {canVerify && (
                       <div className="flex items-center gap-4 flex-wrap">
                         {/* Verify button */}
@@ -1356,119 +1269,6 @@ export function ProfileDetailsPage() {
                                 : verifyStatus === "fail" ? "Retry Verification"
                                 : "Verify Account"}
                             </Button>
-                          )}
-                        </div>
-                        {/* Stage Bootstrap — delay API cold-start after browser login */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id={`stageBootstrapEnabled-${profile.id}`}
-                              checked={!!(formData.apiLimits as any).stageBootstrapEnabled}
-                              onChange={e => updateField({ apiLimits: { ...formData.apiLimits, stageBootstrapEnabled: e.target.checked } })}
-                              className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
-                            />
-                            <Label htmlFor={`stageBootstrapEnabled-${profile.id}`} className="text-xs font-medium cursor-pointer whitespace-nowrap">Stage Bootstrap</Label>
-                          </div>
-                          {(formData.apiLimits as any).stageBootstrapEnabled && (
-                            <>
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Min</span>
-                              <Input
-                                type="number"
-                                min={1}
-                                className="h-7 text-xs w-14"
-                                value={(formData.apiLimits as any).stageBootstrapDelayMin ?? 5}
-                                onChange={e => updateField({ apiLimits: { ...formData.apiLimits, stageBootstrapDelayMin: Number(e.target.value) } })}
-                              />
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max</span>
-                              <Input
-                                type="number"
-                                min={1}
-                                className="h-7 text-xs w-14"
-                                value={(formData.apiLimits as any).stageBootstrapDelayMax ?? 15}
-                                onChange={e => {
-                                  updateField({ apiLimits: { ...formData.apiLimits, stageBootstrapDelayMax: Number(e.target.value) } });
-                                }}
-                              />
-                              <p className="text-[10px] text-muted-foreground whitespace-nowrap">min delay</p>
-                            </>
-                          )}
-                        </div>
-                        {/* Fire Unique Endpoints on Login — all controls on one row */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id={`loginRandomEndpointsEnabled-${profile.id}`}
-                              checked={!!(formData.apiLimits as any).loginRandomEndpointsEnabled}
-                              onChange={e => updateField({ apiLimits: { ...formData.apiLimits, loginRandomEndpointsEnabled: e.target.checked } })}
-                              className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
-                            />
-                            <Label htmlFor={`loginRandomEndpointsEnabled-${profile.id}`} className="text-xs font-medium cursor-pointer whitespace-nowrap">Fire Unique Endpoints on Login</Label>
-                          </div>
-                          {(formData.apiLimits as any).loginRandomEndpointsEnabled && (
-                            <>
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Min</span>
-                              <Input
-                                type="number"
-                                min={1}
-                                max={17}
-                                className="h-7 text-xs w-14"
-                                value={(formData.apiLimits as any).loginRandomEndpointsMin ?? 1}
-                                onChange={e => updateField({ apiLimits: { ...formData.apiLimits, loginRandomEndpointsMin: Math.max(1, Number(e.target.value)) } })}
-                              />
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max</span>
-                              <Input
-                                type="number"
-                                min={1}
-                                max={17}
-                                className="h-7 text-xs w-14"
-                                value={(formData.apiLimits as any).loginRandomEndpointsMax ?? 5}
-                                onChange={e => {
-                                  const v = Math.max(1, Number(e.target.value));
-                                  const min = (formData.apiLimits as any).loginRandomEndpointsMin ?? 1;
-                                  updateField({ apiLimits: { ...formData.apiLimits, loginRandomEndpointsMax: Math.max(min, v) } });
-                                }}
-                              />
-                              <span className="text-border/60 select-none">·</span>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  id={`loginMakePostChanceEnabled-${profile.id}`}
-                                  checked={!!(formData.apiLimits as any).loginMakePostChanceEnabled}
-                                  onChange={e => updateField({ apiLimits: { ...formData.apiLimits, loginMakePostChanceEnabled: e.target.checked } })}
-                                  className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
-                                />
-                                <Label htmlFor={`loginMakePostChanceEnabled-${profile.id}`} className="text-xs font-medium cursor-pointer whitespace-nowrap">Chance of Making a Post</Label>
-                              </div>
-                              {(formData.apiLimits as any).loginMakePostChanceEnabled && (
-                                <>
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Min %</span>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    max={100}
-                                    className="h-7 text-xs w-14"
-                                    value={(formData.apiLimits as any).loginMakePostChanceMin ?? 5}
-                                    onChange={e => updateField({ apiLimits: { ...formData.apiLimits, loginMakePostChanceMin: Math.max(0, Math.min(100, Number(e.target.value))) } })}
-                                  />
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max %</span>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    max={100}
-                                    className="h-7 text-xs w-14"
-                                    value={(formData.apiLimits as any).loginMakePostChanceMax ?? 10}
-                                    onChange={e => {
-                                      const v = Math.max(0, Math.min(100, Number(e.target.value)));
-                                      const min = (formData.apiLimits as any).loginMakePostChanceMin ?? 5;
-                                      updateField({ apiLimits: { ...formData.apiLimits, loginMakePostChanceMax: Math.max(min, v) } });
-                                    }}
-                                  />
-                                  <p className="text-[10px] text-muted-foreground whitespace-nowrap">per verify</p>
-                                </>
-                              )}
-                            </>
                           )}
                         </div>
                       </div>
@@ -1615,7 +1415,7 @@ export function ProfileDetailsPage() {
                             </Button>
                             {timingInfo && <span className="text-[10px] text-green-600 font-semibold whitespace-nowrap">{timingInfo}</span>}
                           </div>
-                          {/* Row 2: Min / Max / Min (ms) / Max (ms) + Variation % — all on the same row, center-aligned */}
+                          {/* Request count and interval limits */}
                           <div className="flex flex-wrap gap-x-2 gap-y-1 items-center">
                             <div className="flex flex-col items-center space-y-1">
                               <NumField min={0} className="h-7 text-xs w-[52px]" value={formData.apiLimits.requestsMin ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, requestsMin: v} })} />
@@ -1633,150 +1433,9 @@ export function ProfileDetailsPage() {
                               <NumField min={0} className="h-7 text-xs w-[80px]" value={formData.apiLimits.everySecondsMax ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, everySecondsMax: Math.max(v, formData.apiLimits.everySecondsMin ?? 0)} })} />
                               <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max (ms)</Label>
                             </div>
-                            {/* Variation % — checkbox on same row; expanded fields wrap below if needed */}
-                            <div className="flex items-center ml-1">
-                              <TooltipProvider delayDuration={300}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-bold shrink-0">
-                                      <input type="checkbox" checked={!!(formData.apiLimits as any).variationEnabled} onChange={e => updateField({ apiLimits: { ...formData.apiLimits, variationEnabled: e.target.checked } })} className="h-3.5 w-3.5 accent-primary cursor-pointer" />
-                                      Variation %
-                                    </label>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-[300px] whitespace-normal leading-snug">
-                                    <p className="font-semibold mb-1">Variation %</p>
-                                    <p>Occasionally spikes calls above or below your normal delay range to break up rhythm.</p>
-                                    <p className="mt-1.5 opacity-80 italic">e.g. 10% chance, +30–60 s above max — roughly 1 in 10 calls adds an extra 30–60 second pause on top of the normal window.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
-                            {!!(formData.apiLimits as any).variationEnabled && (
-                              <div className="flex items-end gap-1 flex-wrap">
-                                <div className="flex items-end gap-1">
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} max={100} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationLowerChanceMin ?? (formData.apiLimits as any).variationLowerChance ?? 10} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationLowerChanceMin: Math.min(100, v) } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min %</Label>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground pb-3">–</span>
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} max={100} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationLowerChanceMax ?? (formData.apiLimits as any).variationLowerChance ?? 10} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationLowerChanceMax: Math.min(100, v) } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max %</Label>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground pb-3 mx-0.5">-</span>
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationLowerSecsMin ?? (formData.apiLimits as any).variationLowerSecs ?? 20} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationLowerSecsMin: v } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min secs</Label>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground pb-3">–</span>
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationLowerSecsMax ?? (formData.apiLimits as any).variationLowerSecs ?? 30} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationLowerSecsMax: v } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max secs</Label>
-                                  </div>
-                                </div>
-                                <div className="flex items-end gap-1">
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} max={100} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationUpperChanceMin ?? (formData.apiLimits as any).variationUpperChance ?? 10} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationUpperChanceMin: Math.min(100, v) } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min %</Label>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground pb-3">–</span>
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} max={100} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationUpperChanceMax ?? (formData.apiLimits as any).variationUpperChance ?? 10} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationUpperChanceMax: Math.min(100, v) } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max %</Label>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground pb-3 mx-0.5">+</span>
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationUpperSecsMin ?? (formData.apiLimits as any).variationUpperSecs ?? 45} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationUpperSecsMin: v } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min secs</Label>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground pb-3">–</span>
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).variationUpperSecsMax ?? (formData.apiLimits as any).variationUpperSecs ?? 60} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, variationUpperSecsMax: v } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max secs</Label>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           </div>
-                          {/* Row 3: Momentum + Attention Drift + Fatigue — all on one row */}
+                          {/* Fatigue */}
                           <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1.5 border-t border-border/40 items-end">
-                            {/* Momentum */}
-                            <div className="flex flex-col items-start space-y-0.5">
-                              <TooltipProvider delayDuration={300}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-bold shrink-0 h-6">
-                                      <input type="checkbox" checked={!!(formData.apiLimits as any).momentumEnabled} onChange={e => updateField({ apiLimits: { ...formData.apiLimits, momentumEnabled: e.target.checked } })} className="h-3.5 w-3.5 accent-primary cursor-pointer" />
-                                      Momentum
-                                    </label>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-[300px] whitespace-normal leading-snug">
-                                    <p className="font-semibold mb-1">Momentum</p>
-                                    <p>Pulls each call's delay toward the previous one — creating natural bursts of fast calls and slow-down plateaus, like a human who gets into a rhythm.</p>
-                                    <p className="mt-1.5 opacity-80 italic">e.g. 70% Chance, 20% Spread — 70% of the time the next delay stays within ±20% of the last one instead of picking a fresh random value.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                              <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block">&nbsp;</Label>
-                            </div>
-                            {!!(formData.apiLimits as any).momentumEnabled && (
-                              <>
-                                <div className="flex flex-col items-center space-y-0.5">
-                                  <NumField min={0} max={100} className="h-6 text-xs w-[60px]" value={(formData.apiLimits as any).momentumChance ?? 70} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, momentumChance: Math.min(100, v) } })} />
-                                  <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Chance %</Label>
-                                </div>
-                                <div className="flex flex-col items-center space-y-0.5">
-                                  <NumField min={0} max={100} className="h-6 text-xs w-[60px]" value={(formData.apiLimits as any).momentumSpread ?? 20} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, momentumSpread: Math.min(100, v) } })} />
-                                  <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Spread %</Label>
-                                </div>
-                              </>
-                            )}
-                            {/* Separator */}
-                            <span className="text-muted-foreground/30 text-xs select-none pb-[14px]">|</span>
-                            {/* Attention Drift */}
-                            <div className="flex flex-col items-start space-y-0.5">
-                              <TooltipProvider delayDuration={300}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-bold shrink-0 h-6">
-                                      <input type="checkbox" checked={!!(formData.apiLimits as any).attentionDriftEnabled} onChange={e => updateField({ apiLimits: { ...formData.apiLimits, attentionDriftEnabled: e.target.checked } })} className="h-3.5 w-3.5 accent-primary cursor-pointer" />
-                                      Attention Drift
-                                    </label>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-[300px] whitespace-normal leading-snug">
-                                    <p className="font-semibold mb-1">Attention Drift</p>
-                                    <p>Simulates a human stepping away from the keyboard — randomly inserts a multi-minute gap into the call schedule, then resumes normally.</p>
-                                    <p className="mt-1.5 opacity-80 italic">e.g. 5–8% Chance, 5–10 Min — roughly 1 in 15 calls triggers a 5–10 minute pause before the next call fires.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                              <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block">&nbsp;</Label>
-                            </div>
-                            {!!(formData.apiLimits as any).attentionDriftEnabled && (
-                              <>
-                                <div className="flex items-center gap-1">
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} max={100} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).attentionDriftChanceMin ?? (formData.apiLimits as any).attentionDriftChance ?? 3} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, attentionDriftChanceMin: Math.min(100, v) } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min %</Label>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground mb-3.5">–</span>
-                                  <div className="flex flex-col items-center space-y-0.5">
-                                    <NumField min={0} max={100} className="h-6 text-xs w-[48px]" value={(formData.apiLimits as any).attentionDriftChanceMax ?? (formData.apiLimits as any).attentionDriftChance ?? 5} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, attentionDriftChanceMax: Math.min(100, v) } })} />
-                                    <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max %</Label>
-                                  </div>
-                                </div>
-                                <div className="flex flex-col items-center space-y-0.5">
-                                  <NumField min={0} className="h-6 text-xs w-[60px]" value={(formData.apiLimits as any).attentionDriftMinMins ?? 5} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, attentionDriftMinMins: v } })} />
-                                  <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min Mins</Label>
-                                </div>
-                                <div className="flex flex-col items-center space-y-0.5">
-                                  <NumField min={0} className="h-6 text-xs w-[60px]" value={(formData.apiLimits as any).attentionDriftMaxMins ?? 15} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, attentionDriftMaxMins: Math.max(v, (formData.apiLimits as any).attentionDriftMinMins ?? 5) } })} />
-                                  <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max Mins</Label>
-                                </div>
-                              </>
-                            )}
-                            {/* Separator */}
-                            <span className="text-muted-foreground/30 text-xs select-none pb-[14px]">|</span>
                             {/* Fatigue */}
                             <div className="flex flex-col items-start space-y-0.5">
                               <TooltipProvider delayDuration={300}>
@@ -2007,41 +1666,6 @@ export function ProfileDetailsPage() {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
-                  </div>
-
-                  {/* ── Do Actions Via Browser ── */}
-                  <div className="space-y-3 pt-4 border-t border-border mt-4">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-primary" />
-                      <h4 className="text-sm font-bold">Do Actions Via Browser</h4>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      When enabled, the selected actions use the embedded browser in the background
-                      instead of the mobile API. The browser is never shown and closes immediately
-                      after each action completes.
-                    </p>
-                    <div className="flex items-center gap-3 py-1">
-                      <Switch
-                        checked={!!formData.followViaBrowser}
-                        onCheckedChange={checked => updateField({ followViaBrowser: checked })}
-                        className="data-[state=checked]:bg-green-500"
-                      />
-                      <div>
-                        <p className="text-xs font-semibold">Follows</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">Navigate to the target's profile page and click the Follow button</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 py-1">
-                      <Switch
-                        checked={!!formData.postViaBrowser}
-                        onCheckedChange={checked => updateField({ postViaBrowser: checked })}
-                        className="data-[state=checked]:bg-green-500"
-                      />
-                      <div>
-                        <p className="text-xs font-semibold">Make a Post</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">Open the embedded browser in the background and post via instagram.com instead of the mobile API</p>
-                      </div>
-                    </div>
                   </div>
 
                   {/* ── Active Timer ── */}
@@ -2393,7 +2017,7 @@ export function ProfileDetailsPage() {
             <textarea
               className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
               placeholder="Any notes about this account…"
-              rows={10}
+              rows={3}
               value={formData.notes}
               onChange={e => updateField({ notes: e.target.value })}
               data-testid="input-notes"
