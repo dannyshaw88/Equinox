@@ -41,13 +41,21 @@ export function usePersistentSetting<T>(
   useEffect(() => {
     const api = (window as any).electronAPI;
     if (!api?.settingsGet) return;
+    // localStorage is the renderer's latest value. Do not overwrite it with
+    // an older Electron settings-file value when returning to a page.
+    // Electron remains the fallback for a fresh renderer/cleared localStorage.
+    try {
+      if (parse(localStorage.getItem(key)) !== null) return;
+    } catch {}
+
+    let cancelled = false;
     api.settingsGet(key).then((v: unknown) => {
-      if (v !== null && v !== undefined) {
-        const resolved = merge ? merge(v as T, defaultValue) : (v as T);
-        setValue(resolved);
-        try { localStorage.setItem(key, JSON.stringify(v)); } catch {}
-      }
+      if (cancelled || v === null || v === undefined) return;
+      const resolved = merge ? merge(v as T, defaultValue) : (v as T);
+      setValue(resolved);
+      try { localStorage.setItem(key, JSON.stringify(v)); } catch {}
     }).catch(() => {});
+    return () => { cancelled = true; };
   // key is a stable constant per hook instance — only run on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
