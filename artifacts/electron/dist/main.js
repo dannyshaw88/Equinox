@@ -1976,7 +1976,7 @@ async function doAutoLogin(profileId, win2, username, password, twoFAKey, userAg
   return { ok: true, message: "Login successful" };
 }
 async function openEbWindow(opts) {
-  const { profileId, username, proxy, userAgent, apiUA, password, twoFAKey, ebFingerprint, initialUrl, verifyMode, useHomeIp, silentMode, disableApi } = opts;
+  const { profileId, username, proxy, userAgent, apiUA, password, twoFAKey, ebFingerprint, initialUrl, verifyMode, useHomeIp, silentMode } = opts;
   const isGhostBrowser = profileId === -1;
   const jsToken = Math.random().toString(36).slice(2, 8);
   _ebCrashLog(profileId, `STEP-1: openEbWindow entry \u2014 username=@${username} proxy=${proxy ? proxy.host + ":" + proxy.port : "none"}`);
@@ -2024,7 +2024,7 @@ async function openEbWindow(opts) {
       existing.win.setSkipTaskbar(false);
       if (!isGhostBrowser && !existing.win.isMaximized()) {
         const _eb = existing.win.getBounds();
-        const _disp = import_electron.screen.getDisplayNearestPoint({ x: _eb.x, y: _eb.y });
+        const _disp = eScreen.getDisplayNearestPoint({ x: _eb.x, y: _eb.y });
         existing.win.setBounds(_disp.workArea);
       }
       if (!existing.win.isVisible()) existing.win.show();
@@ -2263,7 +2263,7 @@ async function openEbWindow(opts) {
   let _initX;
   let _initY;
   if (isGhostBrowser || verifyMode || silentMode) {
-    const { width: sw, height: sh } = import_electron.screen.getPrimaryDisplay().workAreaSize;
+    const { width: sw, height: sh } = eScreen.getPrimaryDisplay().workAreaSize;
     const ww = 430;
     const wh = 700;
     if (isGhostBrowser) {
@@ -2501,21 +2501,6 @@ async function openEbWindow(opts) {
       });
     }
     return { action: "deny" };
-  });
-  win2.on("close", (event) => {
-    if (!disableApi) return;
-    event.preventDefault();
-    try {
-      const bounds = win2.getBounds();
-      const _disp = import_electron.screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y });
-      const sw = _disp.workAreaSize.width;
-      const sh = _disp.workAreaSize.height;
-      const offX = sw + 10;
-      const offY = Math.max(0, Math.floor((sh - bounds.height) / 2));
-      win2.setPosition(offX, offY);
-      win2.setSkipTaskbar(true);
-    } catch {
-    }
   });
   win2.on("closed", () => {
     ebMap.delete(profileId);
@@ -4549,7 +4534,7 @@ function startEbIpcServer(serverPort2, cookiesDir, iconPath) {
             _ipcLog(`[ERROR] [eb:silent-follow:${pid}] mode B \u2014 proxy set failed; action aborted to prevent real IP leak: ${proxyErr?.message}`);
             return send(res, 500, { error: `Proxy setup failed for account ${pid} \u2014 action aborted to prevent real IP leak: ${proxyErr?.message}` });
           }
-          const { width: _sfSw } = import_electron.screen.getPrimaryDisplay().workAreaSize;
+          const { width: _sfSw } = eScreen.getPrimaryDisplay().workAreaSize;
           sfTempWin = new import_electron.BrowserWindow({
             width: 1280,
             height: 820,
@@ -4984,7 +4969,7 @@ function startEbIpcServer(serverPort2, cookiesDir, iconPath) {
             _ipcLog(`[ERROR] [eb:silent-post:${pid}] mode B \u2014 proxy fetch/set failed; action aborted to prevent real IP leak: ${proxyErr?.message}`);
             return send(res, 500, { error: `Proxy setup failed for account ${pid} \u2014 action aborted to prevent real IP leak: ${proxyErr?.message}` });
           }
-          const { width: _spSw } = import_electron.screen.getPrimaryDisplay().workAreaSize;
+          const { width: _spSw } = eScreen.getPrimaryDisplay().workAreaSize;
           spTempWin = new import_electron.BrowserWindow({
             width: 1280,
             height: 820,
@@ -5529,7 +5514,7 @@ function startEbIpcServer(serverPort2, cookiesDir, iconPath) {
             _ipcLog(`[ERROR] [eb:silent-search:${pid}] mode B \u2014 proxy set failed; action aborted to prevent real IP leak: ${proxyErr?.message}`);
             return send(res, 500, { error: `Proxy setup failed for account ${pid} \u2014 action aborted to prevent real IP leak: ${proxyErr?.message}` });
           }
-          const { width: _ssSw } = import_electron.screen.getPrimaryDisplay().workAreaSize;
+          const { width: _ssSw } = eScreen.getPrimaryDisplay().workAreaSize;
           ssTempWin = new import_electron.BrowserWindow({
             width: 1280,
             height: 820,
@@ -7895,7 +7880,7 @@ function findFreePort() {
     srv.on("error", reject);
   });
 }
-var PREFERRED_PORT = 32987;
+var PREFERRED_PORT = 32988;
 function getServerPort() {
   return new Promise((resolve) => {
     const probe = import_net.default.createServer();
@@ -7908,16 +7893,52 @@ function getServerPort() {
   });
 }
 function getUserDataPath() {
-  const p = import_electron2.app.getPath("userData");
+  const p = import_path2.default.join(import_electron2.app.getPath("userData"), "equinox-data");
   import_fs2.default.mkdirSync(p, { recursive: true });
   return p;
 }
 function getInstallDataPath() {
+  return getUserDataPath();
+}
+function getLegacyInstallDataPath() {
   const p = import_electron2.app.isPackaged ? import_path2.default.dirname(import_electron2.app.getPath("exe")) : getUserDataPath();
   import_fs2.default.mkdirSync(p, { recursive: true });
   return p;
 }
+function migrateLegacyDataIfNeeded() {
+  if (!import_electron2.app.isPackaged) return;
+  const dataDir = getInstallDataPath();
+  const legacyDir = getLegacyInstallDataPath();
+  if (import_path2.default.resolve(dataDir) === import_path2.default.resolve(legacyDir)) return;
+  const dbSrc = import_path2.default.join(legacyDir, "database.db");
+  const dbDst = import_path2.default.join(dataDir, "database.db");
+  if (!import_fs2.default.existsSync(dbDst) && import_fs2.default.existsSync(dbSrc)) {
+    try {
+      import_fs2.default.copyFileSync(dbSrc, dbDst);
+      for (const ext of ["-wal", "-shm"]) {
+        const src = dbSrc + ext;
+        if (import_fs2.default.existsSync(src)) import_fs2.default.copyFileSync(src, dbDst + ext);
+      }
+      console.log(`[data] migrated legacy database from ${dbSrc} to ${dbDst}`);
+    } catch (err) {
+      console.error("[data] legacy database migration failed:", err);
+    }
+  }
+  for (const name of ["backups", "browser-data"]) {
+    const src = import_path2.default.join(legacyDir, name);
+    const dst = import_path2.default.join(dataDir, name);
+    if (!import_fs2.default.existsSync(dst) && import_fs2.default.existsSync(src)) {
+      try {
+        import_fs2.default.cpSync(src, dst, { recursive: true });
+        console.log(`[data] migrated legacy ${name} from ${src} to ${dst}`);
+      } catch (err) {
+        console.error(`[data] legacy ${name} migration failed:`, err);
+      }
+    }
+  }
+}
 function getDatabasePath() {
+  migrateLegacyDataIfNeeded();
   return import_path2.default.join(getInstallDataPath(), "database.db");
 }
 function getServerEntry() {
@@ -8544,7 +8565,6 @@ function setupBackupHandlers() {
         let apiUA;
         let ebFingerprint;
         let useHomeIp = false;
-        let disableApi = false;
         try {
           const r = await fetch(`http://127.0.0.1:${serverPort}/api/profiles/${profileId}/eb-proxy`);
           if (r.ok) {
@@ -8553,7 +8573,6 @@ function setupBackupHandlers() {
             userAgent = data.userAgent || void 0;
             apiUA = data.apiUA || void 0;
             useHomeIp = !!data.useHomeIp;
-            disableApi = !!data.disableApi;
             ebFingerprint = data.ebFingerprint ? typeof data.ebFingerprint === "string" ? JSON.parse(data.ebFingerprint) : data.ebFingerprint : void 0;
             if (proxy) {
               console.log(`[EB] Profile ${profileId}: proxy resolved \u2192 ${proxy.host}:${proxy.port}`);
@@ -8576,8 +8595,7 @@ function setupBackupHandlers() {
           useHomeIp,
           userAgent,
           apiUA,
-          ebFingerprint,
-          disableApi
+          ebFingerprint
         });
       } catch (err) {
         console.error(`[EB] open-browser-window error for profile ${profileId}:`, err?.message);
@@ -8930,6 +8948,8 @@ async function createWindow() {
     }
   });
 }
+import_electron2.app.setName("Equinox");
+import_electron2.app.setPath("userData", import_path2.default.join(import_electron2.app.getPath("appData"), "Equinox"));
 if (process.platform === "win32") {
   import_electron2.app.setAppUserModelId("Equinox");
 }
