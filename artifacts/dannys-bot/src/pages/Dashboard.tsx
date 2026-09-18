@@ -582,16 +582,6 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     ],
   },
   {
-    version: "1.1.388",
-    date: "7 Jul 2026",
-    items: [
-      {
-        category: "Fixed",
-        text: "When Disable API is off and you manually open the embedded browser for an account, the window now opens maximised normally. Previously it was being parked off-screen (minimised, hidden from taskbar) by the same close-handler logic used for Disable API accounts — which need the browser session to stay alive in the background for automation. That background-parking is now only applied when Disable API is actually enabled.",
-      },
-    ],
-  },
-  {
     version: "1.1.387",
     date: "7 Jul 2026",
     items: [
@@ -708,16 +698,6 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     ],
   },
   {
-    version: "1.1.372",
-    date: "6 Jul 2026",
-    items: [
-      {
-        category: "Security",
-        text: "Fixed a bug where desktop browser-only accounts (Mac/Linux/Windows) never got their device-type information sent consistently to Instagram — every one of them was leaking your PC's actual info instead, so all your desktop accounts looked identical to Instagram on this signal, and it didn't even match the identity they were supposed to have. This is now fixed so it matches the identity properly and each account looks different from the others, exactly like it should.",
-      },
-    ],
-  },
-  {
     version: "1.1.371",
     date: "6 Jul 2026",
     items: [
@@ -734,32 +714,6 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
       {
         category: "Security",
         text: "Fixed a bug where the invisible watermark each browser session leaves behind (its canvas and audio fingerprint) only had a few hundred possible canvas values and about 9 possible audio values across your entire account base. Past a couple hundred accounts, this meant unrelated accounts could end up looking identical to Instagram on this specific signal. Every account now gets one of over 4 billion possible values for each, so accounts stay unique from each other no matter how many thousands you run.",
-      },
-      {
-        category: "Improved",
-        text: "The pool of desktop browser identities (used for browser-only accounts) has been expanded from 26 to about 114 realistic combinations across Windows, macOS, and Linux, generated automatically instead of hand-typed.",
-      },
-    ],
-  },
-  {
-    version: "1.1.369",
-    date: "6 Jul 2026",
-    items: [
-      {
-        category: "Improved",
-        text: "Accounts with Disable API enabled now automatically get a real desktop Chrome identity (Windows or macOS) instead of a mobile Android one. When you open the browser for these accounts, Instagram serves its full desktop layout with the sidebar, navigation bar, and all desktop features — no more mobile web view. This only affects browser-only accounts; accounts using both browser and API keep their existing mobile identity.",
-      },
-      {
-        category: "Security",
-        text: "Desktop browser-only accounts now receive a matching desktop GPU fingerprint — NVIDIA GeForce, AMD Radeon, Intel UHD/Iris, or Apple Silicon Metal — so the WebGL hardware identity the browser reports is consistent with the claimed Windows or macOS device. Previously every account got Android GPU values (Adreno, Mali, Tensor) regardless of the declared operating system, which was a fingerprint mismatch.",
-      },
-      {
-        category: "Security",
-        text: "Fixed a gap where the fingerprint auto-generated on first browser open could assign Android GPU values to a desktop-UA account. The auto-generation path now detects whether the account's browser agent is desktop or mobile and picks the correct GPU pool.",
-      },
-      {
-        category: "Improved",
-        text: "26 distinct desktop Chrome UAs are now available in the pool (Windows 10/11 and macOS, Chrome versions 124–136). Each account is deterministically assigned one based on its username, so the same account always gets the same desktop identity across resets and re-imports.",
       },
     ],
   },
@@ -1225,10 +1179,6 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
       },
       {
         category: "Improved",
-        text: "The Disable API toggle has been moved to sit directly next to the Account Label input field in Account Settings, so you can find and toggle it without scrolling down to the API Controls section.",
-      },
-      {
-        category: "Improved",
         text: "The Account Label input field is now the same width as the Instagram Username field, keeping the two fields visually consistent.",
       },
       {
@@ -1263,14 +1213,6 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     version: "1.1.334",
     date: "4 Jul 2026",
     items: [
-      {
-        category: "Fixed",
-        text: "Inject Browsing (visit profile, scroll feed, like posts, watch stories, view highlights, view reels) now actually runs when an account has Disable API Mode turned on. Previously the Follow tool only clicked Follow and skipped every browsing step in this mode.",
-      },
-      {
-        category: "Fixed",
-        text: "Disable API Mode's browsing now happens purely through the account's embedded browser, exactly like normal browsing, so it works even when that browser window is not shown on screen.",
-      },
       {
         category: "Fixed",
         text: "Liking posts while scrolling the home feed no longer jumps back to the top of the feed and scrolls down a second time. Likes (and caption expansion) now happen on posts as they're being scrolled past, the same way a real person browses.",
@@ -1432,68 +1374,12 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     date: "4 Jul 2026",
     items: [
       {
-        category: "New Feature",
-        text: "Copy Settings now includes a Disable API toggle, so you can copy that setting across accounts along with your other browser action settings in one go.",
-      },
-      {
-        category: "New Feature",
-        text: "Human Session in Disable API mode now also handles saving posts, sharing posts, and visiting the Explore page through the browser, matching the same chance settings used by the normal API mode.",
-      },
-      {
         category: "Fixed",
         text: "Story checking, DM checking, and post liking through the browser are now more reliable — the app waits for the page to fully load before clicking, instead of clicking too early and silently doing nothing.",
       },
       {
         category: "Improvement",
         text: "Every browser-driven action (scrolling, stories, DMs, likes, saves, shares, follows, unfollows, and contact messages) now shows up in your Actions log and CSV export with \"Ghost Browser\" listed in the Transport column, so you can see exactly what ran through the browser versus the API.",
-      },
-      {
-        category: "New Feature",
-        text: "The Contact tool can now send messages entirely through the browser when Disable API is on, instead of skipping accounts that have API calls disabled.",
-      },
-    ],
-  },
-  {
-    version: "1.1.323",
-    date: "4 Jul 2026",
-    items: [
-      {
-        category: "New Feature",
-        text: "The Human Session browser tools (feed scrolling, checking stories, checking DMs, liking posts, following, unfollowing) now run for real when Disable API mode is on, using the same Chrome window as your login session.",
-      },
-      {
-        category: "New Feature",
-        text: "These background browser actions can now run completely invisibly — no Chrome window pops up on screen while they happen.",
-      },
-    ],
-  },
-  {
-    version: "1.1.322",
-    date: "4 Jul 2026",
-    items: [
-      {
-        category: "New Feature",
-        text: "Added Disable API mode per account. When enabled, the account never makes any Instagram mobile API call — every action is performed exclusively through the embedded browser (the same Chrome window used for login). Enable it from Account Settings → API Controls → Disable API.",
-      },
-      {
-        category: "New Feature",
-        text: "Verify Credentials in Disable API mode now completes after the embedded browser logs in and cookies are harvested — the mobile API cold-start sequence is skipped entirely. The account is marked valid as soon as the browser session is confirmed.",
-      },
-      {
-        category: "New Feature",
-        text: "Human Session in Disable API mode now performs every enabled action through the browser: scrolls the home timeline feed, clicks and advances through story tray items, opens DM inbox threads, clicks Like on feed posts, follows candidates via their profile pages, and unfollows tracked users by clicking the Unfollow confirmation on their profiles.",
-      },
-      {
-        category: "New Feature",
-        text: "Follow and Unfollow in browser-only mode use HikerAPI to scrape candidates (same sources as the normal Follow Tool) and navigate to each profile to click the button — no Instagram API calls made.",
-      },
-      {
-        category: "Improvement",
-        text: "All browser-only action timings are now controlled by your API Limits settings (Every X Seconds Min/Max and Requests Min/Max). No hardcoded dwell times — the delay between each browser action is calculated from your configured limits exactly as the API throttle uses them.",
-      },
-      {
-        category: "Improvement",
-        text: "All browser-only actions (feed scroll, stories, DMs, likes, follows, unfollows) work correctly when the embedded browser window is hidden or minimised — the browser is controlled via the DevTools protocol which operates independently of window visibility.",
       },
     ],
   },
