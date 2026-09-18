@@ -2182,8 +2182,8 @@ export async function getOrCreateSession(
     const isDesktopUA = !!ebUAStr && !ebUAStr.includes("Mobile");
     let ebFp = profile?.ebFingerprint ?? null;
     if (!ebFp && profile) {
-      // Desktop UA accounts (disableApi=true / browser-only) need desktop GPU fingerprints.
-      // Pass the EB UA so the GPU pool selection is coherent with the claimed platform.
+      // Desktop user agents need desktop GPU fingerprints. Pass the EB UA so
+      // the GPU pool selection is coherent with the claimed platform.
       ebFp = JSON.stringify(generateEbFingerprint(profile.userAgentApi ?? undefined, isDesktopUA, ebUAStr));
       await storage.updateProfile(profileId, { ebFingerprint: ebFp }).catch(() => {});
     } else if (ebFp && profile) {
