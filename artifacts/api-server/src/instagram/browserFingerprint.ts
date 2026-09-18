@@ -127,8 +127,8 @@ function rndHex(bytes: number): string {
 }
 
 export function generateEbFingerprint(userAgentApi?: string | null, desktopMode?: boolean, ebUA?: string | null): EbFingerprint {
-  // Desktop accounts (Disable API / browser-only) use real desktop GPU strings
-  // so the WebGL fingerprint matches the claimed platform identity.
+  // Desktop user agents use matching desktop GPU strings so the WebGL
+  // fingerprint matches the claimed platform identity.
   // Select pool based on the EB UA to ensure hardware coherence:
   //   Intel Mac UA  → Intel Mac Metal renderer  (never Apple Silicon)
   //   Windows UA    → Direct3D11 renderer        (never macOS Metal)
