@@ -75,7 +75,10 @@ function findFreePort(): Promise<number> {
 // Try a fixed preferred port first so that localStorage persists across restarts
 // (Electron loads from http://127.0.0.1:<port> and localStorage is origin-scoped).
 // Falls back to a random free port if the preferred one is already taken.
-const PREFERRED_PORT = 32987;
+// Keep Equinox off the phone-farm app's preferred port. The server still falls
+// back to an available port if this one is occupied, but using a distinct
+// preferred port prevents the two products from sharing a localhost origin.
+const PREFERRED_PORT = 32988;
 function getServerPort(): Promise<number> {
   return new Promise((resolve) => {
     const probe = net.createServer();
@@ -1265,6 +1268,14 @@ async function createWindow() {
     }
   });
 }
+
+// Give Equinox its own Electron identity before acquiring the single-instance
+// lock. Both products are built from the same workspace package name, so
+// relying on Electron's default userData path would make the phone-farm
+// process look like an existing Equinox instance and cause Equinox to exit
+// before the splash screen is created.
+app.setName("Equinox");
+app.setPath("userData", path.join(app.getPath("appData"), "Equinox"));
 
 // Pin a stable App User Model ID so all Electron windows (main + EB) are
 // grouped under the same Equinox taskbar entry and the main window — created
