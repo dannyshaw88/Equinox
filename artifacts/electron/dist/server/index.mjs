@@ -162864,105 +162864,6 @@ async function logApiCall(profileId, username, operationName, status, source, na
   } catch {
   }
 }
-function buildPigeonAnalyticsEvents() {
-  const now = Date.now() / 1e3;
-  const events = [
-    // App came to foreground (fired at session start)
-    {
-      event_name: "app_lifecycle_change_state",
-      extra: JSON.stringify({ state: "active", previous_state: "background" }),
-      time: +(now - 2.8 - Math.random() * 0.5).toFixed(3)
-    },
-    // User landed on the home feed tab
-    {
-      event_name: "navigation",
-      extra: JSON.stringify({
-        nav_to: "MainFeedFragment",
-        nav_from: "IG_LAUNCH",
-        tab_type: "home"
-      }),
-      time: +(now - 1.9 - Math.random() * 0.4).toFixed(3)
-    },
-    // First feed impression recorded
-    {
-      event_name: "instagram_organic_viewed_impression_v2",
-      extra: JSON.stringify({
-        module: "feed_timeline",
-        position: 0,
-        media_type: 1
-      }),
-      time: +(now - 1.1 - Math.random() * 0.3).toFixed(3)
-    },
-    // Session keep-alive heartbeat
-    {
-      event_name: "session_heartbeat",
-      extra: JSON.stringify({ elapsed_s: Math.floor(2 + Math.random() * 4) }),
-      time: +(now - 0.4 - Math.random() * 0.2).toFixed(3)
-    }
-  ];
-  return JSON.stringify(events);
-}
-var RANDOM_LOGIN_ENDPOINT_POOL = [
-  // ── Real confirmed endpoints (audited against instagram-private-api + instagramWebClient.ts) ──
-  { name: "GetDirectInbox", fn: async (ig) => {
-    await ig.directInbox.request();
-  } },
-  // Replaced duplicate timeline call — fetches own account info instead
-  { name: "GetCurrentUser", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/accounts/current_user/", method: "GET", qs: { edit: "false" } });
-  } },
-  { name: "LauncherSync", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/launcher/sync/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uid: ig.state.cookieUserId ?? "", _uuid: ig.state.uuid, id: ig.state.uuid, server_config_retrieval: "1" }) });
-  } },
-  // Replaced broken .getItems() call — fetches pending (unread) DM requests instead
-  { name: "GetPendingInbox", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/direct_v2/pending_inbox/", method: "GET" });
-  } },
-  { name: "AnalyticsLog", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/analytics/log/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid, analytics_events: buildPigeonAnalyticsEvents() }) });
-  } },
-  // FIXED: was /attribution/launch_point/ (404) — correct endpoint is /attribution/launch/
-  { name: "AttributionLaunch", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/attribution/launch/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid }) });
-  } },
-  // FIXED: was /batch_fetch/ (404) — correct endpoint is /qp/batch_fetch_web/
-  { name: "BatchFetchWeb", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/qp/batch_fetch_web/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid, surfaces_to_queries: JSON.stringify({ "5717": {}, "5718": {} }) }) });
-  } },
-  { name: "ExecuteNotificationsBadge", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/notifications/badge/", method: "GET" });
-  } },
-  { name: "GetReelsTray", fn: async (ig) => {
-    await ig.feed.reelsTray().request();
-  } },
-  // Replaced duplicate timeline call — fetches account security info (real endpoint used by visitSettingsAndActivity)
-  { name: "GetAccountSecurityInfo", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/accounts/account_security_info/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid }) });
-  } },
-  // Replaced duplicate direct_v2/inbox call — fetches home timeline feed instead
-  { name: "GetTimeLineFeed", fn: async (ig) => {
-    await ig.feed.timeline().request();
-  } },
-  { name: "ViewUserFeed", fn: async (ig) => {
-    await ig.request.send({ url: `/api/v1/feed/user/${ig.state.cookieUserId}/`, method: "GET" });
-  } },
-  { name: "GetLikedMedia", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/feed/liked/", method: "GET" });
-  } },
-  // FIXED: was /feed/saved/media/ (404) — correct endpoint is /feed/saved/
-  { name: "GetSavedMedia", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/feed/saved/", method: "GET" });
-  } },
-  { name: "VisitUserProfile", fn: async (ig) => {
-    await ig.request.send({ url: `/api/v1/users/${ig.state.cookieUserId}/info/`, method: "GET" });
-  } },
-  { name: "GetNotificationsActivity", fn: async (ig) => {
-    await ig.request.send({ url: "/api/v1/news/inbox/", method: "GET" });
-  } },
-  { name: "ViewHighlights", fn: async (ig) => {
-    await ig.request.send({ url: `/api/v1/highlights/${ig.state.cookieUserId}/highlights_tray/`, method: "GET" });
-  } }
-];
 async function buildProxyUrl(profile) {
   if (profile.proxyId) {
     const proxies2 = await storage.getProxies();
@@ -163751,35 +163652,6 @@ async function verifyInstagramCredentials(profile) {
           console.error(`[instagramLogin] @${profile.username} \u2014 banyan/banyan failed (non-fatal): ${e?.message}`);
         }
         let coldStartBlockedCount = 0;
-        if (apiLimitsRaw?.loginRandomEndpointsEnabled) {
-          const epMin = Math.max(1, Math.round(apiLimitsRaw.loginRandomEndpointsMin ?? 1));
-          const epMax = Math.max(epMin, Math.round(apiLimitsRaw.loginRandomEndpointsMax ?? 5));
-          const epCount = epMin + Math.floor(Math.random() * (epMax - epMin + 1));
-          const pool = [...RANDOM_LOGIN_ENDPOINT_POOL];
-          for (let i2 = pool.length - 1; i2 > 0; i2--) {
-            const j = Math.floor(Math.random() * (i2 + 1));
-            [pool[i2], pool[j]] = [pool[j], pool[i2]];
-          }
-          const selected = pool.slice(0, Math.min(epCount, pool.length));
-          console.error(`[instagramLogin] @${profile.username} \u2014 firing ${selected.length} random post-login endpoint(s): ${selected.map((e) => e.name).join(", ")}`);
-          for (const ep of selected) {
-            try {
-              await ep.fn(ig);
-              console.error(`[instagramLogin] @${profile.username} \u2014 random:${ep.name} OK`);
-            } catch (e) {
-              if (isABDError(e)) {
-                console.error(`[instagramLogin] @${profile.username} \u2014 random:${ep.name} feedback_required (ABD) \u2192 automated_behaviour_detected`);
-                return abdResult();
-              }
-              if (isLoginRequiredBlock(e)) {
-                coldStartBlockedCount++;
-                console.error(`[instagramLogin] @${profile.username} \u2014 random:${ep.name} 403 login_required (ABD signal ${coldStartBlockedCount})`);
-              } else {
-                console.error(`[instagramLogin] @${profile.username} \u2014 random:${ep.name} non-fatal: ${e?.message}`);
-              }
-            }
-          }
-        }
         if (coldStartBlockedCount >= 2) {
           if (sessionPositivelyConfirmed) {
             console.error(`[instagramLogin] @${profile.username} \u2014 ${coldStartBlockedCount} cold-start 403s after confirmed session \u2192 automated_behaviour_detected`);
@@ -164425,44 +164297,6 @@ var AutomationEngine = class _AutomationEngine {
   // Wake signals for HS runners — set to interrupt the idle 10s sleep immediately.
   // Keyed by profileId.  Runner resets wake=false after waking; triggerHumanSession sets wake=true.
   hsWakeSignals = /* @__PURE__ */ new Map();
-  /** Follow a user by opening a hidden embedded browser, navigating to their profile,
-   *  and clicking the Follow button.  Used when the account has "Do Actions Via Browser
-   *  → Follows" enabled.  Calls the EB IPC server (Electron main process) which manages
-   *  the BrowserWindow lifecycle.  Resolves with the same shape as client.followUser(). */
-  async followUserViaBrowser(profileId, targetUsername, proxy, igApiCookies, fp) {
-    const ebIpcPort = process.env.EB_IPC_PORT;
-    if (!ebIpcPort) {
-      return { ok: false, status: "follow_blocked", reason: "Browser-follow not available outside Electron" };
-    }
-    try {
-      console.log(`[engine] followViaBrowser: sending IPC for profile ${profileId} \u2192 @${targetUsername}`);
-      const proxyPayload = proxy?.host && proxy?.port ? {
-        host: proxy.host,
-        port: proxy.port,
-        user: proxy.username ?? void 0,
-        pass: proxy.password ?? void 0,
-        type: proxy.type ?? "http"
-      } : null;
-      const r2 = await fetch(`http://127.0.0.1:${ebIpcPort}/eb/silent-follow`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profileId,
-          targetUsername,
-          proxy: proxyPayload,
-          igApiCookies: igApiCookies ?? null,
-          userAgent: fp?.userAgent ?? void 0,
-          apiUA: fp?.apiUA ?? void 0,
-          ebFingerprint: fp?.ebFingerprint ?? void 0
-        }),
-        signal: AbortSignal.timeout(9e4)
-      });
-      if (!r2.ok) return { ok: false, status: "follow_blocked", reason: `EB IPC HTTP ${r2.status}` };
-      return await r2.json();
-    } catch (err) {
-      return { ok: false, status: "follow_blocked", reason: `Browser-follow error: ${err?.message}` };
-    }
-  }
   async searchUserViaBrowser(profileId, username, proxy, igApiCookies, fp) {
     const ebIpcPort = process.env.EB_IPC_PORT;
     if (!ebIpcPort) return false;
@@ -166104,16 +165938,6 @@ ${err?.stack ?? ""}`);
   }
   // ── Ensure logged-in client ───────────────────────────────────────────────
   async ensureClient(profile, state) {
-    if (profile.apiLimits?.disableApi === true) {
-      console.log(
-        `[api-shield:${profile.id}] @${profile.username} \u2500\u2500 BROWSER-ONLY MODE
-  mobile-api  : \u2717 BLOCKED (disableApi=true \u2014 ensureClient returns null)
-  eb          : EB session will be attempted for this account; proxy is
-                enforced there \u2014 look for [eb-shield:${profile.id}] in the log.
-                If no [eb-shield] line appears, the EB session did not open.`
-      );
-      return null;
-    }
     const proxyUrl = await this.buildProxyUrl(profile);
     if (!proxyUrl) {
       console.error(`[engine] @${profile.username}: no proxy assigned \u2014 refusing to connect without proxy`);
@@ -166235,7 +166059,7 @@ ${err?.stack ?? ""}`);
     return false;
   }
   // ── Ghost Browser (EB) API-call-log mirror ──────────────────────────────────
-  // When Disable API is active, actions are performed via the embedded browser
+  // When browser-assisted actions are used, they run via the embedded browser
   // (Ghost Browser) instead of the mobile API, so no real InstagramWebClient
   // call fires and nothing would otherwise land in the API Calls log / CSV
   // export. This mirrors every browser-driven action into the same
@@ -166639,7 +166463,7 @@ ${err?.stack ?? ""}`);
     const skipChance = randInt2(min, max);
     return Math.random() * 100 < skipChance;
   }
-  // Browser-only human session used when Disable API is on.
+  // Legacy browser human session helper.
   // Navigates the EB to Instagram pages to simulate human presence without any mobile API call.
   async runBrowserOnlyHumanSession(profile, tool, state) {
     const ebIpcPort = process.env.EB_IPC_PORT;
@@ -166649,7 +166473,7 @@ ${err?.stack ?? ""}`);
       const { ok, weOpenedIt } = await this.ensureSilentEbOpen(profile);
       if (!ok) {
         console.log(`[engine] @${profile.username}: [EB-only] could not open silent EB \u2014 skipping browser human session`);
-        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Disable API: silent EB open failed, no browser human session run");
+        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Browser human session: silent EB open failed");
         return;
       }
       _weOpenedEb = weOpenedIt;
@@ -166658,7 +166482,7 @@ ${err?.stack ?? ""}`);
       const browser = getExistingBrowser(profile.id);
       if (!browser) {
         console.log(`[engine] @${profile.username}: [EB-only] EB not open \u2014 skipping browser human session`);
-        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Disable API: EB not open, no browser human session run");
+        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Browser human session: EB not open");
         return;
       }
       const pages = await browser.pages();
@@ -167293,7 +167117,7 @@ ${err?.stack ?? ""}`);
               const mediaFiles = entries.filter((f) => isImageFile(nodePath.extname(f).toLowerCase()));
               if (mediaFiles.length === 0) {
                 console.warn(`[engine] @${profile.username}: [EB-only] \u{1F501} local folder repost \u2014 no image files found in "${repostLocalFolderPathEb}"`);
-                this.logAction(profile.id, tool.id, "repost", repostLocalFolderPathEb, "", "", "skip", "No image files found in local folder (video is not supported in Disable API mode)");
+                this.logAction(profile.id, tool.id, "repost", repostLocalFolderPathEb, "", "", "skip", "No image files found in local folder (video is not supported in the browser-assisted path)");
               } else {
                 const targetCount = randInt2(
                   Math.max(1, Number(s.repostMin ?? 1)),
@@ -167385,8 +167209,8 @@ ${err?.stack ?? ""}`);
                 }
               }
             } else if (repostUsernameSourceActiveEb) {
-              console.log(`[engine] @${profile.username}: [EB-only] \u{1F501} repost skipped \u2014 @username source requires API access (not available in Disable API mode). Use "Source: Local PC Folder" instead.`);
-              this.logAction(profile.id, tool.id, "repost", repostSourceUsernameEb, "", "", "skip", "Username source repost is not supported in Disable API mode \u2014 use Local PC Folder instead");
+              console.log(`[engine] @${profile.username}: [EB-only] \u{1F501} repost skipped \u2014 @username source requires API access in the browser-assisted path. Use "Source: Local PC Folder" instead.`);
+              this.logAction(profile.id, tool.id, "repost", repostSourceUsernameEb, "", "", "skip", "Username source repost is not supported in the browser-assisted path \u2014 use Local PC Folder instead");
             }
           } catch (e) {
             console.warn(`[engine] @${profile.username}: [EB-only] repost session error: ${e?.message}`);
@@ -167603,7 +167427,7 @@ ${err?.stack ?? ""}`);
       }
     }
   }
-  // ── Browser-only follow session (Disable API mode) ─────────────────────────
+  // ── Browser-assisted follow session ────────────────────────────────────────
   async runBrowserFollowSession(profile, followTool, page2, actionDelay2, state) {
     const fs6 = followTool.settings;
     const globalSettings2 = await storage.getGlobalSettings();
@@ -167992,7 +167816,7 @@ ${err?.stack ?? ""}`);
     }
     console.log(`[engine] @${profile.username}: [EB-only] follow session done \u2014 ${followed}/${candidates.length} followed`);
   }
-  // ── Browser-only unfollow session (Disable API mode) ───────────────────────
+  // ── Browser-assisted unfollow session ─────────────────────────────────────
   async runBrowserUnfollowSession(profile, unfollowTool, page2, actionDelay2, state) {
     const us = unfollowTool.settings;
     const processCount = randInt2(Number(us.processMin ?? 3), Number(us.processMax ?? 8));
@@ -168045,7 +167869,7 @@ ${err?.stack ?? ""}`);
     }
     console.log(`[engine] @${profile.username}: [EB-only] unfollow session done \u2014 ${unfollowed}/${candidates.length} unfollowed`);
   }
-  // ── Browser-only contact/DM session (Disable API mode) ──────────────────────
+  // ── Browser-assisted contact/DM session ─────────────────────────────────────
   // Mirrors runContactUsersSession but drives the embedded browser instead of
   // the mobile API — navigates to the recipient's DM thread, types the queued
   // message text, and sends via the on-screen Send button/Enter key.
@@ -168150,23 +167974,18 @@ ${err?.stack ?? ""}`);
   }
   async runHumanSessionTools(profile, tool, state) {
     const s = tool.settings;
-    const disableApi = profile.apiLimits?.disableApi === true;
     const client = await this.ensureClient(profile, state);
     if (!client) {
-      if (disableApi) {
-        await this.runBrowserOnlyHumanSession(profile, tool, state);
-      } else {
-        this.logAction(
-          profile.id,
-          tool.id,
-          "session_skipped",
-          "",
-          "",
-          "",
-          "warn",
-          "Human Session skipped \u2014 no Instagram session found. Run Verify Credentials to establish one."
-        );
-      }
+      this.logAction(
+        profile.id,
+        tool.id,
+        "session_skipped",
+        "",
+        "",
+        "",
+        "warn",
+        "Human Session skipped \u2014 no Instagram session found. Run Verify Credentials to establish one."
+      );
       return;
     }
     let sessionError = null;
@@ -168818,7 +168637,6 @@ ${err?.stack ?? ""}`);
                 }
               }
               let postedMediaId = null;
-              let browserPostErr;
               const uniqueTag = makeUnique ? " +unique" : "";
               console.log(`[engine] @${profile.username}: \u{1F501} repost upload starting \u2014 file="${fileName}" isImage=${isImage} isVideo=${isVideo} makeUnique=${makeUnique} level=${level} captionLen=${caption.length}`);
               if (isVideo) {
@@ -168850,27 +168668,7 @@ ${err?.stack ?? ""}`);
                     console.warn(`[engine] @${profile.username}: makeUniqueImage failed for ${fileName}: ${uqErr?.message}`);
                   }
                 }
-                if (profile.postViaBrowser) {
-                  const bpResult = await this.postPhotoViaBrowser(profile.id, alteredBuffer, caption);
-                  postedMediaId = bpResult.ok ? bpResult.mediaId ?? `browser:${Date.now()}` : null;
-                  if (!bpResult.ok) {
-                    browserPostErr = bpResult.message;
-                    console.warn(`[engine] @${profile.username}: browser post failed for ${fileName}: ${bpResult.message}`);
-                  } else {
-                    storage.createInstagramApiCall({
-                      profileId: profile.id,
-                      username: profile.username,
-                      operationName: "PostMedia",
-                      date: (/* @__PURE__ */ new Date()).toISOString(),
-                      source: "browser",
-                      transport: "browser",
-                      isError: false
-                    }).catch(() => {
-                    });
-                  }
-                } else {
-                  postedMediaId = await client.uploadPhoto(alteredBuffer, caption);
-                }
+                postedMediaId = await client.uploadPhoto(alteredBuffer, caption);
               }
               if (postedMediaId) {
                 if (s.repostDisableComments) {
@@ -168908,7 +168706,7 @@ ${err?.stack ?? ""}`);
                   }
                 }
               } else {
-                const uploadErr = browserPostErr || client.lastUploadError || "Upload failed";
+                const uploadErr = client.lastUploadError || "Upload failed";
                 console.warn(`[engine] @${profile.username}: \u{1F501} local folder upload failed: ${fileName} \u2014 ${uploadErr}`);
                 this.logAction(profile.id, tool.id, "repost", repostLocalFolderPath, fileName, "", "fail", "Make a Post Failed");
                 break;
@@ -169884,21 +169682,7 @@ ${err?.stack ?? ""}`);
       let result;
       try {
         const sourceLabel = source.value ? source.type === "hashtag" ? `#${source.value}` : source.value : void 0;
-        if (profile.followViaBrowser) {
-          result = await this.followUserViaBrowser(profile.id, user.username, {
-            host: profile.proxyHost,
-            port: profile.proxyPort,
-            username: profile.proxyUsername,
-            password: profile.proxyPassword,
-            type: profile.proxyType
-          }, profile.igApiCookies ?? null, {
-            userAgent: profile.userAgentEmbedded ?? null,
-            apiUA: profile.userAgentApi ?? null,
-            ebFingerprint: profile.ebFingerprint ?? null
-          });
-        } else {
-          result = await client.followUser(user.pk, user.username, sourceLabel);
-        }
+        result = await client.followUser(user.pk, user.username, sourceLabel);
       } catch (err) {
         const msg = err?.message ?? "";
         const acctStatus = await this.applyAccountLevelError(profile.id, msg, state, tool.id);
@@ -170011,18 +169795,6 @@ ${err?.stack ?? ""}`);
         console.error(`[engine] @${profile.username}: failed to persist followed user @${user.username}: ${dbErr?.message}`);
       }
       this.logAction(profile.id, tool.id, "follow", user.username, source.value, source.type, "ok", `Followed [${followed + 1}/${processCount}] users`);
-      if (profile.followViaBrowser) {
-        storage.createInstagramApiCall({
-          profileId: profile.id,
-          username: profile.username,
-          operationName: "FollowedUser",
-          date: (/* @__PURE__ */ new Date()).toISOString(),
-          source: "browser",
-          transport: "browser",
-          isError: false
-        }).catch(() => {
-        });
-      }
       try {
         await storage.incrementStat(profile.id, "follow");
       } catch (statErr) {
@@ -170149,21 +169921,7 @@ ${err?.stack ?? ""}`);
           let result;
           try {
             const sourceLabel = rescrapeSource.value ? rescrapeSource.type === "hashtag" ? `#${rescrapeSource.value}` : rescrapeSource.value : void 0;
-            if (profile.followViaBrowser) {
-              result = await this.followUserViaBrowser(profile.id, user.username, {
-                host: profile.proxyHost,
-                port: profile.proxyPort,
-                username: profile.proxyUsername,
-                password: profile.proxyPassword,
-                type: profile.proxyType
-              }, profile.igApiCookies ?? null, {
-                userAgent: profile.userAgentEmbedded ?? null,
-                apiUA: profile.userAgentApi ?? null,
-                ebFingerprint: profile.ebFingerprint ?? null
-              });
-            } else {
-              result = await client.followUser(user.pk, user.username, sourceLabel);
-            }
+            result = await client.followUser(user.pk, user.username, sourceLabel);
           } catch (err) {
             const msg = err?.message ?? "";
             const acctStatus = await this.applyAccountLevelError(profile.id, msg, state, tool.id);
@@ -170357,14 +170115,8 @@ ${err?.stack ?? ""}`);
       const captionTemplate = String(s.repostCaptionText ?? "").trim();
       const finalCaption = captionTemplate ? resolveCaption(captionTemplate, candidate, sourceUsername, profile.username) : candidate.caption.slice(0, 2200);
       let postedMediaId;
-      if (profile.postViaBrowser) {
-        const ebResult = await this.postPhotoViaBrowser(profile.id, alteredBuffer, finalCaption);
-        if (!ebResult.ok) return { ok: false, message: ebResult.message || "Browser post failed \u2014 check the embedded browser session is active" };
-        postedMediaId = ebResult.mediaId ?? String(Date.now());
-      } else {
-        postedMediaId = await client.uploadPhoto(alteredBuffer, finalCaption);
-        if (!postedMediaId) return { ok: false, message: client.lastUploadError || "Upload failed \u2014 Instagram rejected the photo" };
-      }
+      postedMediaId = await client.uploadPhoto(alteredBuffer, finalCaption);
+      if (!postedMediaId) return { ok: false, message: client.lastUploadError || "Upload failed \u2014 Instagram rejected the photo" };
       if (s.repostDisableComments) {
         try {
           await client.disableComments(postedMediaId);
@@ -170385,18 +170137,6 @@ ${err?.stack ?? ""}`);
       });
       console.log(`[engine] @${profile.username}: \u{1F501} [MANUAL] reposted ${candidate.mediaId} from @${sourceUsername} \u2192 ${postedShortcode}`);
       this.logAction(profileId, hsTool.id, "repost", sourceUsername, candidate.mediaId, candidate.shortcode, "ok", `[Manual] Reposted from @${sourceUsername}`);
-      if (profile.postViaBrowser) {
-        storage.createInstagramApiCall({
-          profileId,
-          username: profile.username,
-          operationName: "PostMedia",
-          date: (/* @__PURE__ */ new Date()).toISOString(),
-          source: "browser",
-          transport: "browser",
-          isError: false
-        }).catch(() => {
-        });
-      }
       await storage.incrementStat(profileId, "repost");
       return { ok: true, message: `Reposted \u2192 instagram.com/p/${postedShortcode}` };
     } catch (e) {
@@ -171075,7 +170815,7 @@ function pickUAForAccount(username) {
   }
   return userAgents[hash % userAgents.length];
 }
-var DESKTOP_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+var DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 var verifyInFlight = /* @__PURE__ */ new Map();
 var VERIFY_LOCK_TTL_MS = 10 * 60 * 1e3;
 var _silentVerifySlotFree = true;
@@ -171155,66 +170895,6 @@ async function resumeStuckVerifyingAccounts() {
       releaseSilentVerifySlot();
     }
   }
-}
-var stagingTimers = /* @__PURE__ */ new Map();
-async function runStagedBootstrap(profileId) {
-  stagingTimers.delete(profileId);
-  let profile;
-  try {
-    profile = await storage.getProfile(profileId);
-  } catch {
-    return;
-  }
-  if (!profile || profile.accountStatus !== "staging") return;
-  console.log(`[staging:${profileId}] @${profile.username} \u2014 delay expired, running API bootstrap`);
-  await storage.updateProfile(profileId, { accountStatus: "verifying" }).catch(() => {
-  });
-  try {
-    let effectiveProfile = { ...profile };
-    if (profile.proxyId) {
-      const allProxies = await storage.getProxies().catch(() => []);
-      const linked = allProxies.find((p) => p.id === profile.proxyId);
-      if (linked) {
-        effectiveProfile = {
-          ...effectiveProfile,
-          proxyHost: linked.host,
-          proxyPort: linked.port,
-          proxyUsername: linked.username ?? "",
-          proxyPassword: linked.password ?? ""
-        };
-      }
-    }
-    await acquireSilentVerifySlot();
-    let apiResult;
-    try {
-      apiResult = await verifyInstagramCredentials(effectiveProfile);
-    } finally {
-      releaseSilentVerifySlot();
-    }
-    await storage.updateProfile(profileId, {
-      accountStatus: apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending"),
-      statusMessage: apiResult.message,
-      stagingBootstrapFiresAt: null,
-      ...apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {},
-      ...apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {},
-      ...apiResult.ok ? { credentialsDirty: false, validSince: (/* @__PURE__ */ new Date()).toISOString() } : {}
-    });
-    sendLoginDone(profileId, apiResult.ok, apiResult.message ?? "");
-    console.log(`[staging:${profileId}] @${profile.username} \u2014 bootstrap complete \u2192 ${apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending")}`);
-  } catch (e) {
-    console.error(`[staging:${profileId}] @${profile.username} \u2014 bootstrap threw:`, e?.message);
-    await storage.updateProfile(profileId, { accountStatus: "pending", statusMessage: `Stage bootstrap failed: ${e?.message ?? "unknown"}`, stagingBootstrapFiresAt: null }).catch(() => {
-    });
-  }
-}
-function scheduleStagingBootstrap(profileId, delayMs) {
-  const existing = stagingTimers.get(profileId);
-  if (existing) clearTimeout(existing);
-  const MAX_SAFE_TIMEOUT_MS = 2147483647;
-  const safeDelay = Math.min(Math.max(0, delayMs), MAX_SAFE_TIMEOUT_MS);
-  const timer = setTimeout(() => runStagedBootstrap(profileId), safeDelay);
-  stagingTimers.set(profileId, timer);
-  console.log(`[staging:${profileId}] bootstrap scheduled in ${Math.round(safeDelay / 6e4)}m (raw=${Math.round(delayMs / 6e4)}m)`);
 }
 var SERVER_START = (/* @__PURE__ */ new Date()).toISOString();
 async function resolveProxyConfig(profile) {
@@ -171942,7 +171622,7 @@ ${stamp}` : stamp;
       checks.apiUA = {
         title: "Instagram API User-Agent",
         status: hasApiUA ? "pass" : "info",
-        label: hasApiUA ? "API UA present \u2014 Instagram app format (Chrome version not embedded in this format)" : "No API UA stored \u2014 account may be EB-only (disableApi)",
+        label: hasApiUA ? "API UA present \u2014 Instagram app format (Chrome version not embedded in this format)" : "No API UA stored \u2014 mobile API verification is unavailable",
         detail: {
           apiUA: apiUA ?? "none",
           note: "The Instagram private API UA uses its own versioning (app/SDK version), not Chrome. Chrome version staleness only applies to the browser (EB) UA above."
@@ -171960,28 +171640,6 @@ ${stamp}` : stamp;
       checkedAt: (/* @__PURE__ */ new Date()).toISOString()
     });
   });
-  app2.post("/api/admin/migrate-desktop-to-mobile-uas", async (req, res) => {
-    const all = await storage.getProfiles();
-    const targets = all.filter(
-      (p) => p.apiLimits?.disableApi === true && p.userAgentEmbedded && !p.userAgentEmbedded.includes("Mobile")
-    );
-    const results = [];
-    for (const p of targets) {
-      try {
-        const ua = pickUAForAccount(p.username || "");
-        const fp = JSON.stringify(generateEbFingerprint(ua.api, false, ua.embedded));
-        await storage.updateProfile(p.id, {
-          userAgentApi: ua.api,
-          userAgentEmbedded: ua.embedded,
-          ebFingerprint: fp
-        });
-        results.push({ id: p.id, username: p.username || String(p.id), ok: true });
-      } catch (err) {
-        results.push({ id: p.id, username: p.username || String(p.id), ok: false, error: String(err?.message) });
-      }
-    }
-    res.json({ migrated: results.filter((r2) => r2.ok).length, failed: results.filter((r2) => !r2.ok).length, results });
-  });
   app2.post("/api/profiles/bulk-update", async (req, res) => {
     const { ids, patch } = req.body ?? {};
     if (!Array.isArray(ids) || !patch || typeof patch !== "object") {
@@ -171993,8 +171651,6 @@ ${stamp}` : stamp;
       "activeTimerEnabled",
       "activeTimerStart",
       "activeTimerEnd",
-      "followViaBrowser",
-      "postViaBrowser",
       "syncEnabled",
       "syncIntervalMin",
       "syncIntervalMax",
@@ -172784,8 +172440,7 @@ ${stamp_l}` : stamp_l });
       userAgent: profile.userAgentEmbedded ?? null,
       apiUA: profile.userAgentApi ?? null,
       ebFingerprint: profile.ebFingerprint ?? null,
-      useHomeIp: !!profile.useHomeIp,
-      disableApi: !!profile.apiLimits?.disableApi
+      useHomeIp: !!profile.useHomeIp
     });
   });
   app2.get("/api/profiles/:id/eb-state", async (req, res) => {
@@ -172980,30 +172635,6 @@ ${stamp_l}` : stamp_l });
             if (igDid) cookieParts.push(`ig_did=${igDid}`);
             const freshCookies = cookieParts.join("; ");
             await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
-            if (effectiveProfile.apiLimits?.disableApi === true) {
-              console.log(`[verify:${profileId}] @${profile.username} \u2014 Disable API mode: skipping mobile API, marking valid from EB cookies`);
-              const disableApiMsg = `@${profile.username} \u2014 EB login confirmed (Disable API mode \u2014 browser-only)`;
-              sendLoginDone(profileId, true, disableApiMsg);
-              await storage.updateProfile(profile.id, { accountStatus: "valid", statusMessage: disableApiMsg, credentialsDirty: false });
-              verifyInFlight.delete(profileId);
-              return;
-            }
-            const _hadPreviousSession = !!(profile.igApiCookies ?? "").includes("sessionid=");
-            if (effectiveProfile.apiLimits?.stageBootstrapEnabled === true && !_hadPreviousSession) {
-              const _parseMin = Number(effectiveProfile.apiLimits?.stageBootstrapDelayMin ?? 5);
-              const _parseMax = Number(effectiveProfile.apiLimits?.stageBootstrapDelayMax ?? 15);
-              const _rawMin = Math.min(9999, Math.max(1, Number.isFinite(_parseMin) ? _parseMin : 5));
-              const _rawMax = Math.min(9999, Math.max(_rawMin, Number.isFinite(_parseMax) ? _parseMax : 15));
-              const _stMinMs = _rawMin * 6e4;
-              const _stMaxMs = _rawMax * 6e4;
-              const _stDelayMs = _stMinMs + Math.floor(Math.random() * (_stMaxMs - _stMinMs + 1));
-              const _stFiresAt = new Date(Date.now() + _stDelayMs).toISOString();
-              await storage.updateProfile(profile.id, { accountStatus: "staging", stagingBootstrapFiresAt: _stFiresAt });
-              console.log(`[verify:${profileId}] @${profile.username} \u2014 Stage Bootstrap: API cold-start in ${Math.round(_stDelayMs / 6e4)} min (fires at ${_stFiresAt})`);
-              scheduleStagingBootstrap(profileId, _stDelayMs);
-              verifyInFlight.delete(profileId);
-              return;
-            }
             void (async () => {
               try {
                 const _proxyStr = proxyConfig ? `${proxyConfig.host}:${proxyConfig.port}` : null;
@@ -173233,9 +172864,8 @@ ${stamp_l}` : stamp_l });
             proxyPassword: p.proxyPassword || null,
             // Auto-assign a paired mobile Android Chrome UA when the import source
             // doesn't supply one.  Deterministic so the same username always gets the
-            // same device profile — stable across re-imports.  All accounts (including
-            // disableApi=true) get mobile UAs; desktop UAs cause hardware-mismatch
-            // fingerprint signals on the ARM Mac server.
+            // same device profile — stable across re-imports. All imported accounts
+            // use the mobile UA pool when the source does not provide a UA.
             userAgentApi: p.userAgentApi || pickUAForAccount(p.username || "").api,
             userAgentEmbedded: p.userAgentEmbedded || pickUAForAccount(p.username || "").embedded,
             tags: p.tags || "",
@@ -173747,7 +173377,7 @@ ${stamp}` : stamp;
     if (profile && !profile.userAgentEmbedded) {
       console.warn(`[UA-WARN] profile ${profileId} has no userAgentEmbedded \u2014 clear-session proceeding with fallback UA (cleanup only, no Instagram connection made here)`);
     }
-    const ua = profile ? profile.userAgentEmbedded || DESKTOP_BROWSER_UA : DESKTOP_BROWSER_UA;
+    const ua = profile ? profile.userAgentEmbedded || DEFAULT_BROWSER_UA : DEFAULT_BROWSER_UA;
     await clearSession(profileId, ua, proxy);
     res.json({ ok: true });
   });
@@ -175204,14 +174834,9 @@ ${stamp}` : stamp;
             if (mid) cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
             await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
-            if (effectiveP.apiLimits?.disableApi === true) {
-              console.log(`[verify-all] @${profile.username} \u2014 Disable API mode: skipping mobile API, marking valid from EB cookies`);
-              result = { ok: true, accountStatus: "valid", message: `@${profile.username} \u2014 EB login confirmed (Disable API mode \u2014 browser-only)`, igApiCookies: freshCookies };
-            } else {
-              const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies };
-              const apiResult = await verifyInstagramCredentials(profileWithCookies);
-              result = { ...apiResult, igApiCookies: freshCookies };
-            }
+            const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies };
+            const apiResult = await verifyInstagramCredentials(profileWithCookies);
+            result = { ...apiResult, igApiCookies: freshCookies };
           }
         } else {
           const msg = bulkLoginResult.message ?? "";
@@ -176903,37 +176528,18 @@ ${importStamp}` : importStamp;
     try {
       await new Promise((resolve) => setTimeout(resolve, 4e3));
       const allProfiles = await storage.getProfiles();
-      let rescheduled = 0;
+      let released = 0;
       for (const p of allProfiles) {
         if (p.accountStatus !== "staging") continue;
-        const firesAt = p.stagingBootstrapFiresAt;
-        if (!firesAt) {
-          scheduleStagingBootstrap(p.id, 0);
-          rescheduled++;
-          continue;
-        }
-        const firesAtMs = new Date(firesAt).getTime();
-        if (!Number.isFinite(firesAtMs)) {
-          console.warn(`[startup:staging] @${p.username} \u2014 stagingBootstrapFiresAt is malformed ("${firesAt}"), running bootstrap immediately`);
-          scheduleStagingBootstrap(p.id, 0);
-          rescheduled++;
-          continue;
-        }
-        const remainingMs = Math.max(0, firesAtMs - Date.now());
-        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1e3;
-        if (remainingMs > SEVEN_DAYS_MS) {
-          console.warn(`[startup:staging] @${p.username} \u2014 stagingBootstrapFiresAt is ${Math.round(remainingMs / 864e5)}d away (overflow artifact?), running bootstrap immediately`);
-          scheduleStagingBootstrap(p.id, 0);
-          rescheduled++;
-          continue;
-        }
-        scheduleStagingBootstrap(p.id, remainingMs);
-        console.log(`[startup:staging] @${p.username} \u2014 rescheduled bootstrap in ${Math.round(remainingMs / 6e4)}m`);
-        rescheduled++;
+        await storage.updateProfile(p.id, {
+          accountStatus: "pending",
+          stagingBootstrapFiresAt: null
+        });
+        released++;
       }
-      if (rescheduled > 0) console.log(`[startup:staging] Rescheduled ${rescheduled} staging account(s)`);
+      if (released > 0) console.log(`[startup:legacy-cleanup] Released ${released} account(s) from the retired staging state`);
     } catch (e) {
-      console.warn("[startup:staging] Staging recovery failed (non-fatal):", e);
+      console.warn("[startup:legacy-cleanup] Legacy staging cleanup failed (non-fatal):", e);
     }
   })();
   const TRUST_SCORE_IDS = [
