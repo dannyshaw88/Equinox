@@ -200,52 +200,6 @@ function buildPigeonAnalyticsEvents(): string {
   return JSON.stringify(events);
 }
 
-// ── Random post-login endpoint pool ─────────────────────────────────────────
-// Each entry fires one non-destructive read-only API call that a real Instagram
-// Android session would plausibly make after logging in.  No IDs required.
-// Shuffled and sampled per account so every session has a unique call fingerprint.
-const RANDOM_LOGIN_ENDPOINT_POOL: Array<{ name: string; fn: (ig: IgApiClient) => Promise<void> }> = [
-  // ── Real confirmed endpoints (audited against instagram-private-api + instagramWebClient.ts) ──
-  { name: "GetDirectInbox",            fn: async (ig) => { await ig.directInbox.request(); } },
-  // Replaced duplicate timeline call — fetches own account info instead
-  { name: "GetCurrentUser",            fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/accounts/current_user/", method: "GET", qs: { edit: "false" } }); } },
-  { name: "LauncherSync",              fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/launcher/sync/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uid: ig.state.cookieUserId ?? "", _uuid: ig.state.uuid, id: ig.state.uuid, server_config_retrieval: "1" }) }); } },
-  // Replaced broken .getItems() call — fetches pending (unread) DM requests instead
-  { name: "GetPendingInbox",           fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/direct_v2/pending_inbox/", method: "GET" }); } },
-  { name: "AnalyticsLog",              fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/analytics/log/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid, analytics_events: buildPigeonAnalyticsEvents() }) }); } },
-  // FIXED: was /attribution/launch_point/ (404) — correct endpoint is /attribution/launch/
-  { name: "AttributionLaunch",         fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/attribution/launch/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid }) }); } },
-  // FIXED: was /batch_fetch/ (404) — correct endpoint is /qp/batch_fetch_web/
-  { name: "BatchFetchWeb",             fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/qp/batch_fetch_web/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid, surfaces_to_queries: JSON.stringify({ "5717": {}, "5718": {} }) }) }); } },
-  { name: "ExecuteNotificationsBadge", fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/notifications/badge/", method: "GET" }); } },
-  { name: "GetReelsTray",              fn: async (ig) => { await ig.feed.reelsTray().request(); } },
-  // Replaced duplicate timeline call — fetches account security info (real endpoint used by visitSettingsAndActivity)
-  { name: "GetAccountSecurityInfo",    fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/accounts/account_security_info/", method: "POST", form: ig.request.sign({ _csrftoken: ig.state.cookieCsrfToken, _uuid: ig.state.uuid }) }); } },
-  // Replaced duplicate direct_v2/inbox call — fetches home timeline feed instead
-  { name: "GetTimeLineFeed",           fn: async (ig) => { await ig.feed.timeline().request(); } },
-  { name: "ViewUserFeed",              fn: async (ig) => {
-      await ig.request.send({ url: `/api/v1/feed/user/${ig.state.cookieUserId}/`, method: "GET" }); } },
-  { name: "GetLikedMedia",             fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/feed/liked/", method: "GET" }); } },
-  // FIXED: was /feed/saved/media/ (404) — correct endpoint is /feed/saved/
-  { name: "GetSavedMedia",             fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/feed/saved/", method: "GET" }); } },
-  { name: "VisitUserProfile",          fn: async (ig) => {
-      await ig.request.send({ url: `/api/v1/users/${ig.state.cookieUserId}/info/`, method: "GET" }); } },
-  { name: "GetNotificationsActivity",  fn: async (ig) => {
-      await ig.request.send({ url: "/api/v1/news/inbox/", method: "GET" }); } },
-  { name: "ViewHighlights",            fn: async (ig) => {
-      await ig.request.send({ url: `/api/v1/highlights/${ig.state.cookieUserId}/highlights_tray/`, method: "GET" }); } },
-];
-
 async function buildProxyUrl(profile: Profile): Promise<{ url: string; host: string } | null> {
   // proxyId (Proxy Manager entry) takes priority over inline proxyHost/proxyPort fields.
   if (profile.proxyId) {
@@ -1424,42 +1378,6 @@ export async function verifyInstagramCredentials(profile: Profile): Promise<Veri
         // Tracks how many cold-start calls returned 403 login_required.
         // Used by Phase 2d and the final ABD check below.
         let coldStartBlockedCount = 0;
-
-        // ── Phase 2d: Random post-login endpoints (session uniqueness) ───────
-        // If the account has loginRandomEndpointsEnabled, pick N endpoints at random
-        // from the pool and fire them with the account's normal API throttle so each
-        // session's call fingerprint diverges from every other account's on the same IP.
-        // apiLimitsRaw was extracted before Phase 0 — reuse it here.
-        if (apiLimitsRaw?.loginRandomEndpointsEnabled) {
-          const epMin = Math.max(1, Math.round(apiLimitsRaw.loginRandomEndpointsMin ?? 1));
-          const epMax = Math.max(epMin, Math.round(apiLimitsRaw.loginRandomEndpointsMax ?? 5));
-          const epCount = epMin + Math.floor(Math.random() * (epMax - epMin + 1));
-          // Fisher-Yates shuffle a copy of the pool, then take the first N
-          const pool = [...RANDOM_LOGIN_ENDPOINT_POOL];
-          for (let i = pool.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [pool[i], pool[j]] = [pool[j], pool[i]];
-          }
-          const selected = pool.slice(0, Math.min(epCount, pool.length));
-          console.error(`[instagramLogin] @${profile.username} — firing ${selected.length} random post-login endpoint(s): ${selected.map(e => e.name).join(", ")}`);
-          for (const ep of selected) {
-            try {
-              await ep.fn(ig);
-              console.error(`[instagramLogin] @${profile.username} — random:${ep.name} OK`);
-            } catch (e: any) {
-              if (isABDError(e)) {
-                console.error(`[instagramLogin] @${profile.username} — random:${ep.name} feedback_required (ABD) → automated_behaviour_detected`);
-                return abdResult();
-              }
-              if (isLoginRequiredBlock(e)) {
-                coldStartBlockedCount++;
-                console.error(`[instagramLogin] @${profile.username} — random:${ep.name} 403 login_required (ABD signal ${coldStartBlockedCount})`);
-              } else {
-                console.error(`[instagramLogin] @${profile.username} — random:${ep.name} non-fatal: ${e?.message}`);
-              }
-            }
-          }
-        }
 
         // Final ABD check — only fire ABD if session was POSITIVELY confirmed (200).
         // If only inconclusive (get_account_family=404), 403s = session expired, not ABD.
