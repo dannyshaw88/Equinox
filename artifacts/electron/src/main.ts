@@ -558,11 +558,11 @@ function setupAutoUpdater(): void {
   autoUpdater.autoInstallOnAppQuit = true;
 
   // Private repo — token is baked in at build time from the UPDATER_TOKEN
-  // GitHub Actions secret via DANNY_BOT_UPDATER_TOKEN env var in build.mjs.
+  // GitHub Actions secret in build.mjs.
   autoUpdater.setFeedURL({
     provider: "github",
     owner: "dannyshaw88",
-    repo: "dannys-bot",
+    repo: "Equinox",
     token: __UPDATER_TOKEN__,
   } as any);
 
