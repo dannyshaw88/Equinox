@@ -85,6 +85,8 @@ jobs:
       - name: Build Electron bundle
         working-directory: artifacts/electron
         run: node build.mjs
+        env:
+          UPDATER_TOKEN: ${{ secrets.UPDATER_TOKEN }}
 
       - name: Build installer
         working-directory: artifacts/electron
@@ -101,6 +103,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/electron/release/*.exe
+          files: artifacts/electron/release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
