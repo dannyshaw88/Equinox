@@ -843,7 +843,6 @@ function setupBackupHandlers() {
         let apiUA: string | undefined;
         let ebFingerprint: any | undefined;
         let useHomeIp = false;
-        let disableApi = false;
         try {
           // Single call to /eb-proxy — the API server resolves proxyId → proxy
           // fields using resolveProxyConfig(), the same path used by eb-auto-login.
@@ -856,7 +855,6 @@ function setupBackupHandlers() {
             userAgent     = data.userAgent     || undefined;
             apiUA         = data.apiUA         || undefined;
             useHomeIp     = !!data.useHomeIp;
-            disableApi    = !!data.disableApi;
             ebFingerprint = data.ebFingerprint
               ? (typeof data.ebFingerprint === "string" ? JSON.parse(data.ebFingerprint) : data.ebFingerprint)
               : undefined;
@@ -883,7 +881,6 @@ function setupBackupHandlers() {
           userAgent,
           apiUA,
           ebFingerprint,
-          disableApi,
         });
 
       } catch (err: any) {
