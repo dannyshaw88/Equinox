@@ -92,21 +92,69 @@ function getServerPort(): Promise<number> {
 }
 
 function getUserDataPath(): string {
-  const p = app.getPath("userData");
+  // Keep Equinox's state in a dedicated subdirectory. Some older builds used
+  // the shared userData root for a different mobile-farm database.
+  const p = path.join(app.getPath("userData"), "equinox-data");
   fs.mkdirSync(p, { recursive: true });
   return p;
 }
 
-// Packaged desktop installs keep persistent state beside the installed
-// executable. This avoids reusing an older mobile-farm database stored in
-// Electron's shared product userData directory.
+// All writable application state belongs in Electron's userData directory.
+// The install directory can be replaced by electron-updater, so anything
+// stored beside the executable can disappear during a Windows update.
 function getInstallDataPath(): string {
+  return getUserDataPath();
+}
+
+function getLegacyInstallDataPath(): string {
   const p = app.isPackaged ? path.dirname(app.getPath("exe")) : getUserDataPath();
   fs.mkdirSync(p, { recursive: true });
   return p;
 }
 
+function migrateLegacyDataIfNeeded(): void {
+  if (!app.isPackaged) return;
+
+  const dataDir = getInstallDataPath();
+  const legacyDir = getLegacyInstallDataPath();
+  if (path.resolve(dataDir) === path.resolve(legacyDir)) return;
+
+  // Versions before this change wrote the database beside the executable.
+  // Copy it once before the server opens the new persistent path. Include
+  // SQLite's WAL/SHM pair when present so the recovered state is consistent.
+  const dbSrc = path.join(legacyDir, "database.db");
+  const dbDst = path.join(dataDir, "database.db");
+  if (!fs.existsSync(dbDst) && fs.existsSync(dbSrc)) {
+    try {
+      fs.copyFileSync(dbSrc, dbDst);
+      for (const ext of ["-wal", "-shm"]) {
+        const src = dbSrc + ext;
+        if (fs.existsSync(src)) fs.copyFileSync(src, dbDst + ext);
+      }
+      console.log(`[data] migrated legacy database from ${dbSrc} to ${dbDst}`);
+    } catch (err) {
+      console.error("[data] legacy database migration failed:", err);
+    }
+  }
+
+  // Keep existing backups and embedded-browser session data available after
+  // the move as well. Never overwrite data already created in userData.
+  for (const name of ["backups", "browser-data"]) {
+    const src = path.join(legacyDir, name);
+    const dst = path.join(dataDir, name);
+    if (!fs.existsSync(dst) && fs.existsSync(src)) {
+      try {
+        fs.cpSync(src, dst, { recursive: true });
+        console.log(`[data] migrated legacy ${name} from ${src} to ${dst}`);
+      } catch (err) {
+        console.error(`[data] legacy ${name} migration failed:`, err);
+      }
+    }
+  }
+}
+
 function getDatabasePath(): string {
+  migrateLegacyDataIfNeeded();
   return path.join(getInstallDataPath(), "database.db");
 }
 
