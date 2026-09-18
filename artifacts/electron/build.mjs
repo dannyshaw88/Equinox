@@ -22,7 +22,9 @@ await esbuild({
   define: {
     // Baked in at build time from CI secret — lets electron-updater
     // authenticate against the private GitHub repo without a config file.
-    __UPDATER_TOKEN__: JSON.stringify(process.env.DANNY_BOT_UPDATER_TOKEN || ""),
+    __UPDATER_TOKEN__: JSON.stringify(
+      process.env.UPDATER_TOKEN || process.env.DANNY_BOT_UPDATER_TOKEN || "",
+    ),
   },
 });
 
