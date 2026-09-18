@@ -29,3 +29,4 @@
 - [Story icon row selection](story-icon-row-selection.md) — rank pixel-scan candidate rows by proximity to a known screen anchor (e.g. bottom edge), not by match strength; content overlays can out-match the real control on strength alone.
 - Any per-device "slow confirm" call (e.g. findHomeTab after a tray tap) must be swapped for the fast check individually — fixing one call site in a shared helper does not fix sibling call sites that inline their own slow check.
 - [GitHub integration write limits](github-integration-write-limits.md) — raw trees/blobs and Contents PUT work, but ref mutations and workflow-file writes may be blocked by connector permissions.
+- [Windows update data location](windows-update-data-location.md) — packaged Electron state must be isolated under userData, not the replaceable install directory; migrate legacy state once.
