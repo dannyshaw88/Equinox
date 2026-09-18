@@ -7937,6 +7937,15 @@ function migrateLegacyDataIfNeeded() {
     }
   }
 }
+function preserveLegacyDataBeforeUpdate() {
+  if (!import_electron2.app.isPackaged) return;
+  try {
+    migrateLegacyDataIfNeeded();
+    appendToMainLog("[data] preserved legacy state before Windows update");
+  } catch (err) {
+    appendToMainLog(`[data] pre-update legacy state preservation failed: ${String(err)}`);
+  }
+}
 function getDatabasePath() {
   migrateLegacyDataIfNeeded();
   return import_path2.default.join(getInstallDataPath(), "database.db");
@@ -8278,6 +8287,7 @@ function createTray() {
   });
 }
 var _updaterManualCheck = false;
+var _updatePendingForInstall = false;
 function setupAutoUpdater() {
   import_electron_updater.autoUpdater.autoDownload = true;
   import_electron_updater.autoUpdater.autoInstallOnAppQuit = true;
@@ -8288,6 +8298,7 @@ function setupAutoUpdater() {
     token: ""
   });
   import_electron_updater.autoUpdater.on("update-downloaded", () => {
+    _updatePendingForInstall = true;
     if (!win) return;
     import_electron2.dialog.showMessageBox(win, {
       type: "info",
@@ -8296,7 +8307,10 @@ function setupAutoUpdater() {
       buttons: ["Restart Now", "Later"],
       defaultId: 0
     }).then(({ response }) => {
-      if (response === 0) import_electron_updater.autoUpdater.quitAndInstall(false, true);
+      if (response === 0) {
+        preserveLegacyDataBeforeUpdate();
+        import_electron_updater.autoUpdater.quitAndInstall(false, true);
+      }
     });
   });
   import_electron_updater.autoUpdater.on("update-not-available", () => {
@@ -8980,11 +8994,15 @@ import_electron2.app.whenReady().then(() => {
 });
 import_electron2.app.on("before-quit", (event) => {
   isQuitting = true;
+  const preserveUpdateState = _updatePendingForInstall;
   trayPopup?.destroy();
   trayPopup = null;
   tray?.destroy();
   tray = null;
-  if (!serverProc) return;
+  if (!serverProc) {
+    if (preserveUpdateState) preserveLegacyDataBeforeUpdate();
+    return;
+  }
   event.preventDefault();
   win?.hide();
   createSplash("Closing\u2026");
@@ -9005,6 +9023,7 @@ import_electron2.app.on("before-quit", (event) => {
       });
     } catch {
     }
+    if (preserveUpdateState) preserveLegacyDataBeforeUpdate();
     process.exit(0);
   }, 2500);
 });
