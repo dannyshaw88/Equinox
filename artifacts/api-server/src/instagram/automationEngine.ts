@@ -7,13 +7,8 @@
 // ║  By default, all Instagram actions go through the mobile private API       ║
 // ║  (i.instagram.com), emulating a real Android Instagram app.                 ║
 // ║                                                                              ║
-// ║  EXCEPTION — "Disable API" per-account mode:                                ║
-// ║  When a profile has Disable API enabled, actions for that profile run      ║
-// ║  through the embedded browser (EB) instead — this is intentional and       ║
-// ║  supported (see runBrowserOnlyHumanSession / runBrowserFollowSession /      ║
-// ║  runBrowserUnfollowSession below). The EB is driven via the ebManager.ts    ║
-// ║  IPC bridge (navigate/evaluate), optionally with silentMode so no window   ║
-// ║  is shown on screen. This is the ONLY case where EB automation is allowed. ║
+// ║  Browser-assisted actions are explicit, opt-in flows. The default action   ║
+// ║  path uses the mobile API client and requires a valid API session.          ║
 // ║                                                                              ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 import { storage } from "../storage";
@@ -34,7 +29,7 @@ import { randomBytes } from "node:crypto";
 
 /**
  * Minimal Puppeteer-`page`-compatible shim backed by ebManager.ts's IPC bridge
- * (/eb/navigate, /eb/evaluate). Used so the browser-only Human Session code
+ * (/eb/navigate, /eb/evaluate). Used so the browser Human Session code
  * below can drive the REAL Electron EB window (silent or visible) instead of
  * the disconnected standalone-Puppeteer session map in browserSession.ts.
  * Only supports the subset of the page API actually used here: goto/url/
@@ -296,50 +291,6 @@ class AutomationEngine {
   // Wake signals for HS runners — set to interrupt the idle 10s sleep immediately.
   // Keyed by profileId.  Runner resets wake=false after waking; triggerHumanSession sets wake=true.
   private hsWakeSignals        = new Map<number, { wake: boolean }>();
-
-  /** Follow a user by opening a hidden embedded browser, navigating to their profile,
-   *  and clicking the Follow button.  Used when the account has "Do Actions Via Browser
-   *  → Follows" enabled.  Calls the EB IPC server (Electron main process) which manages
-   *  the BrowserWindow lifecycle.  Resolves with the same shape as client.followUser(). */
-  private async followUserViaBrowser(
-    profileId: number,
-    targetUsername: string,
-    proxy?: { host?: string | null; port?: number | null; username?: string | null; password?: string | null; type?: string | null } | null,
-    igApiCookies?: string | null,
-    fp?: { userAgent?: string | null; apiUA?: string | null; ebFingerprint?: unknown } | null,
-  ): Promise<{ ok: boolean; status?: string; reason?: string }> {
-    const ebIpcPort = process.env.EB_IPC_PORT;
-    if (!ebIpcPort) {
-      return { ok: false, status: "follow_blocked", reason: "Browser-follow not available outside Electron" };
-    }
-    try {
-      console.log(`[engine] followViaBrowser: sending IPC for profile ${profileId} → @${targetUsername}`);
-      const proxyPayload = (proxy?.host && proxy?.port) ? {
-        host: proxy.host,
-        port: proxy.port,
-        user: proxy.username ?? undefined,
-        pass: proxy.password ?? undefined,
-        type: proxy.type ?? "http",
-      } : null;
-      // userAgent/apiUA/ebFingerprint are forwarded so a Mode-B temp window
-      // (created when the EB isn't already open) can present the SAME
-      // fingerprint Instagram already associated with this account's session —
-      // without them the window falls back to Electron's raw default identity.
-      const r = await fetch(`http://127.0.0.1:${ebIpcPort}/eb/silent-follow`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          profileId, targetUsername, proxy: proxyPayload, igApiCookies: igApiCookies ?? null,
-          userAgent: fp?.userAgent ?? undefined, apiUA: fp?.apiUA ?? undefined, ebFingerprint: fp?.ebFingerprint ?? undefined,
-        }),
-        signal:  AbortSignal.timeout(90_000),
-      });
-      if (!r.ok) return { ok: false, status: "follow_blocked", reason: `EB IPC HTTP ${r.status}` };
-      return await r.json() as { ok: boolean; status?: string; reason?: string };
-    } catch (err: any) {
-      return { ok: false, status: "follow_blocked", reason: `Browser-follow error: ${err?.message}` };
-    }
-  }
 
   private async searchUserViaBrowser(
     profileId: number,
@@ -2203,18 +2154,6 @@ class AutomationEngine {
 
   // ── Ensure logged-in client ───────────────────────────────────────────────
   private async ensureClient(profile: Profile, state: ProfileState): Promise<InstagramWebClient | null> {
-    // Disable API mode: block every mobile API call for this account.
-    if ((profile.apiLimits as any)?.disableApi === true) {
-      console.log(
-        `[api-shield:${profile.id}] @${profile.username} ── BROWSER-ONLY MODE\n` +
-        `  mobile-api  : ✗ BLOCKED (disableApi=true — ensureClient returns null)\n` +
-        `  eb          : EB session will be attempted for this account; proxy is\n` +
-        `                enforced there — look for [eb-shield:${profile.id}] in the log.\n` +
-        `                If no [eb-shield] line appears, the EB session did not open.`
-      );
-      return null;
-    }
-
     const proxyUrl = await this.buildProxyUrl(profile);
     if (!proxyUrl) {
       console.error(`[engine] @${profile.username}: no proxy assigned — refusing to connect without proxy`);
@@ -2374,7 +2313,7 @@ class AutomationEngine {
   }
 
   // ── Ghost Browser (EB) API-call-log mirror ──────────────────────────────────
-  // When Disable API is active, actions are performed via the embedded browser
+  // When browser-assisted actions are used, they run via the embedded browser
   // (Ghost Browser) instead of the mobile API, so no real InstagramWebClient
   // call fires and nothing would otherwise land in the API Calls log / CSV
   // export. This mirrors every browser-driven action into the same
@@ -2842,7 +2781,7 @@ class AutomationEngine {
     return Math.random() * 100 < skipChance;
   }
 
-  // Browser-only human session used when Disable API is on.
+  // Legacy browser human session helper.
   // Navigates the EB to Instagram pages to simulate human presence without any mobile API call.
   private async runBrowserOnlyHumanSession(profile: Profile, tool: Tool, state: ProfileState): Promise<void> {
     const ebIpcPort = process.env.EB_IPC_PORT;
@@ -2859,7 +2798,7 @@ class AutomationEngine {
       const { ok, weOpenedIt } = await this.ensureSilentEbOpen(profile);
       if (!ok) {
         console.log(`[engine] @${profile.username}: [EB-only] could not open silent EB — skipping browser human session`);
-        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Disable API: silent EB open failed, no browser human session run");
+        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Browser human session: silent EB open failed");
         return;
       }
       _weOpenedEb = weOpenedIt;
@@ -2870,7 +2809,7 @@ class AutomationEngine {
       const browser = getExistingBrowser(profile.id);
       if (!browser) {
         console.log(`[engine] @${profile.username}: [EB-only] EB not open — skipping browser human session`);
-        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Disable API: EB not open, no browser human session run");
+        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn", "Browser human session: EB not open");
         return;
       }
       const pages: any[] = await browser.pages();
@@ -3202,7 +3141,7 @@ class AutomationEngine {
       // Uses reelWatchCountMin/Max, reelWatchPercentMin/Max. reelWatchChanceMin/Max
       // is this tool's own "Chance %" (probability the tool fires at all this
       // session) — decoupled from View Timeline Feed's enabled state.
-      // There is no mobile-API reel call available in browser-only mode, so we
+      // There is no mobile-API reel call available in this browser-assisted path, so we
       // navigate to instagram.com/reels/, wait for the video to load, dwell for
       // reelViewPct% of an estimated reel duration, then press ArrowDown to advance.
       ebEnqueue("viewReels", "viewReelsOrderMin", "viewReelsOrderMax", async () => {
@@ -3676,7 +3615,7 @@ class AutomationEngine {
               const mediaFiles = entries.filter(f => isImageFile(nodePath.extname(f).toLowerCase()));
               if (mediaFiles.length === 0) {
                 console.warn(`[engine] @${profile.username}: [EB-only] 🔁 local folder repost — no image files found in "${repostLocalFolderPathEb}"`);
-                this.logAction(profile.id, tool.id, "repost", repostLocalFolderPathEb, "", "", "skip", "No image files found in local folder (video is not supported in Disable API mode)");
+                this.logAction(profile.id, tool.id, "repost", repostLocalFolderPathEb, "", "", "skip", "No image files found in local folder (video is not supported in the browser-assisted path)");
               } else {
                 const targetCount = randInt(
                   Math.max(1, Number(s.repostMin ?? 1)),
@@ -3760,8 +3699,8 @@ class AutomationEngine {
                 }
               }
             } else if (repostUsernameSourceActiveEb) {
-              console.log(`[engine] @${profile.username}: [EB-only] 🔁 repost skipped — @username source requires API access (not available in Disable API mode). Use "Source: Local PC Folder" instead.`);
-              this.logAction(profile.id, tool.id, "repost", repostSourceUsernameEb, "", "", "skip", "Username source repost is not supported in Disable API mode — use Local PC Folder instead");
+              console.log(`[engine] @${profile.username}: [EB-only] 🔁 repost skipped — @username source requires API access in the browser-assisted path. Use "Source: Local PC Folder" instead.`);
+              this.logAction(profile.id, tool.id, "repost", repostSourceUsernameEb, "", "", "skip", "Username source repost is not supported in the browser-assisted path — use Local PC Folder instead");
             }
           } catch (e: any) {
             console.warn(`[engine] @${profile.username}: [EB-only] repost session error: ${e?.message}`);
@@ -3998,7 +3937,7 @@ class AutomationEngine {
     }
   }
 
-  // ── Browser-only follow session (Disable API mode) ─────────────────────────
+  // ── Browser-assisted follow session ────────────────────────────────────────
   private async runBrowserFollowSession(
     profile: Profile,
     followTool: Tool,
@@ -4029,8 +3968,8 @@ class AutomationEngine {
     const maxPerDay    = randInt(Number(fs.maxPerDayMin ?? 0), Number(fs.maxPerDayMax ?? 0));
     const maxPerHour   = randInt(Number(fs.maxPerHourMin ?? 0), Number(fs.maxPerHourMax ?? 0));
 
-    // ── Inject Browsing settings (Disable API mode) ─────────────────────────
-    // Disable API mode previously ignored these entirely — runBrowserFollowSession
+    // ── Inject Browsing settings ─────────────────────────────────────────────
+    // The browser-assisted path applies these settings before and after following.
     // only navigated to the candidate's profile and clicked Follow. Everything
     // below re-implements the same "browse the target's profile" behaviour that
     // the API-based session has (browseTargetProfile in runSession), but driven
@@ -4065,7 +4004,7 @@ class AutomationEngine {
     }
 
     // Browses a target's profile page using ONLY the EB page — no mobile API calls,
-    // so this is safe to run under Disable API mode. Assumes `page` is already on
+    // so this is safe to run through the embedded browser. Assumes `page` is already on
     // (or about to be navigated to) the candidate's profile URL.
     const browseTargetProfileViaBrowser = async (label: string, candidate: { pk: string; username: string }) => {
       this.logAction(profile.id, followTool.id, "browse_profile", candidate.username, "", "profile", "ok", `[${label}] Profile browsing started`);
@@ -4473,7 +4412,7 @@ class AutomationEngine {
     console.log(`[engine] @${profile.username}: [EB-only] follow session done — ${followed}/${candidates.length} followed`);
   }
 
-  // ── Browser-only unfollow session (Disable API mode) ───────────────────────
+  // ── Browser-assisted unfollow session ─────────────────────────────────────
   private async runBrowserUnfollowSession(
     profile: Profile,
     unfollowTool: Tool,
@@ -4541,7 +4480,7 @@ class AutomationEngine {
     console.log(`[engine] @${profile.username}: [EB-only] unfollow session done — ${unfollowed}/${candidates.length} unfollowed`);
   }
 
-  // ── Browser-only contact/DM session (Disable API mode) ──────────────────────
+  // ── Browser-assisted contact/DM session ─────────────────────────────────────
   // Mirrors runContactUsersSession but drives the embedded browser instead of
   // the mobile API — navigates to the recipient's DM thread, types the queued
   // message text, and sends via the on-screen Send button/Enter key.
@@ -4655,15 +4594,10 @@ class AutomationEngine {
 
   private async runHumanSessionTools(profile: Profile, tool: Tool, state: ProfileState): Promise<void> {
     const s = tool.settings as any;
-    const disableApi = (profile.apiLimits as any)?.disableApi === true;
     const client = await this.ensureClient(profile, state);
     if (!client) {
-      if (disableApi) {
-        await this.runBrowserOnlyHumanSession(profile, tool, state);
-      } else {
-        this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn",
-          "Human Session skipped — no Instagram session found. Run Verify Credentials to establish one.");
-      }
+      this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn",
+        "Human Session skipped — no Instagram session found. Run Verify Credentials to establish one.");
       return;
     }
 
@@ -5443,7 +5377,6 @@ class AutomationEngine {
               }
 
               let postedMediaId: string | null = null;
-              let browserPostErr: string | undefined;
               const uniqueTag = makeUnique ? " +unique" : "";
               console.log(`[engine] @${profile.username}: 🔁 repost upload starting — file="${fileName}" isImage=${isImage} isVideo=${isVideo} makeUnique=${makeUnique} level=${level} captionLen=${caption.length}`);
 
@@ -5480,24 +5413,7 @@ class AutomationEngine {
                     console.warn(`[engine] @${profile.username}: makeUniqueImage failed for ${fileName}: ${uqErr?.message}`);
                   }
                 }
-                if ((profile as any).postViaBrowser) {
-                  // Browser-post path: send to EB via /eb/n
-                  const bpResult = await this.postPhotoViaBrowser(profile.id, alteredBuffer, caption);
-                  postedMediaId = bpResult.ok ? (bpResult.mediaId ?? `browser:${Date.now()}`) : null;
-                  if (!bpResult.ok) {
-                    browserPostErr = bpResult.message;
-                    console.warn(`[engine] @${profile.username}: browser post failed for ${fileName}: ${bpResult.message}`);
-                  } else {
-                    // Write synthetic api-calls entry so the stats pie chart picks it up
-                    storage.createInstagramApiCall({
-                      profileId: profile.id, username: profile.username,
-                      operationName: "PostMedia", date: new Date().toISOString(),
-                      source: "browser", transport: "browser", isError: false,
-                    }).catch(() => {});
-                  }
-                } else {
-                  postedMediaId = await client.uploadPhoto(alteredBuffer, caption);
-                }
+                postedMediaId = await client.uploadPhoto(alteredBuffer, caption);
               }
 
               if (postedMediaId) {
@@ -5530,7 +5446,7 @@ class AutomationEngine {
                   }
                 }
               } else {
-                const uploadErr = browserPostErr || client.lastUploadError || "Upload failed";
+                const uploadErr = client.lastUploadError || "Upload failed";
                 console.warn(`[engine] @${profile.username}: 🔁 local folder upload failed: ${fileName} — ${uploadErr}`);
                 this.logAction(profile.id, tool.id, "repost", repostLocalFolderPath, fileName, "", "fail", "Make a Post Failed");
                 // Make 1 attempt only — do not keep cycling through more
@@ -6654,17 +6570,7 @@ class AutomationEngine {
       let result: { ok: boolean; status?: string; reason?: string };
       try {
         const sourceLabel = source.value ? (source.type === "hashtag" ? `#${source.value}` : source.value) : undefined;
-        if ((profile as any).followViaBrowser) {
-          result = await this.followUserViaBrowser(profile.id, user.username, {
-            host: (profile as any).proxyHost, port: (profile as any).proxyPort,
-            username: (profile as any).proxyUsername, password: (profile as any).proxyPassword,
-            type: (profile as any).proxyType,
-          }, (profile as any).igApiCookies ?? null, {
-            userAgent: profile.userAgentEmbedded ?? null, apiUA: profile.userAgentApi ?? null, ebFingerprint: (profile as any).ebFingerprint ?? null,
-          });
-        } else {
-          result = await client.followUser(user.pk, user.username, sourceLabel);
-        }
+        result = await client.followUser(user.pk, user.username, sourceLabel);
       } catch (err: any) {
         const msg = err?.message ?? "";
         const acctStatus = await this.applyAccountLevelError(profile.id, msg, state, tool.id);
@@ -6814,19 +6720,6 @@ class AutomationEngine {
         console.error(`[engine] @${profile.username}: failed to persist followed user @${user.username}: ${dbErr?.message}`);
       }
       this.logAction(profile.id, tool.id, "follow", user.username, source.value, source.type, "ok", `Followed [${followed + 1}/${processCount}] users`);
-      // Browser-follows bypass the private API client so they never land in instagram_api_calls.
-      // Write a synthetic entry so the stats pie chart counts them correctly.
-      if ((profile as any).followViaBrowser) {
-        storage.createInstagramApiCall({
-          profileId: profile.id,
-          username: profile.username,
-          operationName: "FollowedUser",
-          date: new Date().toISOString(),
-          source: "browser",
-          transport: "browser",
-          isError: false,
-        }).catch(() => {});
-      }
       try {
         await storage.incrementStat(profile.id, "follow");
       } catch (statErr: any) {
@@ -6958,17 +6851,7 @@ class AutomationEngine {
           let result: { ok: boolean; status?: string; reason?: string };
           try {
             const sourceLabel = rescrapeSource.value ? (rescrapeSource.type === "hashtag" ? `#${rescrapeSource.value}` : rescrapeSource.value) : undefined;
-            if ((profile as any).followViaBrowser) {
-              result = await this.followUserViaBrowser(profile.id, user.username, {
-                host: (profile as any).proxyHost, port: (profile as any).proxyPort,
-                username: (profile as any).proxyUsername, password: (profile as any).proxyPassword,
-                type: (profile as any).proxyType,
-              }, (profile as any).igApiCookies ?? null, {
-                userAgent: profile.userAgentEmbedded ?? null, apiUA: profile.userAgentApi ?? null, ebFingerprint: (profile as any).ebFingerprint ?? null,
-              });
-            } else {
-              result = await client.followUser(user.pk, user.username, sourceLabel);
-            }
+            result = await client.followUser(user.pk, user.username, sourceLabel);
           } catch (err: any) {
             const msg = err?.message ?? "";
             const acctStatus = await this.applyAccountLevelError(profile.id, msg, state, tool.id);
@@ -7185,14 +7068,8 @@ class AutomationEngine {
 
       // Upload — browser or private API
       let postedMediaId: string | null;
-      if ((profile as any).postViaBrowser) {
-        const ebResult = await this.postPhotoViaBrowser(profile.id, alteredBuffer, finalCaption);
-        if (!ebResult.ok) return { ok: false, message: ebResult.message || "Browser post failed — check the embedded browser session is active" };
-        postedMediaId = ebResult.mediaId ?? String(Date.now());
-      } else {
-        postedMediaId = await client.uploadPhoto(alteredBuffer, finalCaption);
-        if (!postedMediaId) return { ok: false, message: client.lastUploadError || "Upload failed — Instagram rejected the photo" };
-      }
+       postedMediaId = await client.uploadPhoto(alteredBuffer, finalCaption);
+       if (!postedMediaId) return { ok: false, message: client.lastUploadError || "Upload failed — Instagram rejected the photo" };
 
       if (s.repostDisableComments) {
         try { await client.disableComments(postedMediaId); } catch { /* non-fatal */ }
@@ -7213,19 +7090,6 @@ class AutomationEngine {
 
       console.log(`[engine] @${profile.username}: 🔁 [MANUAL] reposted ${candidate.mediaId} from @${sourceUsername} → ${postedShortcode}`);
       this.logAction(profileId, hsTool.id, "repost", sourceUsername, candidate.mediaId, candidate.shortcode, "ok", `[Manual] Reposted from @${sourceUsername}`);
-      // Browser-posts bypass the private API client so they never land in instagram_api_calls.
-      // Write a synthetic entry so the stats pie chart counts them correctly.
-      if ((profile as any).postViaBrowser) {
-        storage.createInstagramApiCall({
-          profileId,
-          username: profile.username,
-          operationName: "PostMedia",
-          date: new Date().toISOString(),
-          source: "browser",
-          transport: "browser",
-          isError: false,
-        }).catch(() => {});
-      }
       await storage.incrementStat(profileId, "repost");
 
       return { ok: true, message: `Reposted → instagram.com/p/${postedShortcode}` };
