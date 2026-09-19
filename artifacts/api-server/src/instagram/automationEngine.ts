@@ -4601,6 +4601,13 @@ class AutomationEngine {
       return;
     }
 
+    // View Timeline Feed and View Reels both consume /api/v1/feed/timeline/.
+    // Keep the empty result scoped to this Human Session run so the second
+    // tool does not repeat a request after the first tool already established
+    // that Instagram returned no timeline posts. A non-empty feed is not
+    // cached here because the two tools may need different pagination/filtering.
+    let timelineFeedEmpty = false;
+
     // Shared account-level error detector for every action in this session.
     // If Instagram returns login_required / checkpoint / banned / etc., we
     // immediately update the DB status, null the client, log it, and signal
@@ -4809,6 +4816,11 @@ class AutomationEngine {
       "viewTimelineFeedOrderMin",   "viewTimelineFeedOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
+        if (timelineFeedEmpty) {
+          console.log(`[engine] @${profile.username}: ⏭ View Timeline Feed skipped — timeline already returned 0 posts this session`);
+          this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "skipped", "Skipped — timeline feed already returned 0 posts earlier this session");
+          return;
+        }
         const feedCount = randInt(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
         // Reel-watching is now its own independent "View Reels" tool (see the
         // separate enqueue("viewReels", ...) block below) with its own
@@ -4841,6 +4853,7 @@ class AutomationEngine {
             return;
           }
           viewed = vtfResult.viewed;
+          if (vtfResult.feedEmpty) timelineFeedEmpty = true;
           console.log(`[engine] @${profile.username}: 📰 viewed ${viewed} timeline post(s)`);
           this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `Viewed ${viewed} timeline post${viewed === 1 ? "" : "s"}`);
 
@@ -5032,6 +5045,11 @@ class AutomationEngine {
       "viewReelsOrderMin",   "viewReelsOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
+        if (timelineFeedEmpty) {
+          console.log(`[engine] @${profile.username}: ⏭ View Reels skipped — timeline already returned 0 posts this session`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped — timeline feed already returned 0 posts earlier this session");
+          return;
+        }
         // "Chance%" (reelWatchChanceMin/Max) is shared with the EB-only path —
         // it's a separate roll from the "Skip Chance %" (viewReelsNotUsedMin/Max)
         // that `enqueue` already applied above. Normalize bounds, swap if inverted.
@@ -5062,6 +5080,7 @@ class AutomationEngine {
             return;
           }
           console.log(`[engine] @${profile.username}: 🎬 watched ${result.watched} reel(s)`);
+          if (result.feedEmpty) timelineFeedEmpty = true;
           if (result.watched > 0) {
             this.logAction(profile.id, tool.id, "view_reels", "", "", "", "ok", `Watched ${result.watched} reel(s)`);
           } else {

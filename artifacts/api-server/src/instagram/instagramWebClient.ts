@@ -3612,7 +3612,7 @@ export class InstagramWebClient {
   // simulating a user scrolling through their Instagram home feed.
   // Paginates using next_max_id so the full count (e.g. 50–100) is reachable —
   // Instagram returns only ~12–18 posts per call so multiple pages are needed.
-  async viewTimelineFeed(count: number = 5, reelWatchPercentMin: number = 0, reelWatchPercentMax: number = 0, reelWatchCountMin: number = 0, reelWatchCountMax: number = 0, _consentRetry = false, onPageEvent?: (type: "feed_load" | "feed_seen", count: number) => void): Promise<{ viewed: number; sessionExpired?: boolean; reason?: string; items?: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }>; reelWatches?: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }> }> {
+  async viewTimelineFeed(count: number = 5, reelWatchPercentMin: number = 0, reelWatchPercentMax: number = 0, reelWatchCountMin: number = 0, reelWatchCountMax: number = 0, _consentRetry = false, onPageEvent?: (type: "feed_load" | "feed_seen", count: number) => void): Promise<{ viewed: number; feedEmpty?: boolean; sessionExpired?: boolean; reason?: string; items?: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }>; reelWatches?: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }> }> {
     // ── Page 1: cold_start_fetch ─────────────────────────────────────────────
     // Fetch timeline using the igApiCookies mobile session — the EB web cookies
     // do not have a valid i.instagram.com mobile session so the endpoint returns 0 items.
@@ -3742,7 +3742,7 @@ export class InstagramWebClient {
     // Process page 1 (already fetched above)
     const page1Raw: any[] = j?.feed_items ?? j?.items ?? [];
     console.log(`[webClient] viewTimelineFeed: page 1 — ${page1Raw.length} raw items`);
-    if (!page1Raw.length) return { viewed: 0 };
+    if (!page1Raw.length) return { viewed: 0, feedEmpty: true };
     onPageEvent?.("feed_load", page1Raw.length);
     await processAndMarkPage(page1Raw);
 
@@ -3783,7 +3783,7 @@ export class InstagramWebClient {
   // it only marks watched reels as seen. This lets "View Reels" run as its
   // own tool with its own enabled/order/chance settings, decoupled from
   // View Timeline Feed.
-  async viewReelsFromFeed(reelCount: number, reelWatchPercentMin: number = 50, reelWatchPercentMax: number = 100): Promise<{ watched: number; reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }>; sessionExpired?: boolean; reason?: string }> {
+  async viewReelsFromFeed(reelCount: number, reelWatchPercentMin: number = 50, reelWatchPercentMax: number = 100): Promise<{ watched: number; feedEmpty?: boolean; reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }>; sessionExpired?: boolean; reason?: string }> {
     const j = await this.mobileSessionPost(
       `/api/v1/feed/timeline/`,
       new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString(),
@@ -3848,7 +3848,7 @@ export class InstagramWebClient {
     };
 
     const page1Raw: any[] = j?.feed_items ?? j?.items ?? [];
-    if (!page1Raw.length) return { watched: 0, reelWatches: [] };
+    if (!page1Raw.length) return { watched: 0, feedEmpty: true, reelWatches: [] };
     await processPage(page1Raw);
 
     let nextMaxId: string | null = j?.next_max_id ?? null;

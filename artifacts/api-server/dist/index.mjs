@@ -159746,7 +159746,7 @@ var InstagramWebClient = class {
     };
     const page1Raw = j?.feed_items ?? j?.items ?? [];
     console.log(`[webClient] viewTimelineFeed: page 1 \u2014 ${page1Raw.length} raw items`);
-    if (!page1Raw.length) return { viewed: 0 };
+    if (!page1Raw.length) return { viewed: 0, feedEmpty: true };
     onPageEvent?.("feed_load", page1Raw.length);
     await processAndMarkPage(page1Raw);
     let nextMaxId = j?.next_max_id ?? null;
@@ -159842,7 +159842,7 @@ var InstagramWebClient = class {
       }
     };
     const page1Raw = j?.feed_items ?? j?.items ?? [];
-    if (!page1Raw.length) return { watched: 0, reelWatches: [] };
+    if (!page1Raw.length) return { watched: 0, feedEmpty: true, reelWatches: [] };
     await processPage(page1Raw);
     let nextMaxId = j?.next_max_id ?? null;
     const MAX_PAGES = 12;
@@ -167968,6 +167968,7 @@ ${err?.stack ?? ""}`);
       );
       return;
     }
+    let timelineFeedEmpty = false;
     let sessionError = null;
     const checkSessionErr = async (e, actionLabel) => {
       const msg = e?.message ?? "";
@@ -168125,6 +168126,11 @@ ${err?.stack ?? ""}`);
       "viewTimelineFeedOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
+        if (timelineFeedEmpty) {
+          console.log(`[engine] @${profile.username}: \u23ED View Timeline Feed skipped \u2014 timeline already returned 0 posts this session`);
+          this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
+          return;
+        }
         const feedCount = randInt2(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
         let viewed = 0;
         let vtfResult = null;
@@ -168153,6 +168159,7 @@ ${err?.stack ?? ""}`);
             return;
           }
           viewed = vtfResult.viewed;
+          if (vtfResult.feedEmpty) timelineFeedEmpty = true;
           console.log(`[engine] @${profile.username}: \u{1F4F0} viewed ${viewed} timeline post(s)`);
           this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `Viewed ${viewed} timeline post${viewed === 1 ? "" : "s"}`);
           if (vtfResult.reelWatches?.length) {
@@ -168313,6 +168320,11 @@ ${err?.stack ?? ""}`);
       "viewReelsOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
+        if (timelineFeedEmpty) {
+          console.log(`[engine] @${profile.username}: \u23ED View Reels skipped \u2014 timeline already returned 0 posts this session`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
+          return;
+        }
         const reelChanceRaw0 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMin ?? 100)));
         const reelChanceRaw1 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMax ?? 100)));
         const reelChanceMin = Math.min(reelChanceRaw0, reelChanceRaw1);
@@ -168340,6 +168352,7 @@ ${err?.stack ?? ""}`);
             return;
           }
           console.log(`[engine] @${profile.username}: \u{1F3AC} watched ${result.watched} reel(s)`);
+          if (result.feedEmpty) timelineFeedEmpty = true;
           if (result.watched > 0) {
             this.logAction(profile.id, tool.id, "view_reels", "", "", "", "ok", `Watched ${result.watched} reel(s)`);
           } else {
