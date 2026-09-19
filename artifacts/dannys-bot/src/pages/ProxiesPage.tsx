@@ -1157,7 +1157,7 @@ export function ProxiesPage() {
             disabled={deletingAll || !proxies.length}
             className="flex items-center gap-1 text-[13px] font-bold uppercase tracking-wide text-destructive hover:text-destructive/80 transition-colors whitespace-nowrap disabled:opacity-50"
           >
-            {deletingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash className="w-3.5 h-3.5 fill-red-500 text-red-500" />}
+            {deletingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
             {deletingAll ? "Deleting…" : "Delete All"}
           </button>
         </div>
