@@ -1293,7 +1293,6 @@ export function ProfilesPage() {
             </div>
           )}
         </div>
-        <p className="text-sm text-muted-foreground mt-1">Manage your Instagram accounts, proxies, and automation settings.</p>
       </div>
 
       {/* Status filter bar */}
