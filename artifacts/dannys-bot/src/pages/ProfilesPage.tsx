@@ -237,7 +237,7 @@ export function ProfilesPage() {
     try {
       const res  = await fetch(`/api/profiles/${id}/verify`, { method: "POST", credentials: "include" });
       const data = await res.json() as { ok: boolean; message: string };
-      if (data.ok) recordLoginEvent(proxyHostVal, proxyPortVal, id);
+      if (data.ok) recordLoginEvent(proxyHostVal, proxyPortVal, id, "api");
       toast({
         title: data.ok ? "Verification started" : "Verification Failed",
         description: data.message,

@@ -694,7 +694,7 @@ export function ProfileDetailsPage() {
       if (data.ok) {
         // Only record a login event on a successful verify — failed attempts must not
         // count against the IP rate limit window or future verifies would show a false warning.
-        recordLoginEvent(host, port, profileId);
+        recordLoginEvent(host, port, profileId, "api");
         setVerifyStatus("ok");
         toast({ title: "Credentials Verified", description: data.message });
       } else {

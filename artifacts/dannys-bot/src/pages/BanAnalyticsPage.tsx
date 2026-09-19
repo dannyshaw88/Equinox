@@ -1756,9 +1756,9 @@ function TheoriesTab({ forTab, primaryEntries, banEntries, automatedEntries, cap
     {
       id: "login-rate-limit", Icon: Clock,
       title: "IP Login Rate Limit (~1–2 Logins per 90 min)",
-      tagline: "Each browser + API login pair counts as 2 logins against a shared per-IP quota",
+      tagline: "Each browser + API login pair counts as 1 login against a shared per-IP quota",
       likelihood: loginRateLimitPct,
-      description: "What is being theorised is that Instagram enforces a per-IP login rate budget independent of action endpoints. Every account verify produces two login events on the same IP: one browser login (Chrome cookie extraction) and one mobile API login (cold-start sequence). An IP that processes 5 verifies in one hour has generated 10 login events. The strongest evidence for this theory is the accounts that appear in the ban list with zero tool activity, flagged purely from verify-source endpoints. If there were no per-IP login budget, these accounts should not have been flagged at all since no automation tools ever ran on them. This is consistent with the observed data but has not been isolated in a controlled test.",
+      description: "What is being theorised is that Instagram enforces a per-IP login rate budget independent of action endpoints. Every account verify produces one counted login event made up of a browser login (Chrome cookie extraction) and its paired mobile API confirmation (cookie handoff). An IP that processes 5 verifies in one hour has generated 5 counted login events, not 10. The strongest evidence for this theory is the accounts that appear in the ban list with zero tool activity, flagged purely from verify-source endpoints. If there were no per-IP login budget, these accounts should not have been flagged at all since no automation tools ever ran on them. This is consistent with the observed data but has not been isolated in a controlled test.",
       evidence: loginRateLimitPct >= 0
         ? `${loginRateLimitCount} of ${total} flagged accounts (${loginRateLimitPct}%) show zero tool activity — banned purely from login/verify endpoints. This is the strongest signal for an IP-level login rate limit.`
         : "Not enough data yet. Flag more accounts to measure verify-only ban patterns.",
