@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dannyshaw88/Equinox.git"
+    "url": "https://github.com/dannyshaw88/Equinox"
   },
   "scripts": {
     "build": "node build.mjs",
