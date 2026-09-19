@@ -87,7 +87,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "ep_order",   label: "Execution order",  settingKeys: ["explorePageOrderMin","explorePageOrderMax"] },
         { key: "ep_chance",  label: "Skip chance %",    settingKeys: ["explorePageSkipMin","explorePageSkipMax"] },
         { key: "ep_scroll",  label: "Posts to scroll",  settingKeys: ["exploreScrollMin","exploreScrollMax"] },
-        { key: "ep_click",   label: "Posts to click",   settingKeys: ["exploreClickMin","exploreClickMax"] },
+         { key: "ep_click",   label: "Posts to click %", settingKeys: ["exploreClickMin","exploreClickMax"] },
         { key: "ep_like",    label: "Like %",           settingKeys: ["exploreLikePctMin","exploreLikePctMax"] },
         { key: "ep_profile", label: "Visit author profile %", settingKeys: ["exploreVisitProfilePctMin","exploreVisitProfilePctMax"] },
         { key: "ep_prof_scroll", label: "Posts to scroll on profile", settingKeys: ["exploreProfileScrollMin","exploreProfileScrollMax"] },
@@ -576,8 +576,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       explorePageSkipMax: 0,
       exploreScrollMin: 5,
       exploreScrollMax: 15,
-      exploreClickMin: 1,
-      exploreClickMax: 3,
+      exploreClickMin: 10,
+      exploreClickMax: 30,
       exploreLikePctMin: 0,
       exploreLikePctMax: 30,
       exploreVisitProfilePctMin: 0,
@@ -687,7 +687,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       explorePageOrderMin: 0, explorePageOrderMax: 0,
       explorePageSkipMin: 0, explorePageSkipMax: 0,
       exploreScrollMin: 5, exploreScrollMax: 15,
-      exploreClickMin: 1, exploreClickMax: 3,
+       exploreClickMin: 10, exploreClickMax: 30,
       exploreLikePctMin: 0, exploreLikePctMax: 30,
       exploreVisitProfilePctMin: 0, exploreVisitProfilePctMax: 20,
       exploreProfileScrollMin: 3, exploreProfileScrollMax: 8,
@@ -1117,19 +1117,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     />
                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Scroll on Explore</span>
                   </div>
-                  {/* Row 2: Posts to click on */}
+                  {/* Row 2: Percentage of Explore posts to click */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <Label className="text-xs text-muted-foreground uppercase">Min</Label>
-                    <NumField min={0} max={50} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreClickMin ?? 1}
-                      onChange={(v) => setSettings({ ...settings, exploreClickMin: v } as any)}
-                    />
-                    <Label className="text-xs text-muted-foreground uppercase">Max</Label>
-                    <NumField min={0} max={50} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreClickMax ?? 3}
-                      onChange={(v) => setSettings({ ...settings, exploreClickMax: v } as any)}
-                    />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Click On</span>
+                    {pctInputs("exploreClickMin", "exploreClickMax")}
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Click %</span>
                   </div>
                   {/* Row 3: Like % */}
                   <div className="flex items-center gap-1.5 flex-wrap">

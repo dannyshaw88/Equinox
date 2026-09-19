@@ -167189,8 +167189,8 @@ ${err?.stack ?? ""}`);
         try {
           const scrollMin = Math.max(1, Number(s.exploreScrollMin ?? 5));
           const scrollMax = Math.max(scrollMin, Number(s.exploreScrollMax ?? 15));
-          const clickMin = Math.max(0, Number(s.exploreClickMin ?? 1));
-          const clickMax = Math.max(clickMin, Number(s.exploreClickMax ?? 3));
+          const clickPctMin = Math.min(100, Math.max(0, Number(s.exploreClickMin ?? 10)));
+          const clickPctMax = Math.min(100, Math.max(clickPctMin, Number(s.exploreClickMax ?? 30)));
           const likePctMin = Math.min(100, Math.max(0, Number(s.exploreLikePctMin ?? 0)));
           const likePctMax = Math.min(100, Math.max(likePctMin, Number(s.exploreLikePctMax ?? 30)));
           const visitProfPctMin = Math.min(100, Math.max(0, Number(s.exploreVisitProfilePctMin ?? 0)));
@@ -167207,7 +167207,11 @@ ${err?.stack ?? ""}`);
             });
             await sleep(actionDelay2());
           }
-          const clickCount = randInt2(clickMin, clickMax);
+          const availablePostCount = await page2.evaluate(
+            () => document.querySelectorAll('a[href^="/p/"], a[href^="/reel/"]').length
+          ).catch(() => 0);
+          const clickPct = randInt2(clickPctMin, clickPctMax);
+          const clickCount = clickPct > 0 && availablePostCount > 0 ? Math.max(1, Math.round(availablePostCount * clickPct / 100)) : 0;
           let clicked = 0;
           for (let attempt = 0; clicked < clickCount && attempt < clickCount * 4 && !state.stop.stopped; attempt++) {
             const opened = await page2.evaluate(() => {
@@ -168927,9 +168931,10 @@ ${err?.stack ?? ""}`);
           const exploreItems = await c3.visitExplorePage(exploreScrollCount);
           console.log(`[engine] @${profile.username}: \u{1F52D} explore page \u2014 fetched ${exploreItems.length} item(s)`);
           this.logAction(profile.id, tool.id, "visit_explore_page", "", "", "", "ok", `Visited explore page, fetched ${exploreItems.length} posts`);
-          const exploreClickMin = Math.max(0, Number(s.exploreClickMin ?? 1));
-          const exploreClickMax = Math.max(exploreClickMin, Number(s.exploreClickMax ?? 3));
-          const exploreClickCount = randInt2(exploreClickMin, exploreClickMax);
+          const exploreClickPctMin = Math.min(100, Math.max(0, Number(s.exploreClickMin ?? 10)));
+          const exploreClickPctMax = Math.min(100, Math.max(exploreClickPctMin, Number(s.exploreClickMax ?? 30)));
+          const exploreClickPct = randInt2(exploreClickPctMin, exploreClickPctMax);
+          const exploreClickCount = exploreClickPct > 0 && exploreItems.length > 0 ? Math.max(1, Math.round(exploreItems.length * exploreClickPct / 100)) : 0;
           const toClick = [...exploreItems].sort(() => 0.5 - Math.random()).slice(0, exploreClickCount);
           for (const item of toClick) {
             try {
