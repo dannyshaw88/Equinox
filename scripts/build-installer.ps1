@@ -77,8 +77,31 @@ if ($env:OS -eq "Windows_NT") {
         $null
     }
 
-    if ($null -eq $windowsRollupPackage -or $null -eq $windowsRollupLink -or -not (Test-Path -LiteralPath $windowsRollupLink)) {
-        throw "pnpm install completed, but @rollup/rollup-win32-x64-msvc is not linked into Rollup. Remove any package-lock.json in the repository and rerun this script."
+    if ($null -ne $windowsRollupPackage -and $null -ne $rollupPackageDirectory) {
+        $windowsRollupTarget = Join-Path `
+            $windowsRollupPackage.FullName `
+            "node_modules\@rollup\rollup-win32-x64-msvc"
+        $rollupDependencyDirectory = Join-Path `
+            $rollupPackageDirectory.FullName `
+            "node_modules\@rollup"
+
+        if (Test-Path -LiteralPath $windowsRollupTarget) {
+            New-Item -ItemType Directory -Path $rollupDependencyDirectory -Force | Out-Null
+
+            if (-not (Test-Path -LiteralPath $windowsRollupLink)) {
+                Write-Host "Repairing Rollup Windows native-package link..." -ForegroundColor DarkYellow
+                New-Item `
+                    -ItemType Junction `
+                    -Path $windowsRollupLink `
+                    -Target $windowsRollupTarget | Out-Null
+            }
+        }
+    }
+
+    if ($null -eq $windowsRollupPackage -or
+        $null -eq $windowsRollupLink -or
+        -not (Test-Path -LiteralPath $windowsRollupLink)) {
+        throw "pnpm installed the Rollup package but did not link it into Rollup's virtual store."
     }
 }
 
