@@ -334,13 +334,6 @@ See `.agents/memory/make-a-post-log.md` for the EB-click-driven posting flow's b
 
 ## CI / GitHub Actions — Critical Knowledge
 
-### How the build pipeline works
-
-Every push to `main` triggers `.github/workflows/build.yml` which runs two jobs:
-
-59. **`build-web`** (ubuntu-latest) — installs workspace deps, builds the API server and React frontend, uploads them as an intermediate Actions artifact called `web-builds` (4MB). This is NOT the installer.
-60. **`package-windows`** (windows-latest) — downloads `web-builds`, installs Electron deps, runs `build.mjs` to bundle the app, then runs `electron-builder` to produce the Windows installer. It publishes to GitHub Releases AND uploads the installer as an Actions artifact called `Equinox-Windows-Installer` (88MB).
-
 ### How the user gets the installer
 
 61. Go to `https://github.com/dannyshaw88/Equinox/actions`
@@ -392,7 +385,7 @@ Every push to `main` triggers `.github/workflows/build.yml` which runs two jobs:
 
 Every push to GitHub **must** include a version bump in `artifacts/electron/package.json`.
 
-75. Current version: **v1.1.384**
+75. Current version: **v1.1.523**
 76. Increment the **patch** number (third digit) by 1 for each push: e.g. `1.1.360` → `1.1.361`
 77. The version string in `package.json` (`"version": "1.0.XXX"`) is what `electron-builder` bakes into the installer and what the auto-updater compares against
 78. Include `artifacts/electron/package.json` in every batch push alongside the other changed files
