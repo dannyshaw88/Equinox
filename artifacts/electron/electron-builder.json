@@ -8,9 +8,15 @@
   },
   "asar": false,
   "files": [
-    "dist/**",
+    "dist/main.js",
+    "dist/preload.js",
+    "dist/trayMenuPreload.js",
+    "dist/ebToolbarPreload.js",
+    "dist/server/**/*",
+    "dist/frontend/**/*",
+    "dist/assets/**/*",
     "!dist/**/*.map",
-    "node_modules/**"
+    "node_modules/**/*"
   ],
   "extraResources": [
     {
