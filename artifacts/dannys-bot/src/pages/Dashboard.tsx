@@ -2288,7 +2288,7 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     date: "29 Jun 2026",
     items: [
       { category: "Fix", text: "Verify sequence no longer double-throttles — each API call was waiting twice the configured delay (once explicitly, once via the request logger hook). Gaps are now the correct 1× configured range." },
-      { category: "Improvement", text: "API Controls checkboxes (Variation %, Momentum, Attention Drift, Fatigue) now show a tooltip on hover explaining what each setting does and an example of it in action." },
+      { category: "Improvement", text: "API Controls checkboxes (Variation %, Momentum, and Attention Drift) now show a tooltip on hover explaining what each setting does and an example of it in action." },
     ],
   },
   {
@@ -2296,7 +2296,7 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     date: "29 Jun 2026",
     items: [
       { category: "Improvement", text: "Account Settings API Controls: Min/Max fields are wider (52 px) and Min(ms)/Max(ms) fields are wider (80 px) for easier number entry." },
-      { category: "Improvement", text: "Account Settings: Variation % label now centre-aligns with its input fields. Momentum, Attention Drift, and Fatigue labels now bottom-align cleanly with their sub-labelled input columns." },
+      { category: "Improvement", text: "Account Settings: Variation % label now centre-aligns with its input fields. Momentum and Attention Drift labels now bottom-align cleanly with their sub-labelled input columns." },
     ],
   },
   {
@@ -2325,21 +2325,7 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     version: "1.1.234",
     date: "29 Jun 2026",
     items: [
-      { category: "Improvement", text: "API Controls layout: Test Timing button now sits right next to the section title. Variation % moved inline on the same row. Attention Drift and Fatigue merged onto the Momentum row. Field labels now vertically centered." },
-    ],
-  },
-  {
-    version: "1.1.229",
-    date: "29 Jun 2026",
-    items: [
-      { category: "Fix", text: "Fatigue now oscillates as a wave instead of ramping up and staying there. Timing rises toward the slow end over Ramp Calls, then recovers back to normal, then rises again — repeating throughout the session so no long stretch of calls is ever stuck at the same speed." },
-    ],
-  },
-  {
-    version: "1.1.228",
-    date: "29 Jun 2026",
-    items: [
-      { category: "Feature", text: "Fatigue: tick to enable. Set Strength % (how far timing drifts toward your max by end of session) and Ramp Calls (how many API calls to reach full fatigue). Resets automatically at the start of each session. Available in Copy Settings." },
+      { category: "Improvement", text: "API Controls layout: Test Timing button now sits right next to the section title. Variation % moved inline on the same row. Attention Drift merged onto the Momentum row. Field labels now vertically centered." },
     ],
   },
   {
@@ -2740,7 +2726,7 @@ const CHANGELOG: { version: string; date: string; items: { category: string; tex
     version: "1.1.233",
     date: "29 Jun 2026",
     items: [
-      { category: "UI", text: "Account Settings: Variation %, Momentum, Attention Drift, and Fatigue controls now appear on the same row as their checkbox titles instead of below them." },
+      { category: "UI", text: "Account Settings: Variation %, Momentum, and Attention Drift controls now appear on the same row as their checkbox titles instead of below them." },
     ],
   },
   {

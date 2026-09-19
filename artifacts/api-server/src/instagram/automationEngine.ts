@@ -2197,8 +2197,8 @@ class AutomationEngine {
     }
 
     // Always sync apiLimits from the profile (user may have changed them).
-    // Use updateApiLimits (not setApiLimits) so fatigue/momentum session state is
-    // preserved when limits are refreshed mid-lifecycle on an already-running client.
+    // Use updateApiLimits (not setApiLimits) so momentum state is preserved when
+    // limits are refreshed mid-lifecycle on an already-running client.
     const limits = profile.apiLimits as any;
     if (limits && typeof limits === "object") {
       const rMin = Number(limits.requestsMin   ?? 1);

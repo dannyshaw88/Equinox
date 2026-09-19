@@ -157242,11 +157242,7 @@ var InstagramWebClient = class {
   attentionDriftChance = 0;
   attentionDriftMinMins = 5;
   attentionDriftMaxMins = 15;
-  fatigueEnabled = false;
-  fatigueStrength = 50;
-  fatigueRampCalls = 30;
   _lastDelaySec = null;
-  _sessionCallCount = 0;
   constructor(proxyUrl, profileId) {
     if (!proxyUrl) {
       throw new Error(
@@ -157314,15 +157310,10 @@ var InstagramWebClient = class {
     this.attentionDriftChance = limits.attentionDriftChance ?? 0;
     this.attentionDriftMinMins = limits.attentionDriftMinMins ?? 5;
     this.attentionDriftMaxMins = limits.attentionDriftMaxMins ?? 15;
-    this.fatigueEnabled = !!limits.fatigueEnabled;
-    this.fatigueStrength = limits.fatigueStrength ?? 50;
-    this.fatigueRampCalls = Math.max(1, limits.fatigueRampCalls ?? 30);
-    this._sessionCallCount = 0;
     this._lastDelaySec = null;
   }
-  // Updates throttle parameters without resetting per-session state (_sessionCallCount,
-  // _lastDelaySec). Call this when applying user-changed settings to an already-running
-  // client so fatigue and momentum continuity are preserved.
+  // Updates throttle parameters without resetting momentum state. Call this when
+  // applying user-changed settings to an already-running client.
   updateApiLimits(limits) {
     this.throttleRequestsMin = Math.max(1, limits.requestsMin);
     this.throttleRequestsMax = Math.max(1, limits.requestsMax);
@@ -157341,40 +157332,29 @@ var InstagramWebClient = class {
     this.attentionDriftChance = limits.attentionDriftChance ?? 0;
     this.attentionDriftMinMins = limits.attentionDriftMinMins ?? 5;
     this.attentionDriftMaxMins = limits.attentionDriftMaxMins ?? 15;
-    this.fatigueEnabled = !!limits.fatigueEnabled;
-    this.fatigueStrength = limits.fatigueStrength ?? 50;
-    this.fatigueRampCalls = Math.max(1, limits.fatigueRampCalls ?? 30);
   }
   async apiThrottle() {
-    this._sessionCallCount++;
     const slowest = this.throttleSecondsMax / Math.max(1, this.throttleRequestsMin);
     const fastest = this.throttleSecondsMin / Math.max(1, this.throttleRequestsMax);
-    const effectiveFastest = (() => {
-      if (!this.fatigueEnabled) return fastest;
-      const cycleLen = 2 * this.fatigueRampCalls;
-      const pos = this._sessionCallCount % cycleLen;
-      const fatigueFactor = pos < this.fatigueRampCalls ? pos / this.fatigueRampCalls : (cycleLen - pos) / this.fatigueRampCalls;
-      return fastest + fatigueFactor * (this.fatigueStrength / 100) * Math.max(0, slowest - fastest);
-    })();
     let delaySec;
     const lastDelay = this._lastDelaySec;
     if (this.momentumEnabled && lastDelay !== null && Math.random() * 100 < this.momentumChance) {
       const spread = this.momentumSpread / 100;
-      const lo = Math.max(effectiveFastest, lastDelay * (1 - spread));
+      const lo = Math.max(fastest, lastDelay * (1 - spread));
       const hi = Math.min(slowest, lastDelay * (1 + spread));
       delaySec = lo + Math.random() * Math.max(0, hi - lo);
     } else if (this.variationEnabled) {
       const roll = Math.random() * 100;
       if (roll < this.variationLowerChance) {
-        const floor = Math.max(0, effectiveFastest - this.variationLowerSecs);
-        delaySec = floor + Math.random() * Math.max(0, effectiveFastest - floor);
+        const floor = Math.max(0, fastest - this.variationLowerSecs);
+        delaySec = floor + Math.random() * Math.max(0, fastest - floor);
       } else if (roll < this.variationLowerChance + this.variationUpperChance) {
         delaySec = slowest + Math.random() * this.variationUpperSecs;
       } else {
-        delaySec = effectiveFastest + Math.random() * Math.max(0, slowest - effectiveFastest);
+        delaySec = fastest + Math.random() * Math.max(0, slowest - fastest);
       }
     } else {
-      delaySec = effectiveFastest + Math.random() * Math.max(0, slowest - effectiveFastest);
+      delaySec = fastest + Math.random() * Math.max(0, slowest - fastest);
     }
     this._lastDelaySec = delaySec;
     const delayMs = Math.floor(delaySec * 1e3);

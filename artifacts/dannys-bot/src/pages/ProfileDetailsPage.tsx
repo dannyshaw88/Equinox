@@ -393,7 +393,6 @@ export function ProfileDetailsPage() {
       label: "API & Performance",
       options: [
         { key: "apiLimits", label: "API Limits & Control", description: "Min/max calls and interval settings" },
-        { key: "fatigueSettings", label: "Fatigue", description: "Enabled state, strength % and ramp calls — merged into each target's existing API limits without overwriting their rate settings" },
       ],
     },
     {
@@ -460,40 +459,6 @@ export function ProfileDetailsPage() {
       patch.syncIntervalMax = formData.syncIntervalMax;
       patch.syncUseHiker = formData.syncUseHiker;
     }
-    // Fatigue fields live inside the apiLimits JSON blob. When apiLimits itself
-    // isn't selected wholesale, merge just the selected sub-fields into each
-    // target's existing apiLimits so the rest of their rate limit settings are
-    // never overwritten.
-    const needsLimitsMerge =
-      expandedKeys.includes("fatigueSettings") && !expandedKeys.includes("apiLimits");
-
-    if (needsLimitsMerge) {
-      const srcLimits = formData.apiLimits as any;
-      await Promise.all(targetIds.map(async (id) => {
-        const target = allProfiles?.find(p => p.id === id);
-        const existing = (target?.apiLimits as any) ?? {};
-        const merged: Record<string, any> = { ...existing };
-        if (expandedKeys.includes("fatigueSettings")) {
-          merged.fatigueEnabled    = srcLimits.fatigueEnabled ?? false;
-          merged.fatigueStrength   = srcLimits.fatigueStrength ?? 50;
-          merged.fatigueRampCalls  = srcLimits.fatigueRampCalls ?? 30;
-        }
-        const r = await fetch(`/api/profiles/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiLimits: merged }),
-          credentials: "include",
-        });
-        if (!r.ok) throw new Error(`Failed to update profile ${id}`);
-      }));
-      queryClient.invalidateQueries({ queryKey: ["/api/profiles"] });
-      targetIds.forEach(id => {
-        queryClient.invalidateQueries({ queryKey: ["/api/profiles/:id", id] });
-      });
-      toast({ title: "Settings copied", description: `Applied to ${targetIds.length} account${targetIds.length === 1 ? "" : "s"}.` });
-      return;
-    }
-
     if (Object.keys(patch).length === 0) {
       toast({ title: "Nothing to copy", description: "No settings were selected.", variant: "destructive" });
       return;
@@ -1433,40 +1398,6 @@ export function ProfileDetailsPage() {
                               <NumField min={0} className="h-7 text-xs w-[80px]" value={formData.apiLimits.everySecondsMax ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, everySecondsMax: Math.max(v, formData.apiLimits.everySecondsMin ?? 0)} })} />
                               <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max (ms)</Label>
                             </div>
-                          </div>
-                          {/* Fatigue */}
-                          <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1.5 border-t border-border/40 items-end">
-                            {/* Fatigue */}
-                            <div className="flex flex-col items-start space-y-0.5">
-                              <TooltipProvider delayDuration={300}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-bold shrink-0 h-6">
-                                      <input type="checkbox" checked={!!(formData.apiLimits as any).fatigueEnabled} onChange={e => updateField({ apiLimits: { ...formData.apiLimits, fatigueEnabled: e.target.checked } })} className="h-3.5 w-3.5 accent-primary cursor-pointer" />
-                                      Fatigue
-                                    </label>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-[300px] whitespace-normal leading-snug">
-                                    <p className="font-semibold mb-1">Fatigue</p>
-                                    <p>Gradually slows calls over a ramp period then speeds back up — mimics a human tiring and recovering in waves.</p>
-                                    <p className="mt-1.5 opacity-80 italic">e.g. 50% Strength, 30 Ramp Calls — over the first 30 calls the delay rises up to 50% toward the max, then falls back to normal over the next 30, repeating continuously.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                              <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block">&nbsp;</Label>
-                            </div>
-                            {!!(formData.apiLimits as any).fatigueEnabled && (
-                              <>
-                                <div className="flex flex-col items-center space-y-0.5">
-                                  <NumField min={0} max={100} className="h-6 text-xs w-[60px]" value={(formData.apiLimits as any).fatigueStrength ?? 50} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, fatigueStrength: Math.min(100, v) } })} />
-                                  <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Strength %</Label>
-                                </div>
-                                <div className="flex flex-col items-center space-y-0.5">
-                                  <NumField min={1} className="h-6 text-xs w-[60px]" value={(formData.apiLimits as any).fatigueRampCalls ?? 30} onChange={v => updateField({ apiLimits: { ...formData.apiLimits, fatigueRampCalls: Math.max(1, v) } })} />
-                                  <Label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Ramp Calls</Label>
-                                </div>
-                              </>
-                            )}
                           </div>
                         </div>
                       </div>

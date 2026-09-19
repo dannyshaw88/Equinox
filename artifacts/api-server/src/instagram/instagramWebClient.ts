@@ -566,11 +566,7 @@ export class InstagramWebClient {
   private attentionDriftChance  = 0;
   private attentionDriftMinMins = 5;
   private attentionDriftMaxMins = 15;
-  private fatigueEnabled        = false;
-  private fatigueStrength       = 50;
-  private fatigueRampCalls      = 30;
   private _lastDelaySec: number | null = null;
-  private _sessionCallCount     = 0;
 
   constructor(proxyUrl?: string, profileId?: number) {
     // ── IP-LEAK PREVENTION ──────────────────────────────────────────────────
@@ -645,7 +641,6 @@ export class InstagramWebClient {
     momentumEnabled?: boolean; momentumChance?: number; momentumSpread?: number;
     attentionDriftEnabled?: boolean; attentionDriftChance?: number;
     attentionDriftMinMins?: number; attentionDriftMaxMins?: number;
-    fatigueEnabled?: boolean; fatigueStrength?: number; fatigueRampCalls?: number;
   }) {
     this.throttleRequestsMin = Math.max(1, limits.requestsMin);
     this.throttleRequestsMax = Math.max(1, limits.requestsMax);
@@ -666,17 +661,12 @@ export class InstagramWebClient {
     this.attentionDriftChance    = limits.attentionDriftChance    ?? 0;
     this.attentionDriftMinMins   = limits.attentionDriftMinMins   ?? 5;
     this.attentionDriftMaxMins   = limits.attentionDriftMaxMins   ?? 15;
-    this.fatigueEnabled          = !!limits.fatigueEnabled;
-    this.fatigueStrength         = limits.fatigueStrength         ?? 50;
-    this.fatigueRampCalls        = Math.max(1, limits.fatigueRampCalls ?? 30);
-    // Reset per-session state when limits are (re)loaded at session start
-    this._sessionCallCount       = 0;
+    // Reset momentum state when limits are (re)loaded at session start.
     this._lastDelaySec           = null;
   }
 
-  // Updates throttle parameters without resetting per-session state (_sessionCallCount,
-  // _lastDelaySec). Call this when applying user-changed settings to an already-running
-  // client so fatigue and momentum continuity are preserved.
+  // Updates throttle parameters without resetting momentum state. Call this when
+  // applying user-changed settings to an already-running client.
   updateApiLimits(limits: {
     requestsMin: number; requestsMax: number;
     everySecondsMin: number; everySecondsMax: number;
@@ -686,7 +676,6 @@ export class InstagramWebClient {
     momentumEnabled?: boolean; momentumChance?: number; momentumSpread?: number;
     attentionDriftEnabled?: boolean; attentionDriftChance?: number;
     attentionDriftMinMins?: number; attentionDriftMaxMins?: number;
-    fatigueEnabled?: boolean; fatigueStrength?: number; fatigueRampCalls?: number;
   }) {
     this.throttleRequestsMin = Math.max(1, limits.requestsMin);
     this.throttleRequestsMax = Math.max(1, limits.requestsMax);
@@ -705,11 +694,8 @@ export class InstagramWebClient {
     this.attentionDriftChance    = limits.attentionDriftChance    ?? 0;
     this.attentionDriftMinMins   = limits.attentionDriftMinMins   ?? 5;
     this.attentionDriftMaxMins   = limits.attentionDriftMaxMins   ?? 15;
-    this.fatigueEnabled          = !!limits.fatigueEnabled;
-    this.fatigueStrength         = limits.fatigueStrength         ?? 50;
-    this.fatigueRampCalls        = Math.max(1, limits.fatigueRampCalls ?? 30);
-    // NOTE: _sessionCallCount and _lastDelaySec are intentionally NOT reset here
-    // so fatigue ramp and momentum continuity are preserved across live limit changes.
+    // NOTE: _lastDelaySec is intentionally NOT reset here so momentum continuity
+    // is preserved across live limit changes.
   }
 
   private async apiThrottle(): Promise<void> {
@@ -723,25 +709,8 @@ export class InstagramWebClient {
     //   slowest = everySecondsMax / requestsMin  (most seconds for fewest calls)
     //   fastest = everySecondsMin / requestsMax  (fewest seconds for most calls)
     // Both are valid configs; we pick a random point between them each call.
-    this._sessionCallCount++;
     const slowest = this.throttleSecondsMax / Math.max(1, this.throttleRequestsMin);
     const fastest = this.throttleSecondsMin / Math.max(1, this.throttleRequestsMax);
-
-    // Fatigue: the effective lower bound oscillates as a triangle wave over the session.
-    // It rises from fastest→(fastest+drift) over fatigueRampCalls calls, then falls back,
-    // then rises again — repeating throughout the session so no stretch of calls is ever
-    // stuck at a fixed timing.
-    // fatigueFactor: 0→1 over rampCalls, 1→0 over the next rampCalls, then repeats.
-    // effectiveFastest = fastest + fatigueFactor * (strength/100) * (slowest - fastest)
-    const effectiveFastest = (() => {
-      if (!this.fatigueEnabled) return fastest;
-      const cycleLen = 2 * this.fatigueRampCalls;
-      const pos = this._sessionCallCount % cycleLen;
-      const fatigueFactor = pos < this.fatigueRampCalls
-        ? pos / this.fatigueRampCalls           // rising  0→1
-        : (cycleLen - pos) / this.fatigueRampCalls; // falling 1→0
-      return fastest + fatigueFactor * (this.fatigueStrength / 100) * Math.max(0, slowest - fastest);
-    })();
 
     let delaySec: number;
     const lastDelay = this._lastDelaySec;
@@ -750,23 +719,23 @@ export class InstagramWebClient {
       // Momentum: bias toward the previous call's delay (inertia).
       // Clamp within [fastest, slowest] so momentum never escapes the safe range.
       const spread = this.momentumSpread / 100;
-      const lo = Math.max(effectiveFastest, lastDelay * (1 - spread));
+      const lo = Math.max(fastest, lastDelay * (1 - spread));
       const hi = Math.min(slowest, lastDelay * (1 + spread));
       delaySec = lo + Math.random() * Math.max(0, hi - lo);
     } else if (this.variationEnabled) {
       const roll = Math.random() * 100;
       if (roll < this.variationLowerChance) {
-        // Variation — go below normal range (faster than usual; fatigue floor still applies)
-        const floor = Math.max(0, effectiveFastest - this.variationLowerSecs);
-        delaySec = floor + Math.random() * Math.max(0, effectiveFastest - floor);
+        // Variation — go below the normal range (faster than usual).
+        const floor = Math.max(0, fastest - this.variationLowerSecs);
+        delaySec = floor + Math.random() * Math.max(0, fastest - floor);
       } else if (roll < this.variationLowerChance + this.variationUpperChance) {
         // Variation — go above normal range (slower than usual)
         delaySec = slowest + Math.random() * this.variationUpperSecs;
       } else {
-        delaySec = effectiveFastest + Math.random() * Math.max(0, slowest - effectiveFastest);
+        delaySec = fastest + Math.random() * Math.max(0, slowest - fastest);
       }
     } else {
-      delaySec = effectiveFastest + Math.random() * Math.max(0, slowest - effectiveFastest);
+      delaySec = fastest + Math.random() * Math.max(0, slowest - fastest);
     }
 
     this._lastDelaySec = delaySec;
