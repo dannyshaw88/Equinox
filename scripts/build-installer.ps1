@@ -21,6 +21,11 @@ function Invoke-PnpmCommand {
 
 Write-Host "Building Equinox installer..." -ForegroundColor Green
 
+# A fresh Windows checkout may have the repository files but no complete
+# workspace dependency links. Install before any package build so missing
+# transitive packages (for example nanoid) do not fail inside the build.
+Invoke-PnpmCommand -Arguments @("install", "--no-frozen-lockfile")
+
 # The Electron bundle expects both of these dist directories to exist.
 Invoke-PnpmCommand -Arguments @("--filter", "@workspace/api-server", "run", "build")
 Invoke-PnpmCommand -Arguments @("--filter", "@workspace/dannys-bot", "run", "build")
