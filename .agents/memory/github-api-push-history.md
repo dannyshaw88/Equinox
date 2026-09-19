@@ -8,3 +8,9 @@ When shell-based HTTPS authentication fails, the authorized GitHub connector can
 **Why:** A remote commit containing the right files but a different commit history still appears in Replit as local commits that are not pushed. Replit's Git panel compares commit ancestry, not only file contents.
 
 **How to apply:** Use the connector's authenticated GitHub API when the shell remote rejects credentials. Include commit-message trailers and the final newline when matching local SHAs, verify the remote ref equals local HEAD, and then refresh the local remote-tracking ref.
+
+For large tracked text files, do not source commit content from `shellExec` output: its returned text can be truncated even when a larger limit is requested. Use the workspace file reader and verify the blob SHA before creating the tree.
+
+**Why:** A truncated blob can still create successfully on GitHub, but it produces a different tree and commit and leaves misleading orphaned Git objects.
+
+**How to apply:** Read the complete file with `readFile` within its byte limit, upload it as UTF-8 through the connector, and compare the returned blob and tree SHAs with local Git before updating the branch ref.
