@@ -21,10 +21,52 @@ function Invoke-PnpmCommand {
 
 Write-Host "Building Equinox installer..." -ForegroundColor Green
 
+# Remove stale pnpm virtual-store links from the root and workspace packages.
+# A previous install can retain an old virtual lockfile that omits Rollup's
+# Windows native optional package, even after pnpm-lock.yaml is corrected.
+$nodeModulesDirectories = @(
+    Join-Path $repoRoot "node_modules"
+)
+
+foreach ($workspaceDirectoryName in @("artifacts", "lib", "scripts")) {
+    $workspaceDirectory = Join-Path $repoRoot $workspaceDirectoryName
+    if (Test-Path -LiteralPath $workspaceDirectory) {
+        $nodeModulesDirectories += Get-ChildItem `
+            -LiteralPath $workspaceDirectory `
+            -Directory `
+            -Force `
+            -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                Join-Path $_.FullName "node_modules"
+            }
+    }
+}
+
+foreach ($nodeModulesDirectory in ($nodeModulesDirectories | Sort-Object { $_.Length } -Descending)) {
+    if (Test-Path -LiteralPath $nodeModulesDirectory) {
+        Write-Host "Removing stale dependency links: $nodeModulesDirectory" -ForegroundColor DarkYellow
+        Remove-Item -LiteralPath $nodeModulesDirectory -Recurse -Force
+    }
+}
+
 # A fresh Windows checkout may have the repository files but no complete
-# workspace dependency links. Force pnpm to repair platform-specific optional
-# packages too; stale installs commonly omit Rollup's Windows native package.
+# workspace dependency links. Force pnpm to install platform-specific optional
+# packages too.
 Invoke-PnpmCommand -Arguments @("install", "--force", "--no-frozen-lockfile")
+
+if ($env:OS -eq "Windows_NT") {
+    $pnpmStoreDirectory = Join-Path $repoRoot "node_modules\.pnpm"
+    $windowsRollupPackage = Get-ChildItem `
+        -LiteralPath $pnpmStoreDirectory `
+        -Directory `
+        -Filter "@rollup+rollup-win32-x64-msvc@*" `
+        -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+
+    if ($null -eq $windowsRollupPackage) {
+        throw "pnpm install completed, but @rollup/rollup-win32-x64-msvc was not installed. Remove any package-lock.json in the repository and rerun this script."
+    }
+}
 
 # The Electron bundle expects both of these dist directories to exist.
 Invoke-PnpmCommand -Arguments @("--filter", "@workspace/api-server", "run", "build")
