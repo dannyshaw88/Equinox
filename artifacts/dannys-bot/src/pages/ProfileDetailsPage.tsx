@@ -1426,6 +1426,184 @@ export function ProfileDetailsPage() {
                     </AlertDialogContent>
                   </AlertDialog>
 
+                  {/* ── Device Fingerprint ── */}
+                  <div className="pt-4 border-t border-border mt-4 space-y-4">
+                    <h4 className="text-sm font-bold flex items-center gap-2"><Shield className="w-4 h-4 text-primary" /> Device Fingerprint</h4>
+
+                    {/* Computed identity chips — derived from the embedded UA seed */}
+                    {formData.userAgentEmbedded && (() => {
+                      const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
+                      const battColor = fp.batteryPct > 25 ? "text-green-600" : fp.batteryPct > 5 ? "text-amber-600" : "text-red-600";
+                      const battBar   = fp.batteryPct > 25 ? "bg-green-400"  : fp.batteryPct > 5 ? "bg-amber-400"  : "bg-red-400";
+                      const Chip = ({ icon: Icon, label, value, iconCls }: { icon: React.ElementType; label: string; value: string; iconCls?: string }) => (
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
+                          <Icon className={`w-3 h-3 shrink-0 ${iconCls ?? "text-slate-500"}`} />
+                          <span className="text-slate-400 font-medium">{label}</span>
+                          <span className="font-semibold text-slate-700">{value}</span>
+                        </div>
+                      );
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            <Chip icon={Smartphone}  label="Device"  value={fp.device}                                              iconCls="text-indigo-500" />
+                            <Chip icon={Monitor}     label="Screen"  value={`${fp.sw}×${fp.sh} @${fp.dpr}x`}                       iconCls="text-slate-500"  />
+                            <Chip icon={Cpu}         label="CPU"     value={`${fp.cores} cores`}                                    iconCls="text-orange-500" />
+                            <Chip icon={Server}      label="RAM"     value={`${fp.mem} GB`}                                         iconCls="text-purple-500" />
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
+                              {fp.charging
+                                ? <BatteryCharging className="w-3 h-3 shrink-0 text-green-500" />
+                                : <Battery className={`w-3 h-3 shrink-0 ${battColor}`} />}
+                              <span className="text-slate-400 font-medium">Battery</span>
+                              <div className="w-12 h-1 rounded-full bg-slate-200 overflow-hidden mx-0.5">
+                                <div className={`h-full rounded-full ${battBar}`} style={{ width: `${fp.batteryPct}%` }} />
+                              </div>
+                              <span className={`font-semibold ${battColor}`}>{fp.batteryPct}%{fp.charging ? " ⚡" : ""}</span>
+                            </div>
+                            <Chip icon={Wifi}        label={fp.connType} value={`${fp.downlink} Mbps`}                              iconCls="text-blue-500"   />
+                            <Chip icon={MapPin}      label="TZ"      value={fp.timezone}                                             iconCls="text-teal-500"   />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">API User Agent</label>
+                      <UaPickerDropdown
+                        value={formData.userAgentApi ?? ""}
+                        onSelect={handleUaDeviceSelect}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                        Embedded Browser Agent
+                        <span className="ml-2 text-[9px] font-normal text-muted-foreground/60 normal-case tracking-normal">(auto-matched when picking a device)</span>
+                      </label>
+                      <input
+                        className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        style={{ width: `${Math.max(22, (formData.userAgentEmbedded || "Browser-like User Agent...").length + 6)}ch` }}
+                        value={formData.userAgentEmbedded}
+                        onChange={e => updateField({ userAgentEmbedded: e.target.value })}
+                        placeholder="Browser-like User Agent..."
+                      />
+                    </div>
+
+                    {/* ── Browser Fingerprint Preview ── */}
+                    {formData.userAgentEmbedded && (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowFingerprintPreview(v => !v)}
+                          className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary transition-colors select-none"
+                        >
+                          <Fingerprint className="w-3.5 h-3.5 text-primary" />
+                          Browser Fingerprint Preview
+                          <span className="text-[10px] text-slate-400 font-normal normal-case ml-1">— what the Leak Tool measures</span>
+                          <span className="ml-auto text-[10px]">{showFingerprintPreview ? "▲" : "▼"}</span>
+                        </button>
+                      </div>
+                    )}
+                    {formData.userAgentEmbedded && showFingerprintPreview && (() => {
+                      const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
+                      const isMob = formData.userAgentEmbedded.includes("Mobile") && formData.userAgentEmbedded.includes("Android");
+
+                      const fmtTime = (secs: number, isCharging: boolean) => {
+                        if (isCharging && secs === 0) return "Full";
+                        if (!isCharging && secs >= 86400) return "∞";
+                        const h = Math.floor(secs / 3600);
+                        const m = Math.floor((secs % 3600) / 60);
+                        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                      };
+
+                      const Row = ({ label, value, muted }: { label: string; value: string; muted?: boolean }) => (
+                        <div className="flex items-center justify-between py-[3px]">
+                          <span className="text-[11px] text-slate-400">{label}</span>
+                          <span className={`text-[11px] font-semibold ${muted ? "text-slate-400" : "text-slate-700"}`}>{value}</span>
+                        </div>
+                      );
+
+                      const Pass = ({ label }: { label: string }) => (
+                        <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded px-2 py-1">
+                          <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" />
+                          <span className="text-[11px] font-semibold text-green-700">{label}</span>
+                        </div>
+                      );
+
+                      return (
+                        <div className="border border-slate-200 rounded-lg overflow-hidden mt-2">
+                          <div className="grid grid-cols-2 divide-x divide-slate-100">
+                            {/* Screen & Hardware */}
+                            <div className="px-3 py-2 space-y-0">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Monitor className="w-3 h-3" /> Screen &amp; Hardware</p>
+                              <Row label="Touch Points" value={isMob ? "10" : "0"} />
+                              <Row label="Platform" value={isMob ? "Linux armv8l" : "Win32"} />
+                              <Row label="Color Depth" value="24 bit" />
+                              <Row label="Orientation" value={isMob ? "Portrait (0°)" : "Landscape (0°)"} />
+                              <Row label="Available" value={`${fp.sw}×${fp.sh - (isMob ? 30 : 40)}`} />
+                            </div>
+                            {/* Battery */}
+                            <div className="px-3 py-2 space-y-0">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Battery className="w-3 h-3" /> Battery API</p>
+                              <Row label="Level" value={`${fp.batteryPct}%${fp.charging ? " ⚡" : ""}`} />
+                              <Row label="Charging" value={fp.charging ? "Yes" : "No"} />
+                              <Row
+                                label={fp.charging ? "Time to Full" : "Time Remaining"}
+                                value={fmtTime(fp.chargeOrDischargeTime, fp.charging)}
+                              />
+                              <Row label={fp.charging ? "Discharging Time" : "Charging Time"} value="∞" muted />
+                            </div>
+                            {/* Network */}
+                            <div className="px-3 py-2 space-y-0">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Wifi className="w-3 h-3" /> Network Info</p>
+                              <Row label="Type" value={fp.connType} />
+                              <Row label="Effective Type" value="4G" />
+                              <Row label="Downlink" value={`${fp.downlink} Mbps`} />
+                              <Row label="RTT" value={`${fp.rtt} ms`} />
+                              <Row label="Save Data" value="No" />
+                            </div>
+                            {/* Protections */}
+                            <div className="px-3 py-2">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Stealth Protections</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                <Pass label="WebRTC Blocked" />
+                                <Pass label="Canvas Protected" />
+                                <Pass label="Audio Protected" />
+                                <Pass label="webdriver Hidden" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── UA device-change confirmation dialog ── */}
+                    <AlertDialog open={uaChangeConfirmOpen} onOpenChange={setUaChangeConfirmOpen}>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Change Device?</AlertDialogTitle>
+                          <AlertDialogDescription className="space-y-2">
+                            <span className="block">
+                              Switching to <strong>{pendingUa ? (() => { const p = pendingUa.api.split("; "); return `${p[3] ?? ""} ${p[4] ?? ""}`; })() : ""}</strong> will:
+                            </span>
+                            <ul className="list-disc pl-5 space-y-1 text-sm">
+                              <li>Reset all Device IDs (UUID, Phone ID, Advertising ID)</li>
+                              <li>Log you out of the current embedded browser session</li>
+                              <li>Clear all stored cookies for this account</li>
+                            </ul>
+                            <span className="block pt-1">
+                              The account will be set to <strong>Pending</strong> and will need to be re-verified before automation resumes.
+                            </span>
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel onClick={() => setPendingUa(null)}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleUaChangeConfirm}>
+                            Yes, Change Device
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+
                   {/* ── Active Timer ── */}
                   <div className="space-y-4 pt-4 border-t border-border mt-4">
                     <div className="flex items-center gap-2">
@@ -1764,184 +1942,6 @@ export function ProfileDetailsPage() {
             </div>
           </div>
           )}
-
-           {/* ── Device Fingerprint — kept at the bottom of Account Settings ── */}
-           <div className="pt-4 border-t border-border mt-4 space-y-4">
-             <h4 className="text-sm font-bold flex items-center gap-2"><Shield className="w-4 h-4 text-primary" /> Device Fingerprint</h4>
-
-             {/* Computed identity chips — derived from the embedded UA seed */}
-             {formData.userAgentEmbedded && (() => {
-               const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
-               const battColor = fp.batteryPct > 25 ? "text-green-600" : fp.batteryPct > 5 ? "text-amber-600" : "text-red-600";
-               const battBar   = fp.batteryPct > 25 ? "bg-green-400"  : fp.batteryPct > 5 ? "bg-amber-400"  : "bg-red-400";
-               const Chip = ({ icon: Icon, label, value, iconCls }: { icon: React.ElementType; label: string; value: string; iconCls?: string }) => (
-                 <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
-                   <Icon className={`w-3 h-3 shrink-0 ${iconCls ?? "text-slate-500"}`} />
-                   <span className="text-slate-400 font-medium">{label}</span>
-                   <span className="font-semibold text-slate-700">{value}</span>
-                 </div>
-               );
-               return (
-                 <div className="space-y-2">
-                   <div className="flex flex-wrap gap-1.5">
-                     <Chip icon={Smartphone}  label="Device"  value={fp.device}                                              iconCls="text-indigo-500" />
-                     <Chip icon={Monitor}     label="Screen"  value={`${fp.sw}×${fp.sh} @${fp.dpr}x`}                       iconCls="text-slate-500"  />
-                     <Chip icon={Cpu}         label="CPU"     value={`${fp.cores} cores`}                                    iconCls="text-orange-500" />
-                     <Chip icon={Server}      label="RAM"     value={`${fp.mem} GB`}                                         iconCls="text-purple-500" />
-                     <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
-                       {fp.charging
-                         ? <BatteryCharging className="w-3 h-3 shrink-0 text-green-500" />
-                         : <Battery className={`w-3 h-3 shrink-0 ${battColor}`} />}
-                       <span className="text-slate-400 font-medium">Battery</span>
-                       <div className="w-12 h-1 rounded-full bg-slate-200 overflow-hidden mx-0.5">
-                         <div className={`h-full rounded-full ${battBar}`} style={{ width: `${fp.batteryPct}%` }} />
-                       </div>
-                       <span className={`font-semibold ${battColor}`}>{fp.batteryPct}%{fp.charging ? " ⚡" : ""}</span>
-                     </div>
-                     <Chip icon={Wifi}        label={fp.connType} value={`${fp.downlink} Mbps`}                              iconCls="text-blue-500"   />
-                     <Chip icon={MapPin}      label="TZ"      value={fp.timezone}                                             iconCls="text-teal-500"   />
-                   </div>
-                 </div>
-               );
-             })()}
-
-             <div className="space-y-2">
-               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">API User Agent</label>
-               <UaPickerDropdown
-                 value={formData.userAgentApi ?? ""}
-                 onSelect={handleUaDeviceSelect}
-               />
-             </div>
-             <div className="space-y-2">
-               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
-                 Embedded Browser Agent
-                 <span className="ml-2 text-[9px] font-normal text-muted-foreground/60 normal-case tracking-normal">(auto-matched when picking a device)</span>
-               </label>
-               <input
-                 className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                 style={{ width: `${Math.max(22, (formData.userAgentEmbedded || "Browser-like User Agent...").length + 6)}ch` }}
-                 value={formData.userAgentEmbedded}
-                 onChange={e => updateField({ userAgentEmbedded: e.target.value })}
-                 placeholder="Browser-like User Agent..."
-               />
-             </div>
-
-             {/* ── Browser Fingerprint Preview ── */}
-             {formData.userAgentEmbedded && (
-               <div className="mt-2">
-                 <button
-                   type="button"
-                   onClick={() => setShowFingerprintPreview(v => !v)}
-                   className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary transition-colors select-none"
-                 >
-                   <Fingerprint className="w-3.5 h-3.5 text-primary" />
-                   Browser Fingerprint Preview
-                   <span className="text-[10px] text-slate-400 font-normal normal-case ml-1">— what the Leak Tool measures</span>
-                   <span className="ml-auto text-[10px]">{showFingerprintPreview ? "▲" : "▼"}</span>
-                 </button>
-               </div>
-             )}
-             {formData.userAgentEmbedded && showFingerprintPreview && (() => {
-               const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
-               const isMob = formData.userAgentEmbedded.includes("Mobile") && formData.userAgentEmbedded.includes("Android");
-
-               const fmtTime = (secs: number, isCharging: boolean) => {
-                 if (isCharging && secs === 0) return "Full";
-                 if (!isCharging && secs >= 86400) return "∞";
-                 const h = Math.floor(secs / 3600);
-                 const m = Math.floor((secs % 3600) / 60);
-                 return h > 0 ? `${h}h ${m}m` : `${m}m`;
-               };
-
-               const Row = ({ label, value, muted }: { label: string; value: string; muted?: boolean }) => (
-                 <div className="flex items-center justify-between py-[3px]">
-                   <span className="text-[11px] text-slate-400">{label}</span>
-                   <span className={`text-[11px] font-semibold ${muted ? "text-slate-400" : "text-slate-700"}`}>{value}</span>
-                 </div>
-               );
-
-               const Pass = ({ label }: { label: string }) => (
-                 <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded px-2 py-1">
-                   <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" />
-                   <span className="text-[11px] font-semibold text-green-700">{label}</span>
-                 </div>
-               );
-
-               return (
-                 <div className="border border-slate-200 rounded-lg overflow-hidden mt-2">
-                   <div className="grid grid-cols-2 divide-x divide-slate-100">
-                     {/* Screen & Hardware */}
-                     <div className="px-3 py-2 space-y-0">
-                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Monitor className="w-3 h-3" /> Screen &amp; Hardware</p>
-                       <Row label="Touch Points" value={isMob ? "10" : "0"} />
-                       <Row label="Platform" value={isMob ? "Linux armv8l" : "Win32"} />
-                       <Row label="Color Depth" value="24 bit" />
-                       <Row label="Orientation" value={isMob ? "Portrait (0°)" : "Landscape (0°)"} />
-                       <Row label="Available" value={`${fp.sw}×${fp.sh - (isMob ? 30 : 40)}`} />
-                     </div>
-                     {/* Battery */}
-                     <div className="px-3 py-2 space-y-0">
-                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Battery className="w-3 h-3" /> Battery API</p>
-                       <Row label="Level" value={`${fp.batteryPct}%${fp.charging ? " ⚡" : ""}`} />
-                       <Row label="Charging" value={fp.charging ? "Yes" : "No"} />
-                       <Row
-                         label={fp.charging ? "Time to Full" : "Time Remaining"}
-                         value={fmtTime(fp.chargeOrDischargeTime, fp.charging)}
-                       />
-                       <Row label={fp.charging ? "Discharging Time" : "Charging Time"} value="∞" muted />
-                     </div>
-                     {/* Network */}
-                     <div className="px-3 py-2 space-y-0">
-                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Wifi className="w-3 h-3" /> Network Info</p>
-                       <Row label="Type" value={fp.connType} />
-                       <Row label="Effective Type" value="4G" />
-                       <Row label="Downlink" value={`${fp.downlink} Mbps`} />
-                       <Row label="RTT" value={`${fp.rtt} ms`} />
-                       <Row label="Save Data" value="No" />
-                     </div>
-                     {/* Protections */}
-                     <div className="px-3 py-2">
-                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Stealth Protections</p>
-                       <div className="flex flex-wrap gap-1.5">
-                         <Pass label="WebRTC Blocked" />
-                         <Pass label="Canvas Protected" />
-                         <Pass label="Audio Protected" />
-                         <Pass label="webdriver Hidden" />
-                       </div>
-                     </div>
-                   </div>
-                 </div>
-               );
-             })()}
-
-             {/* ── UA device-change confirmation dialog ── */}
-             <AlertDialog open={uaChangeConfirmOpen} onOpenChange={setUaChangeConfirmOpen}>
-               <AlertDialogContent>
-                 <AlertDialogHeader>
-                   <AlertDialogTitle>Change Device?</AlertDialogTitle>
-                   <AlertDialogDescription className="space-y-2">
-                     <span className="block">
-                       Switching to <strong>{pendingUa ? (() => { const p = pendingUa.api.split("; "); return `${p[3] ?? ""} ${p[4] ?? ""}`; })() : ""}</strong> will:
-                     </span>
-                     <ul className="list-disc pl-5 space-y-1 text-sm">
-                       <li>Reset all Device IDs (UUID, Phone ID, Advertising ID)</li>
-                       <li>Log you out of the current embedded browser session</li>
-                       <li>Clear all stored cookies for this account</li>
-                     </ul>
-                     <span className="block pt-1">
-                       The account will be set to <strong>Pending</strong> and will need to be re-verified before automation resumes.
-                     </span>
-                   </AlertDialogDescription>
-                 </AlertDialogHeader>
-                 <AlertDialogFooter>
-                   <AlertDialogCancel onClick={() => setPendingUa(null)}>Cancel</AlertDialogCancel>
-                   <AlertDialogAction onClick={handleUaChangeConfirm}>
-                     Yes, Change Device
-                   </AlertDialogAction>
-                 </AlertDialogFooter>
-               </AlertDialogContent>
-             </AlertDialog>
-           </div>
 
           <div className="border-t border-border mt-3" />
           </div>{/* end flex-1 left column */}
