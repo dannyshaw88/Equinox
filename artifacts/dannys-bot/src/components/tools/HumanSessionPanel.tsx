@@ -755,7 +755,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       <div className="flex items-center gap-1.5">
         <Label className="text-xs text-muted-foreground uppercase">Min</Label>
         <div className="relative">
-          <NumField min={0} max={100} className="w-16 h-7 text-xs pr-5"
+          <NumField min={0} max={100} className="w-14 h-7 text-xs pr-5"
             value={settings[minKey] ?? 0}
             onChange={(v) => setSettings({ ...settings, [minKey]: v })}
           />
@@ -765,7 +765,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       <div className="flex items-center gap-1.5">
         <Label className="text-xs text-muted-foreground uppercase">Max</Label>
         <div className="relative">
-          <NumField min={0} max={100} className="w-16 h-7 text-xs pr-5"
+          <NumField min={0} max={100} className="w-14 h-7 text-xs pr-5"
             value={settings[maxKey] ?? 0}
             onChange={(v) => setSettings({ ...settings, [maxKey]: v })}
           />
