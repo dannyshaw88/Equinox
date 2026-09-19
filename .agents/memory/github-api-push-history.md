@@ -9,6 +9,8 @@ When shell-based HTTPS authentication fails, the authorized GitHub connector can
 
 **How to apply:** Use the connector's authenticated GitHub API when the shell remote rejects credentials. Include commit-message trailers and the final newline when matching local SHAs, verify the remote ref equals local HEAD, and then refresh the local remote-tracking ref.
 
+**How to apply:** GitHub's Git Data commit endpoint omits the final commit-message newline unless the `message` payload includes one explicitly. Add `\n` and compare the returned commit SHA before updating the branch ref.
+
 For large tracked text files, do not source commit content from `shellExec` output: its returned text can be truncated even when a larger limit is requested. Use the workspace file reader and verify the blob SHA before creating the tree.
 
 **Why:** A truncated blob can still create successfully on GitHub, but it produces a different tree and commit and leaves misleading orphaned Git objects.
