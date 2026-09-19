@@ -2033,12 +2033,17 @@ export class InstagramWebClient {
         softGateErr.httpStatus = res.status;
         throw softGateErr;
       }
-      // Extract the message Instagram sent (may be empty for plain session-expired 400s).
-      // Fall back to "login_required" so getAccountLevelStatus() classifies it as
-      // "logged_out" and applyAccountLevelError() marks the account for re-verification.
-      const bodyMsg: string = (res.json as any)?.message ?? "";
+      // Extract the message Instagram sent. Do not turn an arbitrary 4xx/5xx
+      // into "login_required": endpoints such as news/activities can fail
+      // because Instagram rejects that specific request while the session is
+      // still valid. Only an explicit auth response (or HTTP 401) may cause
+      // the engine to mark the account logged_out.
+      const bodyMsg: string = String((res.json as any)?.message ?? "").trim();
       const logoutReason: number | undefined = (res.json as any)?.logout_reason;
-      const errMsg = bodyMsg || "login_required";
+      const responseText = `${bodyMsg} ${String(res.rawBody ?? "").slice(0, 500)}`;
+      const explicitAuthError = res.status === 401
+        || /login_required|logged_out|logout_reason|checkpoint_required|not authorized|session expired|not logged in/i.test(responseText);
+      const errMsg = bodyMsg || (explicitAuthError ? "login_required" : `instagram_http_${res.status}`);
       // When Instagram includes logout_reason, the session is server-side dead.
       // Bake it into the thrown error as "session_expired — ..." so callers like
       // viewStories / viewHighlights propagate it to the engine's session_expired

@@ -158470,9 +158470,11 @@ var InstagramWebClient = class {
         softGateErr.httpStatus = res.status;
         throw softGateErr;
       }
-      const bodyMsg = res.json?.message ?? "";
+      const bodyMsg = String(res.json?.message ?? "").trim();
       const logoutReason = res.json?.logout_reason;
-      const errMsg = bodyMsg || "login_required";
+      const responseText = `${bodyMsg} ${String(res.rawBody ?? "").slice(0, 500)}`;
+      const explicitAuthError = res.status === 401 || /login_required|logged_out|logout_reason|checkpoint_required|not authorized|session expired|not logged in/i.test(responseText);
+      const errMsg = bodyMsg || (explicitAuthError ? "login_required" : `instagram_http_${res.status}`);
       const throwMsg = logoutReason !== void 0 ? `session_expired \u2014 ${errMsg} | logout_reason:${logoutReason}` : errMsg;
       console.warn(`[webClient] mobileSessionGet ${path6} \u2192 HTTP ${res.status} (${errMsg}${logoutReason !== void 0 ? ` [SESSION-KILL logout_reason:${logoutReason}]` : ""}): ${res.rawBody.slice(0, 200)}`);
       this._logTransport(path6, "GET", Date.now() - _t0, true);
