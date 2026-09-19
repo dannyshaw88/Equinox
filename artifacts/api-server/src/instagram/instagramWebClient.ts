@@ -4166,43 +4166,6 @@ export class InstagramWebClient {
     });
   }
 
-  // ── Share a story slide to a random DM thread ─────────────────────────────
-  // Fetches the DM inbox to find an existing thread, picks one at random,
-  // and sends the story as a story_share broadcast — exactly what the share
-  // button on a story does.  The inbox fetch here is a prerequisite for
-  // finding a thread ID — it is NOT a "check DMs" action.
-  async shareStoryViaDm(mediaId: string, ownerId: string): Promise<boolean> {
-    return this.timed("ShareStoryViaDM", async () => {
-      const j = this.isLoggedIn
-        ? await this.webGet(`/api/v1/direct_v2/inbox/?limit=20`)
-        : await this.mobileSessionGet(`/api/v1/direct_v2/inbox/?visual_message_return_type=unseen&thread_message_limit=1&limit=20`);
-      const threads: any[] = j?.inbox?.threads ?? j?.threads ?? [];
-      if (!threads.length) {
-        console.log(`[webClient] shareStoryViaDm: no DM threads found — skipping share`);
-        return false;
-      }
-      const thread = threads[Math.floor(Math.random() * threads.length)];
-      const threadId: string = thread?.thread_id ?? thread?.id ?? "";
-      if (!threadId) return false;
-
-      const clientCtx = randomUUID();
-      const body = new URLSearchParams({
-        story_media_id: mediaId,
-        reel_id: ownerId,
-        thread_ids: JSON.stringify([threadId]),
-        action: "send_item",
-        client_context: clientCtx,
-        offline_threading_id: clientCtx,
-        is_shh_mode: "0",
-      }).toString();
-
-      const resp = await this._mobileDmPost(`/api/v1/direct_v2/threads/broadcast/story_share/`, body);
-      const ok = resp?.status === "ok";
-      if (!ok) console.log(`[webClient] shareStoryViaDm response:`, JSON.stringify(resp)?.slice(0, 300));
-      return ok;
-    }, (r) => r ? "Shared story via DM" : "Story share skipped (no threads)");
-  }
-
   // ── Check direct messages inbox ──────────────────────────────────────────
   // Fetches the main DM inbox to simulate a user checking their messages.
   async getDirectMessages(count: number = 5): Promise<boolean> {

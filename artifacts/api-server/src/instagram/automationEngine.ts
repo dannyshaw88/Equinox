@@ -5153,30 +5153,6 @@ class AutomationEngine {
               }
             }
 
-            // ── Story slide shares via DM ─────────────────────────────────
-            const storySharePctMin = Number(s.storySharePctMin ?? 0);
-            const storySharePctMax = Number(s.storySharePctMax ?? 0);
-            if (storySharePctMax > 0 && storyItems.length > 0) {
-              const pct = randInt(storySharePctMin, storySharePctMax);
-              const exactCount = storyItems.length * pct / 100;
-              const shareCount = Math.floor(exactCount) + (Math.random() < (exactCount % 1) ? 1 : 0);
-              if (shareCount > 0) {
-                const shuffled = [...storyItems].sort(() => Math.random() - 0.5);
-                for (const item of shuffled.slice(0, shareCount)) {
-                  try {
-                    const ok = await client.shareStoryViaDm(item.mediaId, item.userId);
-                    if (ok) {
-                      console.log(`[engine] @${profile.username}: 📤 shared story slide ${item.mediaId} via DM`);
-                      this.logAction(profile.id, tool.id, "share_story_via_dm", "", item.mediaId, "story", "ok", "Shared story slide via DM");
-                    }
-                  } catch (e: any) {
-                    console.warn(`[engine] @${profile.username}: story share error: ${e?.message}`);
-                  }
-                }
-              } else {
-                console.log(`[engine] @${profile.username}: ⏭ story share% rolled 0 (${pct}% of ${storyItems.length} slides)`);
-              }
-            }
           }
         } catch (e: any) {
           if (await checkSessionErr(e, "check_timeline_stories")) return;
