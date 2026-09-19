@@ -152,12 +152,20 @@ Invoke-PnpmCommand -Arguments @("--filter", "@workspace/api-server", "run", "bui
 Invoke-PnpmCommand -Arguments @("--filter", "@workspace/dannys-bot", "run", "build")
 Invoke-PnpmCommand -Arguments @("--filter", "@workspace/electron", "run", "build")
 
+$electronProjectDirectory = Join-Path $repoRoot "artifacts\electron"
+$electronEntryPoint = Join-Path $electronProjectDirectory "dist\main.js"
+if (-not (Test-Path -LiteralPath $electronEntryPoint -PathType Leaf)) {
+    throw "Electron build completed without producing the expected entry file: $electronEntryPoint"
+}
+
 # Do not use the package.json 'package' script: it publishes automatically.
 Invoke-PnpmCommand -Arguments @(
     "--filter",
     "@workspace/electron",
     "exec",
     "electron-builder",
+    "--projectDir",
+    $electronProjectDirectory,
     "--win",
     "--publish",
     "never"
