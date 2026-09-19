@@ -157,6 +157,10 @@ $electronEntryPoint = Join-Path $electronProjectDirectory "dist\main.js"
 if (-not (Test-Path -LiteralPath $electronEntryPoint -PathType Leaf)) {
     throw "Electron build completed without producing the expected entry file: $electronEntryPoint"
 }
+$nsisIncludeFile = Join-Path $electronProjectDirectory "build\installer.nsh"
+if (-not (Test-Path -LiteralPath $nsisIncludeFile -PathType Leaf)) {
+    throw "Electron packaging requires the NSIS include file, but it is missing: $nsisIncludeFile"
+}
 
 # Do not use the package.json 'package' script: it publishes automatically.
 Invoke-PnpmCommand -Arguments @(
