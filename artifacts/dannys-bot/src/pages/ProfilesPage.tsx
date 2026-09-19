@@ -1768,16 +1768,16 @@ export function ProfilesPage() {
                           </div>
                         )}
                         <span className="text-[10px] text-muted-foreground shrink-0">({groupProfiles.length})</span>
+                         <button
+                           onClick={() => {
+                             if (allInGroupSelected) setSelectedProfileIds(prev => prev.filter(id => !groupIds.includes(id)));
+                             else setSelectedProfileIds(prev => [...new Set([...prev, ...groupIds])]);
+                           }}
+                           className="text-[10px] text-primary hover:underline shrink-0 font-medium"
+                         >
+                           {allInGroupSelected ? "Select None" : "Select All"}
+                         </button>
                       </div>
-                      <button
-                        onClick={() => {
-                          if (allInGroupSelected) setSelectedProfileIds(prev => prev.filter(id => !groupIds.includes(id)));
-                          else setSelectedProfileIds(prev => [...new Set([...prev, ...groupIds])]);
-                        }}
-                        className="text-[10px] text-primary hover:underline shrink-0 font-medium"
-                      >
-                        {allInGroupSelected ? "Select None" : "Select All"}
-                      </button>
                     </div>
                     {!isCollapsed && groupProfiles.map((p, i) => renderProfileRow(p, i))}
                   </div>
