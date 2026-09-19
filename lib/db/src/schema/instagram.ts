@@ -22,6 +22,7 @@ export const proxies = sqliteTable("proxies", {
 
 export const ACCOUNT_STATUSES = [
   'verifying',
+  'verifying_to_api',
   'valid',
   'banned',
   'captcha',
@@ -89,6 +90,7 @@ export const profiles = sqliteTable("profiles", {
   notes: text("notes"),
   resumingUntil: text("resuming_until"),
   resumingPrevStatus: text("resuming_prev_status"),
+  apiVerifyAfter: text("api_verify_after"),
   phoneNumber: text("phone_number"),
   twoFASecretKey: text("two_fa_secret_key"),
   backupCodes: text("backup_codes"),

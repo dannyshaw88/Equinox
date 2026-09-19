@@ -24,13 +24,14 @@ import { useBrowserWindows } from "@/contexts/BrowserWindowsContext";
 import { useSidebarSetSlot } from "@/contexts/SidebarSlotContext";
 import type { AccountStatus } from "@shared/schema";
 
-const STATUS_META: Record<AccountStatus, {
+const STATUS_META: Record<string, {
   label: string;
   icon: React.ElementType;
   pill: string;
 }> = {
   pending:              { label: "Pending",              icon: Clock,       pill: "bg-slate-50  text-slate-600  border-slate-200"  },
   verifying:            { label: "Verifying",            icon: Loader2,     pill: "bg-blue-50   text-blue-600   border-blue-200"   },
+  verifying_to_api:     { label: "Verifying to API",     icon: Loader2,     pill: "bg-indigo-50 text-indigo-700 border-indigo-200" },
   valid:                { label: "Valid",                icon: ShieldCheck, pill: "bg-green-50  text-green-700  border-green-200"  },
   banned:               { label: "Banned",               icon: Ban,         pill: "bg-red-50    text-red-700    border-red-200"    },
   captcha:              { label: "Captcha",              icon: ScanFace,    pill: "bg-amber-50  text-amber-700  border-amber-200"  },

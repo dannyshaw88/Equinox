@@ -3,6 +3,7 @@ import { z } from "zod";
 export const ACCOUNT_STATUSES = [
   'pending',
   'verifying',
+  'verifying_to_api',
   'valid',
   'banned',
   'captcha',
@@ -28,12 +29,14 @@ export const ACCOUNT_STATUSES = [
   'temporary_locked',
   'scrape_warning',
   'suspended',
+  'confirm_human',
   'selfie_verification',
   'own_phone_verification',
   'email_connection',
   'upload',
   'review',
   'automated_behaviour_detected',
+  'resuming',
   'staging',
 ] as const;
 
@@ -75,6 +78,7 @@ export type Profile = {
   useHomeIp: boolean | null;
   status: string;
   accountStatus: string;
+  apiVerifyAfter: string | null;
   userAgentApi: string | null;
   userAgentEmbedded: string | null;
   apiLimits: { requestsMin: number; requestsMax: number; everySecondsMin: number; everySecondsMax: number } | null;

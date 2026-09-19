@@ -34,13 +34,14 @@ import { shouldWarnForNewAccount, recordLoginEvent } from "@/lib/ipLoginTracker"
 import { LoginRateLimitDialog } from "@/components/LoginRateLimitDialog";
 
 // ── Status metadata ──────────────────────────────────────────────────────────
-const STATUS_META: Record<AccountStatus, {
+const STATUS_META: Record<string, {
   label: string;
   icon: React.ElementType;
   pill: string;
 }> = {
   pending:              { label: "Pending",              icon: Clock,       pill: "bg-slate-50  text-slate-600  border-slate-200"  },
   verifying:            { label: "Verifying",            icon: Loader2,     pill: "bg-blue-50   text-blue-600   border-blue-200"   },
+  verifying_to_api:     { label: "Verifying to API",     icon: Loader2,     pill: "bg-indigo-50 text-indigo-700 border-indigo-200" },
   valid:                { label: "Valid",                icon: ShieldCheck, pill: "bg-green-50  text-green-700  border-green-200"  },
   banned:               { label: "Banned",               icon: Ban,         pill: "bg-red-50    text-red-700    border-red-200"    },
   captcha:              { label: "Captcha",              icon: ScanFace,    pill: "bg-amber-50  text-amber-700  border-amber-200"  },
@@ -103,7 +104,7 @@ function ResumingCountdown({ until, onExpired }: { until: string | null | undefi
   return <span className="text-[8px] font-mono tabular-nums">{h > 0 ? `${h}:` : ""}{pad(m)}:{pad(s)}</span>;
 }
 
-function AccountStatusBadge({ status, statusMessage, resumingUntil, stagingBootstrapFiresAt, onResumingExpired }: { status: string; statusMessage?: string | null; resumingUntil?: string | null; stagingBootstrapFiresAt?: string | null; onResumingExpired?: () => void }) {
+function AccountStatusBadge({ status, statusMessage, resumingUntil, stagingBootstrapFiresAt, apiVerifyAfter, onResumingExpired }: { status: string; statusMessage?: string | null; resumingUntil?: string | null; stagingBootstrapFiresAt?: string | null; apiVerifyAfter?: string | null; onResumingExpired?: () => void }) {
   const isResuming = status === "stopped" && !!resumingUntil && new Date(resumingUntil).getTime() > Date.now();
   const displayStatus = isResuming ? "resuming" : status;
   const meta = STATUS_META[displayStatus as AccountStatus] ?? STATUS_META.pending;
@@ -114,9 +115,10 @@ function AccountStatusBadge({ status, statusMessage, resumingUntil, stagingBoots
       title={tooltip}
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full border whitespace-nowrap ${meta.pill}${tooltip ? " cursor-help" : ""}`}
     >
-      <Icon className={`w-2.5 h-2.5${(isResuming || displayStatus === "verifying") ? " animate-spin" : ""}`} />
+      <Icon className={`w-2.5 h-2.5${(isResuming || displayStatus === "verifying" || displayStatus === "verifying_to_api") ? " animate-spin" : ""}`} />
       <span className="uppercase">{meta.label}</span>
       {isResuming && <ResumingCountdown until={resumingUntil} onExpired={onResumingExpired} />}
+      {displayStatus === "verifying_to_api" && apiVerifyAfter && <ResumingCountdown until={apiVerifyAfter} />}
       {displayStatus === "staging" && stagingBootstrapFiresAt && <ResumingCountdown until={stagingBootstrapFiresAt} />}
     </span>
   );
@@ -1514,7 +1516,7 @@ export function ProfilesPage() {
                         {flaggedIds.includes(profile.id) && <span title="Flagged account"><Flag className="w-3 h-3 text-red-500 shrink-0" fill="currentColor" /></span>}
                       </span>
                     </Link>
-                    {hasProxy && (acctStatus !== "valid" || profile.credentialsDirty) && !isStopped && acctStatus !== "resuming" && (acctStatus !== "verifying" || verifyingIds.has(profile.id)) && (
+                    {hasProxy && (acctStatus !== "valid" || profile.credentialsDirty) && !isStopped && acctStatus !== "resuming" && (acctStatus !== "verifying" || verifyingIds.has(profile.id)) && acctStatus !== "verifying_to_api" && (
                       <button onClick={(e) => { e.stopPropagation(); handleVerify(profile.id); }} disabled={verifyingIds.has(profile.id) || acctStatus === "verifying"} data-testid={`button-verify-${profile.id}`} className="text-[9px] font-bold text-blue-600 hover:text-blue-800 disabled:opacity-40 transition-colors shrink-0">
                         {verifyingIds.has(profile.id) ? "…" : "Verify"}
                       </button>
@@ -1524,7 +1526,7 @@ export function ProfilesPage() {
                     if (key === "status") return (
                       <div key={key} style={{ width: profColWidths.status }} className="flex items-center justify-center gap-1.5 shrink-0">
                         {hasProxy
-                          ? <AccountStatusBadge status={acctStatus} statusMessage={profile.statusMessage} resumingUntil={profile.resumingUntil} stagingBootstrapFiresAt={(profile as any).stagingBootstrapFiresAt} onResumingExpired={() => queryClient.invalidateQueries({ queryKey: [api.profiles.list.path] })} />
+                          ? <AccountStatusBadge status={acctStatus} statusMessage={profile.statusMessage} resumingUntil={profile.resumingUntil} apiVerifyAfter={(profile as any).apiVerifyAfter} stagingBootstrapFiresAt={(profile as any).stagingBootstrapFiresAt} onResumingExpired={() => queryClient.invalidateQueries({ queryKey: [api.profiles.list.path] })} />
                           : <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full border bg-red-50 text-red-700 border-red-200">
                               <Globe className="w-2.5 h-2.5" />No Proxy
                             </span>

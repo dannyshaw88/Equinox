@@ -39,6 +39,7 @@ sqlite.exec(`
     proxy_password TEXT,
     status TEXT NOT NULL DEFAULT 'idle',
     account_status TEXT NOT NULL DEFAULT 'pending',
+     api_verify_after TEXT,
     status_message TEXT,
     user_agent_api TEXT,
     user_agent_embedded TEXT,
@@ -345,6 +346,9 @@ if (!colNames.has("resuming_until")) {
 }
 if (!colNames.has("resuming_prev_status")) {
   sqlite.exec(`ALTER TABLE profiles ADD COLUMN resuming_prev_status TEXT;`);
+}
+if (!colNames.has("api_verify_after")) {
+  sqlite.exec(`ALTER TABLE profiles ADD COLUMN api_verify_after TEXT;`);
 }
 if (!colNames.has("use_home_ip")) {
   sqlite.exec(`ALTER TABLE profiles ADD COLUMN use_home_ip INTEGER DEFAULT 0;`);

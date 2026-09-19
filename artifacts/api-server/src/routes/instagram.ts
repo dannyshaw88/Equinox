@@ -143,7 +143,32 @@ const DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 // Stored as Map<profileId, startTimestamp> so stale locks (> 10 min) auto-clear
 // instead of permanently blocking re-verify after a crash in the background worker.
 const verifyInFlight = new Map<number, number>();
-const VERIFY_LOCK_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1000; // covers the maximum persisted API cooldown
+const API_VERIFY_MIN_DELAY_MINUTES = 30;
+const API_VERIFY_MAX_DELAY_MINUTES = 99;
+
+function chooseApiVerifyAfter(): { at: string; minutes: number } {
+  const minutes = API_VERIFY_MIN_DELAY_MINUTES +
+    Math.floor(Math.random() * (API_VERIFY_MAX_DELAY_MINUTES - API_VERIFY_MIN_DELAY_MINUTES + 1));
+  return {
+    minutes,
+    at: new Date(Date.now() + minutes * 60 * 1000).toISOString(),
+  };
+}
+
+async function waitUntilApiVerifyAfter(profileId: number, deadline: string): Promise<boolean> {
+  const remainingMs = new Date(deadline).getTime() - Date.now();
+  if (!Number.isFinite(remainingMs)) return false;
+  if (remainingMs > 0) await new Promise(resolve => setTimeout(resolve, remainingMs));
+
+  // Re-read the durable state immediately before any mobile API work.  This
+  // prevents a stale timer from firing after the account was reset or deleted.
+  const latest = await storage.getProfile(profileId).catch(() => null);
+  return !!latest &&
+    latest.accountStatus === "verifying_to_api" &&
+    latest.apiVerifyAfter === deadline &&
+    !!latest.igApiCookies?.includes("sessionid=");
+}
 
 // Global concurrency gate for electronSilentVerify — limits to 1 simultaneous
 // hidden BrowserWindow at a time.  Electron's main process cannot handle
@@ -161,12 +186,10 @@ function releaseSilentVerifySlot(): void {
   if (next) { next(); } else { _silentVerifySlotFree = true; }
 }
 
-// On startup: any account still in "verifying" was mid-bootstrap when the
-// server was killed.  Two cases:
-//   • igApiCookies present  → EB login already completed; just redo the 3
-//     mobile API calls (Path 2 — no browser needed).  Resumes seamlessly.
-//   • igApiCookies absent   → EB login never finished; reset to "pending" so
-//     the user knows to press Verify again.
+// On startup: resume the persisted second stage without opening EB again.
+// Accounts with cookies and a future apiVerifyAfter wait until that exact
+// deadline.  This is deliberately scheduled per account so one long cooldown
+// cannot block recovery for the other accounts.
 async function resumeStuckVerifyingAccounts(): Promise<void> {
   // Wait for the server to fully settle before firing API calls.
   await new Promise(resolve => setTimeout(resolve, 3000));
@@ -178,7 +201,9 @@ async function resumeStuckVerifyingAccounts(): Promise<void> {
     return;
   }
 
-  const stuck = allProfiles.filter(p => p.accountStatus === "verifying");
+  const stuck = allProfiles.filter(p =>
+    p.accountStatus === "verifying" || p.accountStatus === "verifying_to_api"
+  );
   if (stuck.length === 0) return;
 
   const withCookies    = stuck.filter(p => p.igApiCookies && p.igApiCookies.includes("sessionid="));
@@ -186,54 +211,92 @@ async function resumeStuckVerifyingAccounts(): Promise<void> {
 
   // No cookies → EB login never completed; reset so user can try again.
   for (const p of withoutCookies) {
-    await storage.updateProfile(p.id, { accountStatus: "pending" } as any).catch(() => {});
+    await storage.updateProfile(p.id, {
+      accountStatus: "pending",
+      apiVerifyAfter: null,
+      statusMessage: null,
+    } as any).catch(() => {});
     console.warn(`[startup:resume] @${p.username} — no igApiCookies → reset to pending`);
   }
 
   if (withCookies.length === 0) return;
-  console.log(`[startup:resume] ${withCookies.length} account(s) resuming mobile API bootstrap`);
+  console.log(`[startup:resume] ${withCookies.length} account(s) have a persisted mobile API handoff`);
 
-  for (let i = 0; i < withCookies.length; i++) {
-    const profile = withCookies[i];
-    // Stagger between accounts (6–10 s) to avoid bursting the mobile API.
-    if (i > 0) await new Promise(resolve => setTimeout(resolve, 6000 + Math.floor(Math.random() * 4000)));
+  for (const profile of withCookies) {
+    // Legacy rows from the pre-cooldown flow may still be "verifying" with
+    // cookies but no deadline. Treat that durable state as the moment EB
+    // completed and create the same 30–99 minute delay once.
+    let deadline = profile.apiVerifyAfter;
+    if (!deadline || !Number.isFinite(new Date(deadline).getTime())) {
+      const scheduled = chooseApiVerifyAfter();
+      deadline = scheduled.at;
+      await storage.updateProfile(profile.id, {
+        accountStatus: "verifying_to_api",
+        apiVerifyAfter: deadline,
+        statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduled.minutes} minutes.`,
+      } as any).catch(() => {});
+    } else if (profile.accountStatus !== "verifying_to_api") {
+      await storage.updateProfile(profile.id, { accountStatus: "verifying_to_api" } as any).catch(() => {});
+    }
 
-    await acquireSilentVerifySlot();
-    try {
-      console.log(`[startup:resume] @${profile.username} — running verifyInstagramCredentials (Path 2)`);
-      let apiResult: Awaited<ReturnType<typeof verifyInstagramCredentials>>;
-      try {
-        apiResult = await verifyInstagramCredentials(profile as any);
-      } catch (verifyErr: any) {
-        console.error(`[startup:resume] threw for @${profile.username}:`, verifyErr?.message);
-        await storage.updateProfile(profile.id, { accountStatus: "pending" } as any).catch(() => {});
-        continue;
+    void (async () => {
+      if (!(await waitUntilApiVerifyAfter(profile.id, deadline!))) {
+        console.log(`[startup:resume] @${profile.username} — cooldown was cancelled or cookies are gone`);
+        return;
       }
 
-      const finalStatus = apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending");
+      await acquireSilentVerifySlot();
+      try {
+        const current = await storage.getProfile(profile.id).catch(() => null);
+        if (!current || current.accountStatus !== "verifying_to_api") return;
+        console.log(`[startup:resume] @${profile.username} — cooldown expired; running verifyInstagramCredentials (Path 2)`);
+        let apiResult: Awaited<ReturnType<typeof verifyInstagramCredentials>>;
+        try {
+          apiResult = await verifyInstagramCredentials(current as any);
+        } catch (verifyErr: any) {
+          console.error(`[startup:resume] threw for @${profile.username}:`, verifyErr?.message);
+          await storage.updateProfile(profile.id, {
+            accountStatus: "pending",
+            apiVerifyAfter: null,
+            statusMessage: null,
+          } as any).catch(() => {});
+          return;
+        }
+
+        const finalStatus = apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending");
+        await storage.updateProfile(profile.id, {
+          accountStatus: finalStatus,
+          apiVerifyAfter: null,
+          statusMessage: null,
+          ...(finalStatus === "valid" ? { credentialsDirty: false } : {}),
+          ...(apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {}),
+          ...("igApiCookies" in apiResult && apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}),
+        } as any).catch(() => {});
+
+        await storage.createSessionAction({
+          profileId: profile.id,
+          toolId: 0,
+          action: apiResult.ok ? "verified" : "verification_failed",
+          targetUsername: profile.username,
+          sourceValue: "",
+          sourceType: "startup_resume",
+          result: finalStatus,
+          detail: apiResult.message ?? (apiResult.ok ? "Auto-resumed after restart" : "Auto-resume failed"),
+          timestamp: new Date().toISOString(),
+        }).catch(() => {});
+
+        console.log(`[startup:resume] @${profile.username} → ${finalStatus}`);
+      } finally {
+        releaseSilentVerifySlot();
+      }
+    })().catch(async err => {
+      console.error(`[startup:resume] unhandled error for @${profile.username}:`, err);
       await storage.updateProfile(profile.id, {
-        accountStatus: finalStatus,
-        ...(finalStatus === "valid" ? { credentialsDirty: false } : {}),
-        ...(apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {}),
-        ...("igApiCookies" in apiResult && apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}),
+        accountStatus: "pending",
+        apiVerifyAfter: null,
+        statusMessage: null,
       } as any).catch(() => {});
-
-      await storage.createSessionAction({
-        profileId: profile.id,
-        toolId: 0,
-        action: apiResult.ok ? "verified" : "verification_failed",
-        targetUsername: profile.username,
-        sourceValue: "",
-        sourceType: "startup_resume",
-        result: finalStatus,
-        detail: apiResult.message ?? (apiResult.ok ? "Auto-resumed after restart" : "Auto-resume failed"),
-        timestamp: new Date().toISOString(),
-      }).catch(() => {});
-
-      console.log(`[startup:resume] @${profile.username} → ${finalStatus}`);
-    } finally {
-      releaseSilentVerifySlot();
-    }
+    });
   }
 }
 
@@ -893,6 +956,19 @@ export async function registerInstagramRoutes(
           delete body.accountStatus;
         }
       }
+      // This is an internal state created only after EB cookies and a deadline
+      // have been persisted. A manual PATCH must not fabricate it.
+      if ("accountStatus" in body && body.accountStatus === "verifying_to_api") {
+        delete body.accountStatus;
+      }
+      if (
+        "accountStatus" in body &&
+        current?.accountStatus === "verifying_to_api" &&
+        body.accountStatus !== "verifying_to_api"
+      ) {
+        body.apiVerifyAfter = null;
+        body.statusMessage = null;
+      }
       // Never allow a PATCH to overwrite a meaningful verify-result status with "pending".
       // This prevents the frontend from trampling "locked", "captcha", or
       // "automated_behaviour_detected" with stale form data immediately after verify.
@@ -1001,6 +1077,8 @@ export async function registerInstagramRoutes(
       igDeviceState: null,
       igApiCookies: null,
       accountStatus: "pending",
+      apiVerifyAfter: null,
+      statusMessage: null,
       credentialsDirty: true,
       ebFingerprint: JSON.stringify(generateEbFingerprint(patchedApiUA, isDesktopUA, ua.embedded)),
     });
@@ -1791,6 +1869,8 @@ export async function registerInstagramRoutes(
     await storage.updateProfile(profileId, {
       igApiCookies: null,
       accountStatus: "pending",
+      apiVerifyAfter: null,
+      statusMessage: null,
     } as any);
 
     // Close the live EB session and delete Chrome's entire userdata directory
@@ -2181,6 +2261,13 @@ export async function registerInstagramRoutes(
 
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
+    if (
+      profile.accountStatus === "verifying_to_api" &&
+      profile.apiVerifyAfter &&
+      profile.igApiCookies?.includes("sessionid=")
+    ) {
+      return fail(429, "Browser verification succeeded. Mobile API verification is already scheduled.");
+    }
     if (!profile.username || !profile.password) {
       return fail(400, "Username and password are required before verifying.");
     }
@@ -2213,7 +2300,11 @@ export async function registerInstagramRoutes(
 
     // Mark as "verifying" in the DB — only reached once proxy is confirmed present.
     // This way the dashboard shows the in-progress state if the user navigates away.
-    await storage.updateProfile(profile.id, { accountStatus: "verifying" });
+    await storage.updateProfile(profile.id, {
+      accountStatus: "verifying",
+      apiVerifyAfter: null,
+      statusMessage: null,
+    } as any);
 
 
     // ── Jarvee-style EB-first verify ──────────────────────────────────────────
@@ -2336,7 +2427,11 @@ export async function registerInstagramRoutes(
       try {
         await getOrCreateSession(profileId, ebUA, proxyConfig, effectiveProfile.userAgentApi);
       } catch (ebErr: any) {
-        await storage.updateProfile(profile.id, { accountStatus: "pending" });
+        await storage.updateProfile(profile.id, {
+          accountStatus: "pending",
+          apiVerifyAfter: null,
+          statusMessage: null,
+        } as any);
         verifyInFlight.delete(profileId);
         return;
       }
@@ -2405,8 +2500,21 @@ export async function registerInstagramRoutes(
         const freshCookies = cookieParts.join("; ");
 
         // Persist the EB cookies before the API validation so they survive even if
-        // the mobile API call temporarily fails (network hiccup, proxy lag, etc.)
-        await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
+        // the mobile API call temporarily fails (network hiccup, proxy lag, etc.).
+        // The deadline and status are written in the same update so a restart
+        // can continue from this exact point without opening EB again.
+        const scheduledApiVerify = chooseApiVerifyAfter();
+        await storage.updateProfile(profile.id, {
+          igApiCookies: freshCookies,
+          accountStatus: "verifying_to_api",
+          apiVerifyAfter: scheduledApiVerify.at,
+          statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+        } as any);
+        sendLoginDone(
+          profileId,
+          true,
+          `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+        );
 
         // Fire-and-forget: run the full leak test (WebRTC, Bot, Canvas, etc.) in a
         // hidden background context while verifyInstagramCredentials runs in parallel.
@@ -2443,6 +2551,11 @@ export async function registerInstagramRoutes(
         // Step 5: Mobile API confirmation — the Jarvee step we were missing.
         // EB login proves the web session is alive.  This step confirms the same
         // cookies work at the mobile API layer before the account is marked valid.
+        // Never call the mobile API before the persisted cooldown expires.
+        if (!(await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at))) {
+          console.warn(`[verify:${profileId}] @${profile.username} — API cooldown was cancelled before expiry`);
+          return;
+        }
         // verifyInstagramCredentials will take Path 2 (cookie restore) because
         // igApiCookies now has a sessionid — it runs the full cold-start sequence
         // (tokens/keyed → launcher/sync → users/{id}/info) and returns the
@@ -2461,7 +2574,7 @@ export async function registerInstagramRoutes(
             message: `@${profile.username} — mobile API check failed unexpectedly: ${verifyErr?.message ?? "unknown error"}. Try verifying again.`,
           };
           sendLoginDone(profileId, false, result.message ?? "");
-          await storage.updateProfile(profile.id, { accountStatus: "pending" });
+          await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null } as any);
           verifyInFlight.delete(profileId);
           return;
         }
@@ -2538,6 +2651,8 @@ export async function registerInstagramRoutes(
     } else {
       await storage.updateProfile(profile.id, {
         accountStatus: finalStatus,
+        apiVerifyAfter: null,
+        statusMessage: null,
         ...(finalStatus === "valid" ? { credentialsDirty: false } : {}),
         ...(result.igDeviceState ? { igDeviceState: result.igDeviceState } : {}),
         // Save session cookies captured from the fresh login so follow/DM tools
@@ -2572,7 +2687,7 @@ export async function registerInstagramRoutes(
 
     } catch (_topVerifyErr: any) {
       console.error(`[verify:${profileId}] unhandled crash in background verify — clearing lock:`, _topVerifyErr?.message ?? _topVerifyErr);
-      await storage.updateProfile(profileId, { accountStatus: "pending" }).catch(() => {});
+      await storage.updateProfile(profileId, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null } as any).catch(() => {});
     } finally {
       verifyInFlight.delete(profileId);
     }
@@ -4951,6 +5066,15 @@ export async function registerInstagramRoutes(
     res.json({ ok: true, total: eligible.length, skippedNoProxy });
 
     const verifyOne = async (profile: typeof eligible[0]) => {
+      // Do not restart EB for an account whose EB stage already completed.
+      // Its persisted timer will finish the mobile API stage.
+      if (
+        profile.accountStatus === "verifying_to_api" &&
+        profile.apiVerifyAfter &&
+        profile.igApiCookies?.includes("sessionid=")
+      ) {
+        return;
+      }
       // Skip accounts already being verified by a concurrent single-verify call.
       // Stale locks (> 10 min) auto-clear so crashes don't permanently block re-verify.
       const _vaExisting = verifyInFlight.get(profile.id);
@@ -4959,7 +5083,7 @@ export async function registerInstagramRoutes(
       verifyInFlight.set(profile.id, Date.now());
 
       try {
-        await storage.updateProfile(profile.id, { accountStatus: "verifying" });
+        await storage.updateProfile(profile.id, { accountStatus: "verifying", apiVerifyAfter: null, statusMessage: null } as any);
 
         // ── EB-first verify (matches Jarvee: web login → grab cookies → hand to API) ──
         let effectiveP = { ...profile };
@@ -5054,10 +5178,25 @@ export async function registerInstagramRoutes(
             if (dsUserId)  cookieParts.push(`ds_user_id=${dsUserId}`);
             if (mid)       cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
-            await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
-            const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies } as typeof effectiveP;
-            const apiResult = await verifyInstagramCredentials(profileWithCookies);
-            result = { ...apiResult, igApiCookies: freshCookies };
+            const scheduledApiVerify = chooseApiVerifyAfter();
+            await storage.updateProfile(profile.id, {
+              igApiCookies: freshCookies,
+              accountStatus: "verifying_to_api",
+              apiVerifyAfter: scheduledApiVerify.at,
+              statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+            } as any);
+            console.log(`[bulk-verify] @${profile.username} — browser verified; mobile API scheduled in ${scheduledApiVerify.minutes} minutes`);
+            if (!(await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at))) {
+              result = {
+                ok: false,
+                accountStatus: "pending",
+                message: `@${profile.username} — mobile API verification was cancelled before its cooldown expired.`,
+              };
+            } else {
+              const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies } as typeof effectiveP;
+              const apiResult = await verifyInstagramCredentials(profileWithCookies);
+              result = { ...apiResult, igApiCookies: freshCookies };
+            }
           }
         } else {
           const msg = bulkLoginResult.message ?? "";
@@ -5072,6 +5211,8 @@ export async function registerInstagramRoutes(
 
         await storage.updateProfile(profile.id, {
           accountStatus: result.accountStatus,
+          apiVerifyAfter: null,
+          statusMessage: null,
           ...(result.ok ? { credentialsDirty: false } : {}),
           ...(result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}),
         });
@@ -5091,7 +5232,7 @@ export async function registerInstagramRoutes(
         });
       } catch {
         // Unexpected error — reset to pending so the account isn't stuck in "verifying"
-        await storage.updateProfile(profile.id, { accountStatus: "pending" });
+        await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null } as any);
       } finally {
         verifyInFlight.delete(profile.id);
       }
