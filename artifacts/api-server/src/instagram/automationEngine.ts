@@ -4712,15 +4712,15 @@ class AutomationEngine {
           try {
             const ok = await run();
             const detail = ok
-              ? `API: ${label} completed`
-              : `API: ${label} returned no valid response`;
+              ? `${label} completed`
+              : `${label} returned no valid response`;
             console.log(`[engine] @${profile.username}: ${label} — ${ok ? "ok" : "failed"}`);
             this.logAction(profile.id, tool.id, actionType, "", "", "", ok ? "ok" : "error", detail);
           } catch (e: any) {
             if (await checkSessionErr(e, label)) return;
             const message = e?.message ?? "unknown error";
             console.warn(`[engine] @${profile.username}: ${label} API error: ${message}`);
-            this.logAction(profile.id, tool.id, actionType, "", "", "", "error", `API: ${label} failed — ${message.slice(0, 300)}`);
+            this.logAction(profile.id, tool.id, actionType, "", "", "", "error", `${label} failed — ${message.slice(0, 300)}`);
           }
         };
 
