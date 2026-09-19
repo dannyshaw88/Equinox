@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.527",
+    date: "19 Sep 2026",
+    items: [
+      {
+        category: "Fixed",
+        text: "Profile verification now opens the full Equinox Browser, so you can see the normal tabs, toolbar, and login window while an account is being verified.",
+      },
+    ],
+  },
+  {
     version: "1.1.489",
     date: "12 Jul 2026",
     items: [
