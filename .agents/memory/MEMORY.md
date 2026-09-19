@@ -20,6 +20,7 @@
 - [Mobile tab explicit power-on](mobile-tab-explicit-power-on.md) — phone mirror stream must only start on Power button press or automation toggle, never on tab mount alone
 - [Automation-cycle real-phone lifecycle](automation-cycle-lifecycle.md) — master toggle runs power-on→open IG→run tools→close IG→airplane-mode recycle→lock each tick; use WAKEUP/SLEEP keycodes not toggle POWER, verify app close via pidof
 - [GitHub Actions Windows installer duplication](github-actions-windows-installer-duplication.md) — `build-windows-installer.yml` is the ONLY canonical workflow; never add another, deprecated stubs are inert on purpose
+- [Windows pnpm optional dependency repair](windows-rollup-installer-repair.md) — clean root and workspace virtual stores before reinstalling; a corrected lockfile alone may not repair stale native-package links
 - [Story share viewer-exit race](story-share-viewer-exit-race.md) — re-verify story viewer still open before EVERY tap (esp. DM-share); stories auto-advance mid multi-step sequence, blind taps then hit the home feed
 - [Floating-windows recents close gesture](floating-windows-recents-close.md) — this farm's app-switcher needs a LEFT-drag of the left-most card, not swipe-up; repeat per remaining app; poll pidof, don't check once too soon.
 - [Story action timing starvation](story-action-timing-starvation.md) — never insert a "watch first" delay before a scheduled like/share; fire immediately or the multi-step DM-share sequence runs out of the story's fixed timer.
