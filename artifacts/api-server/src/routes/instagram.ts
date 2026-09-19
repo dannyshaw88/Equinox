@@ -170,22 +170,6 @@ async function waitUntilApiVerifyAfter(profileId: number, deadline: string): Pro
     !!latest.igApiCookies?.includes("sessionid=");
 }
 
-// Global concurrency gate for electronSilentVerify — limits to 1 simultaneous
-// hidden BrowserWindow at a time.  Electron's main process cannot handle
-// multiple concurrent Chromium renderer processes during silent verify (GPU
-// memory contention + debugger conflicts crash the app when 3+ accounts are
-// verified at once).  Additional verify requests queue here and run in order.
-let _silentVerifySlotFree = true;
-const _silentVerifyWaiters: Array<() => void> = [];
-function acquireSilentVerifySlot(): Promise<void> {
-  if (_silentVerifySlotFree) { _silentVerifySlotFree = false; return Promise.resolve(); }
-  return new Promise(resolve => _silentVerifyWaiters.push(resolve));
-}
-function releaseSilentVerifySlot(): void {
-  const next = _silentVerifyWaiters.shift();
-  if (next) { next(); } else { _silentVerifySlotFree = true; }
-}
-
 // On startup: resume the persisted second stage without opening EB again.
 // Accounts with cookies and a future apiVerifyAfter wait until that exact
 // deadline.  This is deliberately scheduled per account so one long cooldown
@@ -245,50 +229,45 @@ async function resumeStuckVerifyingAccounts(): Promise<void> {
         return;
       }
 
-      await acquireSilentVerifySlot();
+      const current = await storage.getProfile(profile.id).catch(() => null);
+      if (!current || current.accountStatus !== "verifying_to_api") return;
+      console.log(`[startup:resume] @${profile.username} — cooldown expired; running verifyInstagramCredentials (Path 2)`);
+      let apiResult: Awaited<ReturnType<typeof verifyInstagramCredentials>>;
       try {
-        const current = await storage.getProfile(profile.id).catch(() => null);
-        if (!current || current.accountStatus !== "verifying_to_api") return;
-        console.log(`[startup:resume] @${profile.username} — cooldown expired; running verifyInstagramCredentials (Path 2)`);
-        let apiResult: Awaited<ReturnType<typeof verifyInstagramCredentials>>;
-        try {
-          apiResult = await verifyInstagramCredentials(current as any);
-        } catch (verifyErr: any) {
-          console.error(`[startup:resume] threw for @${profile.username}:`, verifyErr?.message);
-          await storage.updateProfile(profile.id, {
-            accountStatus: "pending",
-            apiVerifyAfter: null,
-            statusMessage: null,
-          } as any).catch(() => {});
-          return;
-        }
-
-        const finalStatus = apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending");
+        apiResult = await verifyInstagramCredentials(current as any);
+      } catch (verifyErr: any) {
+        console.error(`[startup:resume] threw for @${profile.username}:`, verifyErr?.message);
         await storage.updateProfile(profile.id, {
-          accountStatus: finalStatus,
+          accountStatus: "pending",
           apiVerifyAfter: null,
           statusMessage: null,
-          ...(finalStatus === "valid" ? { credentialsDirty: false } : {}),
-          ...(apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {}),
-          ...("igApiCookies" in apiResult && apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}),
         } as any).catch(() => {});
-
-        await storage.createSessionAction({
-          profileId: profile.id,
-          toolId: 0,
-          action: apiResult.ok ? "verified" : "verification_failed",
-          targetUsername: profile.username,
-          sourceValue: "",
-          sourceType: "startup_resume",
-          result: finalStatus,
-          detail: apiResult.message ?? (apiResult.ok ? "Auto-resumed after restart" : "Auto-resume failed"),
-          timestamp: new Date().toISOString(),
-        }).catch(() => {});
-
-        console.log(`[startup:resume] @${profile.username} → ${finalStatus}`);
-      } finally {
-        releaseSilentVerifySlot();
+        return;
       }
+
+      const finalStatus = apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending");
+      await storage.updateProfile(profile.id, {
+        accountStatus: finalStatus,
+        apiVerifyAfter: null,
+        statusMessage: null,
+        ...(finalStatus === "valid" ? { credentialsDirty: false } : {}),
+        ...(apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {}),
+        ...("igApiCookies" in apiResult && apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}),
+      } as any).catch(() => {});
+
+      await storage.createSessionAction({
+        profileId: profile.id,
+        toolId: 0,
+        action: apiResult.ok ? "verified" : "verification_failed",
+        targetUsername: profile.username,
+        sourceValue: "",
+        sourceType: "startup_resume",
+        result: finalStatus,
+        detail: apiResult.message ?? (apiResult.ok ? "Auto-resumed after restart" : "Auto-resume failed"),
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+
+      console.log(`[startup:resume] @${profile.username} → ${finalStatus}`);
     })().catch(async err => {
       console.error(`[startup:resume] unhandled error for @${profile.username}:`, err);
       await storage.updateProfile(profile.id, {
@@ -2355,16 +2334,6 @@ export async function registerInstagramRoutes(
       // Electron mode — auto-open the visible EB, run login, harvest cookies, auto-close.
       const _verifyIpcPort = Number(process.env.EB_IPC_PORT);
 
-      // Acquire the slot BEFORE opening the EB window.
-      // Previously the slot was acquired after /eb/open, which meant clicking Verify
-      // on 6 accounts simultaneously opened 6 Chromium instances at once — exactly
-      // the crash pattern documented in replit.md (main process killed by parallel
-      // BrowserWindow spawns).  Gating here ensures at most 1 Chromium verify
-      // window is ever open at a time; accounts 2–N queue here and wait.
-      console.log(`[verify:${profileId}] @${profile.username} — waiting for verify slot`);
-      await acquireSilentVerifySlot();
-      console.log(`[verify:${profileId}] @${profile.username} — verify slot acquired`);
-
       // Step 1: open the visible EB browser so the user can watch the login flow.
       try {
         console.log(`[verify:${profileId}] @${profile.username} — opening EB window via /eb/open`);
@@ -2413,7 +2382,6 @@ export async function registerInstagramRoutes(
       } catch (ebErr: any) {
         loginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
       } finally {
-        releaseSilentVerifySlot();
         // Step: auto-close the EB now that cookies are harvested — the mobile API
         // confirmation step does not need the browser open.
         fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/close`, {
@@ -5117,9 +5085,6 @@ export async function registerInstagramRoutes(
         let _bulkSilentCookies: Array<{ name: string; value: string }> | null = null;
 
         if (process.env.EB_IPC_PORT) {
-          // Acquire the global slot — queues if another silent verify is already
-          // in progress (from the single-account verify button or another bulk run).
-          await acquireSilentVerifySlot();
           try {
             const silentRes = await electronSilentVerify({
               profileId: profile.id,
@@ -5133,8 +5098,6 @@ export async function registerInstagramRoutes(
             _bulkSilentCookies = silentRes.cookies;
           } catch (ebErr: any) {
             bulkLoginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
-          } finally {
-            releaseSilentVerifySlot();
           }
         } else {
           await getOrCreateSession(profile.id, bulkEbUA, bulkProxyConfig, effectiveP.userAgentApi);
