@@ -158465,7 +158465,7 @@ var InstagramWebClient = class {
       const errorCode = res.json?.content?.error_code ?? res.json?.error_code;
       if (errorCode === 4415001) {
         console.warn(`[webClient] mobileSessionGet ${path6} \u2192 HTTP ${res.status} (prompt_required_4415001 \u2014 soft gate, not a logout): ${res.rawBody.slice(0, 200)}`);
-        this._logTransport(path6, "GET", Date.now() - _t0, true);
+        this._logTransport(path6, "GET", Date.now() - _t0, true, `HTTP ${res.status} \u2014 prompt_required_4415001`);
         const softGateErr = new Error("prompt_required_4415001");
         softGateErr.httpStatus = res.status;
         throw softGateErr;
@@ -158475,16 +158475,20 @@ var InstagramWebClient = class {
       const responseText = `${bodyMsg} ${String(res.rawBody ?? "").slice(0, 500)}`;
       const explicitAuthError = res.status === 401 || /login_required|logged_out|logout_reason|checkpoint_required|not authorized|session expired|not logged in/i.test(responseText);
       const errMsg = bodyMsg || (explicitAuthError ? "login_required" : `instagram_http_${res.status}`);
+      const responseDetail = bodyMsg || res.json?.error_type || (res.json?.error_code !== void 0 ? `error_code=${res.json.error_code}` : "") || String(res.rawBody ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
       const throwMsg = logoutReason !== void 0 ? `session_expired \u2014 ${errMsg} | logout_reason:${logoutReason}` : errMsg;
       console.warn(`[webClient] mobileSessionGet ${path6} \u2192 HTTP ${res.status} (${errMsg}${logoutReason !== void 0 ? ` [SESSION-KILL logout_reason:${logoutReason}]` : ""}): ${res.rawBody.slice(0, 200)}`);
-      this._logTransport(path6, "GET", Date.now() - _t0, true);
+      this._logTransport(path6, "GET", Date.now() - _t0, true, `HTTP ${res.status}${responseDetail ? ` \u2014 ${responseDetail}` : ""}`);
       const httpErr = new Error(throwMsg);
       httpErr.httpStatus = res.status;
       if (logoutReason !== void 0) httpErr.logoutReason = logoutReason;
       throw httpErr;
     }
     if (!res.json) console.log(`[webClient] mobileSessionGet ${path6} status=${res.status} body(200):`, res.rawBody.slice(0, 200));
-    this._logTransport(path6, "GET", Date.now() - _t0, false, msgFn?.(res.json));
+    const responseStatus = String(res.json?.status ?? "").toLowerCase();
+    const applicationFailed = responseStatus === "fail" || responseStatus === "error";
+    const applicationDetail = applicationFailed ? `HTTP ${res.status} \u2014 status=${responseStatus}${res.json?.message ? ` \u2014 ${String(res.json.message).slice(0, 180)}` : ""}` : msgFn?.(res.json);
+    this._logTransport(path6, "GET", Date.now() - _t0, applicationFailed, applicationDetail);
     return res.json;
   }
   // Anonymous mobile GET — NO account cookies sent, account identity never exposed.
@@ -160821,7 +160825,17 @@ var InstagramWebClient = class {
     if (res.json?.message === "feedback_required" && !this._abdDismissInProgress) {
       this._lastFeedbackResponse = res.json;
     }
-    this._logTransport(path6, "POST", Date.now() - _t0, res.status >= 400);
+    const responseStatus = String(res.json?.status ?? "").toLowerCase();
+    const applicationFailed = responseStatus === "fail" || responseStatus === "error";
+    const responseDetail = res.json?.message || res.json?.error_type || (res.json?.error_code !== void 0 ? `error_code=${res.json.error_code}` : "") || String(res.rawBody ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+    const transportFailed = res.status >= 400 || applicationFailed;
+    this._logTransport(
+      path6,
+      "POST",
+      Date.now() - _t0,
+      transportFailed,
+      transportFailed ? `HTTP ${res.status}${responseDetail ? ` \u2014 ${responseDetail}` : ""}` : void 0
+    );
     return res.json;
   }
   // ── Jarvee-style "Auto Verify Automatic Behaviour Detected" dismiss ────────
