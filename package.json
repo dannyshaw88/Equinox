@@ -47,6 +47,9 @@
     "typescript": "~5.9.2",
     "vite": "^6.3.5"
   },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "4.59.0"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",

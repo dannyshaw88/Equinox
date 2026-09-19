@@ -62,9 +62,23 @@ if ($env:OS -eq "Windows_NT") {
         -Filter "@rollup+rollup-win32-x64-msvc@*" `
         -ErrorAction SilentlyContinue |
         Select-Object -First 1
+    $rollupPackageDirectory = Get-ChildItem `
+        -LiteralPath $pnpmStoreDirectory `
+        -Directory `
+        -Filter "rollup@*" `
+        -ErrorAction SilentlyContinue |
+        Where-Object {
+            Test-Path -LiteralPath (Join-Path $_.FullName "node_modules\rollup\dist\native.js")
+        } |
+        Select-Object -First 1
+    $windowsRollupLink = if ($null -ne $rollupPackageDirectory) {
+        Join-Path $rollupPackageDirectory.FullName "node_modules\@rollup\rollup-win32-x64-msvc"
+    } else {
+        $null
+    }
 
-    if ($null -eq $windowsRollupPackage) {
-        throw "pnpm install completed, but @rollup/rollup-win32-x64-msvc was not installed. Remove any package-lock.json in the repository and rerun this script."
+    if ($null -eq $windowsRollupPackage -or $null -eq $windowsRollupLink -or -not (Test-Path -LiteralPath $windowsRollupLink)) {
+        throw "pnpm install completed, but @rollup/rollup-win32-x64-msvc is not linked into Rollup. Remove any package-lock.json in the repository and rerun this script."
     }
 }
 
