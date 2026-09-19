@@ -160075,6 +160075,35 @@ var InstagramWebClient = class {
       return `Viewed ${n} timeline stor${n === 1 ? "y" : "ies"}`;
     });
   }
+  // ── Share a story slide to a random DM thread ─────────────────────────────
+  // Fetches an existing DM thread and sends the story as a story_share item.
+  async shareStoryViaDm(mediaId, ownerId) {
+    return this.timed("ShareStoryViaDM", async () => {
+      const j = this.isLoggedIn ? await this.webGet(`/api/v1/direct_v2/inbox/?limit=20`) : await this.mobileSessionGet(`/api/v1/direct_v2/inbox/?visual_message_return_type=unseen&thread_message_limit=1&limit=20`);
+      const threads = j?.inbox?.threads ?? j?.threads ?? [];
+      if (!threads.length) {
+        console.log(`[webClient] shareStoryViaDm: no DM threads found \u2014 skipping share`);
+        return false;
+      }
+      const thread = threads[Math.floor(Math.random() * threads.length)];
+      const threadId = thread?.thread_id ?? thread?.id ?? "";
+      if (!threadId) return false;
+      const clientCtx = randomUUID();
+      const body = new URLSearchParams({
+        story_media_id: mediaId,
+        reel_id: ownerId,
+        thread_ids: JSON.stringify([threadId]),
+        action: "send_item",
+        client_context: clientCtx,
+        offline_threading_id: clientCtx,
+        is_shh_mode: "0"
+      }).toString();
+      const resp = await this._mobileDmPost(`/api/v1/direct_v2/threads/broadcast/story_share/`, body);
+      const ok = resp?.status === "ok";
+      if (!ok) console.log(`[webClient] shareStoryViaDm response:`, JSON.stringify(resp)?.slice(0, 300));
+      return ok;
+    }, (r2) => r2 ? "Shared story via DM" : "Story share skipped (no threads)");
+  }
   // ── Check direct messages inbox ──────────────────────────────────────────
   // Fetches the main DM inbox to simulate a user checking their messages.
   async getDirectMessages(count = 5) {
@@ -166645,119 +166674,106 @@ ${err?.stack ?? ""}`);
       });
       ebEnqueue("viewReels", "viewReelsOrderMin", "viewReelsOrderMax", async () => {
         if (s.viewReelsEnabled === true && s.emulationGroupEnabled !== false) {
-          const reelChanceRaw0 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMin ?? 100)));
-          const reelChanceRaw1 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMax ?? 100)));
-          const reelChanceMin2 = Math.min(reelChanceRaw0, reelChanceRaw1);
-          const reelChanceMax2 = Math.max(reelChanceRaw0, reelChanceRaw1);
-          if (reelChanceMax2 > 0) {
-            const reelChance = reelChanceMin2 + Math.random() * (reelChanceMax2 - reelChanceMin2);
-            const reelChanceRoll = Math.random() * 100;
-            const reelsEnabled = reelChanceRoll < reelChance;
-            if (reelsEnabled) {
-              const rcMin = Math.max(0, Number(s.reelWatchCountMin ?? 1));
-              const rcMax = Math.max(rcMin, Number(s.reelWatchCountMax ?? 3));
-              const reelCount = randInt2(rcMin, rcMax);
-              const rvMin = Math.min(100, Math.max(0, Number(s.reelWatchPercentMin ?? 50)));
-              const rvMax = Math.min(100, Math.max(0, Number(s.reelWatchPercentMax ?? 100)));
-              const reelViewPctMin = Math.min(rvMin, rvMax);
-              const reelViewPctMax = Math.max(rvMin, rvMax);
-              const rlMin = Math.min(100, Math.max(0, Number(s.reelLikePercentMin ?? 0)));
-              const rlMax = Math.min(100, Math.max(0, Number(s.reelLikePercentMax ?? 0)));
-              const reelLikePctMin = Math.min(rlMin, rlMax);
-              const reelLikePctMax = Math.max(rlMin, rlMax);
-              const reelLikePct = reelLikePctMax > 0 ? reelLikePctMin + Math.random() * (reelLikePctMax - reelLikePctMin) : 0;
-              const reelLikeCount = reelLikePctMax > 0 ? Math.round(reelCount * reelLikePct / 100) : 0;
-              console.log(`[engine] @${profile.username}: \u{1F3B2} [EB] View Reels chance ${reelChanceRoll.toFixed(1)}% < ${reelChance.toFixed(1)}% \u2014 reels ON (${reelCount} reels, like target ${reelLikeCount})`);
-              try {
-                await nav2("https://www.instagram.com/reels/", "reels feed");
-                await sleep(actionDelay2());
-                const videoFound = await waitFor("video", 15e3);
-                if (!videoFound) {
-                  const _reelDebug = await page2.evaluate(() => {
-                    return `url="${location.href.slice(0, 120)}" title="${document.title}" videos=${document.querySelectorAll("video").length} imgs=${document.querySelectorAll("img").length} bodyLen=${document.body?.innerHTML?.length ?? 0}`;
-                  }).catch(() => "evaluate failed");
-                  console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} reels debug \u2014 ${_reelDebug}`);
+          const rcMin = Math.max(0, Number(s.reelWatchCountMin ?? 1));
+          const rcMax = Math.max(rcMin, Number(s.reelWatchCountMax ?? 3));
+          const reelCount = randInt2(rcMin, rcMax);
+          const rvMin = Math.min(100, Math.max(0, Number(s.reelWatchPercentMin ?? 50)));
+          const rvMax = Math.min(100, Math.max(0, Number(s.reelWatchPercentMax ?? 100)));
+          const reelViewPctMin = Math.min(rvMin, rvMax);
+          const reelViewPctMax = Math.max(rvMin, rvMax);
+          const rlMin = Math.min(100, Math.max(0, Number(s.reelLikePercentMin ?? 0)));
+          const rlMax = Math.min(100, Math.max(0, Number(s.reelLikePercentMax ?? 0)));
+          const reelLikePctMin = Math.min(rlMin, rlMax);
+          const reelLikePctMax = Math.max(rlMin, rlMax);
+          const reelLikePct = reelLikePctMax > 0 ? reelLikePctMin + Math.random() * (reelLikePctMax - reelLikePctMin) : 0;
+          const reelLikeCount = reelLikePctMax > 0 ? Math.round(reelCount * reelLikePct / 100) : 0;
+          console.log(`[engine] @${profile.username}: \u{1F3AC} [EB] View Reels running (${reelCount} reels, like target ${reelLikeCount})`);
+          try {
+            await nav2("https://www.instagram.com/reels/", "reels feed");
+            await sleep(actionDelay2());
+            const videoFound = await waitFor("video", 15e3);
+            if (!videoFound) {
+              const _reelDebug = await page2.evaluate(() => {
+                return `url="${location.href.slice(0, 120)}" title="${document.title}" videos=${document.querySelectorAll("video").length} imgs=${document.querySelectorAll("img").length} bodyLen=${document.body?.innerHTML?.length ?? 0}`;
+              }).catch(() => "evaluate failed");
+              console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} reels debug \u2014 ${_reelDebug}`);
+            }
+            let watched = 0;
+            let totalWatchMs = 0;
+            let totalViewPct = 0;
+            let reelLiked = 0;
+            if (videoFound) {
+              await page2.evaluate(() => {
+                try {
+                  Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
+                } catch {
                 }
-                let watched = 0;
-                let totalWatchMs = 0;
-                let totalViewPct = 0;
-                let reelLiked = 0;
-                if (videoFound) {
-                  await page2.evaluate(() => {
-                    try {
-                      Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
-                    } catch {
-                    }
-                    try {
-                      Object.defineProperty(document, "hidden", { get: () => false, configurable: true });
-                    } catch {
-                    }
-                    document.dispatchEvent(new Event("visibilitychange"));
-                  }).catch(() => {
-                  });
-                  for (let i2 = 0; i2 < reelCount && !state.stop.stopped; i2++) {
-                    const reelViewPct = reelViewPctMin + Math.random() * Math.max(0, reelViewPctMax - reelViewPctMin);
-                    const reelDurMs = randInt2(8e3, 2e4);
-                    const watchMs = Math.max(2e3, Math.round(reelViewPct / 100 * reelDurMs));
-                    await sleep(watchMs);
-                    if (reelLikeCount > 0 && reelLiked < reelLikeCount) {
-                      const likedReel = await page2.evaluate(() => {
-                        const heartSvg = document.querySelector('svg[aria-label="Like"]');
-                        if (!heartSvg) return false;
-                        const btn = heartSvg.closest('[role="button"], button');
-                        if (!btn) return false;
-                        btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-                        btn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
-                        btn.click();
-                        return true;
-                      }).catch(() => false);
-                      if (likedReel) {
-                        reelLiked++;
-                        await storage.incrementStat(profile.id, "like").catch(() => {
-                        });
-                        await sleep(actionDelay2());
-                      }
-                    }
-                    await page2.evaluate(() => {
-                      try {
-                        document.body.focus();
-                      } catch {
-                      }
-                    }).catch(() => {
+                try {
+                  Object.defineProperty(document, "hidden", { get: () => false, configurable: true });
+                } catch {
+                }
+                document.dispatchEvent(new Event("visibilitychange"));
+              }).catch(() => {
+              });
+              for (let i2 = 0; i2 < reelCount && !state.stop.stopped; i2++) {
+                const reelViewPct = reelViewPctMin + Math.random() * Math.max(0, reelViewPctMax - reelViewPctMin);
+                const reelDurMs = randInt2(8e3, 2e4);
+                const watchMs = Math.max(2e3, Math.round(reelViewPct / 100 * reelDurMs));
+                await sleep(watchMs);
+                if (reelLikeCount > 0 && reelLiked < reelLikeCount) {
+                  const likedReel = await page2.evaluate(() => {
+                    const heartSvg = document.querySelector('svg[aria-label="Like"]');
+                    if (!heartSvg) return false;
+                    const btn = heartSvg.closest('[role="button"], button');
+                    if (!btn) return false;
+                    btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+                    btn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+                    btn.click();
+                    return true;
+                  }).catch(() => false);
+                  if (likedReel) {
+                    reelLiked++;
+                    await storage.incrementStat(profile.id, "like").catch(() => {
                     });
-                    await page2.keyboard.press("ArrowDown").catch(() => {
-                    });
-                    await sleep(randInt2(600, 1400));
-                    watched++;
-                    totalWatchMs += watchMs;
-                    totalViewPct += reelViewPct;
+                    await sleep(actionDelay2());
                   }
-                } else {
-                  console.log(`[engine] @${profile.username}: [EB-only] no video found on /reels/, skipping`);
                 }
-                const avgPct = watched > 0 ? Math.round(totalViewPct / watched) : 0;
-                const totalSec = Math.round(totalWatchMs / 1e3);
-                const reelDetail = `EB watched ${watched} reel(s) \xB7 avg ${avgPct}% view \xB7 ${totalSec}s total`;
-                this.logAction(profile.id, tool.id, "view_reel_from_feed", "", "", "reel", watched > 0 ? "ok" : "skipped", reelDetail);
-                this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", reelDetail);
-                console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} watched ${watched} reels`);
-                if (reelLiked > 0) {
-                  this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "reel", "ok", `EB liked ${reelLiked} reel(s) while watching`);
-                  this.logGhostBrowserCall(profile.id, profile.username, "like_timeline_post", `EB liked ${reelLiked} reel(s) while watching`);
-                  console.log(`[engine] @${profile.username}: [EB-only] \u2764\uFE0F liked ${reelLiked} reels`);
-                }
-              } catch (e) {
-                console.warn(`[engine] @${profile.username}: [EB-only] reels feed error: ${e?.message}`);
-                this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", e?.message ?? "error", true);
-              }
-              if (!state.stop.stopped) {
-                await nav2("https://www.instagram.com/", "home (after reels)").catch(() => {
+                await page2.evaluate(() => {
+                  try {
+                    document.body.focus();
+                  } catch {
+                  }
+                }).catch(() => {
                 });
-                await sleep(actionDelay2());
+                await page2.keyboard.press("ArrowDown").catch(() => {
+                });
+                await sleep(randInt2(600, 1400));
+                watched++;
+                totalWatchMs += watchMs;
+                totalViewPct += reelViewPct;
               }
             } else {
-              console.log(`[engine] @${profile.username}: \u{1F3B2} [EB] View Reels chance ${reelChanceRoll.toFixed(1)}% \u2265 ${reelChance.toFixed(1)}% \u2014 skipping`);
+              console.log(`[engine] @${profile.username}: [EB-only] no video found on /reels/, skipping`);
             }
+            const avgPct = watched > 0 ? Math.round(totalViewPct / watched) : 0;
+            const totalSec = Math.round(totalWatchMs / 1e3);
+            const reelDetail = `EB watched ${watched} reel(s) \xB7 avg ${avgPct}% view \xB7 ${totalSec}s total`;
+            this.logAction(profile.id, tool.id, "view_reel_from_feed", "", "", "reel", watched > 0 ? "ok" : "skipped", reelDetail);
+            this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", reelDetail);
+            console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} watched ${watched} reels`);
+            if (reelLiked > 0) {
+              this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "reel", "ok", `EB liked ${reelLiked} reel(s) while watching`);
+              this.logGhostBrowserCall(profile.id, profile.username, "like_timeline_post", `EB liked ${reelLiked} reel(s) while watching`);
+              console.log(`[engine] @${profile.username}: [EB-only] \u2764\uFE0F liked ${reelLiked} reels`);
+            }
+          } catch (e) {
+            console.warn(`[engine] @${profile.username}: [EB-only] reels feed error: ${e?.message}`);
+            this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", e?.message ?? "error", true);
+          }
+          if (!state.stop.stopped) {
+            await nav2("https://www.instagram.com/", "home (after reels)").catch(() => {
+            });
+            await sleep(actionDelay2());
           }
         }
       });
@@ -168284,15 +168300,6 @@ ${err?.stack ?? ""}`);
           this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
           return;
         }
-        const reelChanceRaw0 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMin ?? 100)));
-        const reelChanceRaw1 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMax ?? 100)));
-        const reelChanceMin = Math.min(reelChanceRaw0, reelChanceRaw1);
-        const reelChanceMax = Math.max(reelChanceRaw0, reelChanceRaw1);
-        const reelChance = reelChanceMin + Math.random() * (reelChanceMax - reelChanceMin);
-        if (Math.random() * 100 >= reelChance) {
-          console.log(`[engine] @${profile.username}: \u{1F3AC} View Reels \u2014 Chance% roll missed, skipping`);
-          return;
-        }
         const reelCount = randInt2(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {
           console.log(`[engine] @${profile.username}: \u{1F3AC} View Reels \u2014 reel count rolled 0, skipping`);
@@ -168380,6 +168387,29 @@ ${err?.stack ?? ""}`);
                 }
               } else {
                 console.log(`[engine] @${profile.username}: \u23ED story like% rolled 0 (${pct}% of ${storyItems.length} slides)`);
+              }
+            }
+            const storySharePctMin = Number(s.storySharePctMin ?? 0);
+            const storySharePctMax = Number(s.storySharePctMax ?? 0);
+            if (storySharePctMax > 0 && storyItems.length > 0) {
+              const pct = randInt2(storySharePctMin, storySharePctMax);
+              const exactCount = storyItems.length * pct / 100;
+              const shareCount = Math.floor(exactCount) + (Math.random() < exactCount % 1 ? 1 : 0);
+              if (shareCount > 0) {
+                const shuffled = [...storyItems].sort(() => Math.random() - 0.5);
+                for (const item of shuffled.slice(0, shareCount)) {
+                  try {
+                    const ok = await client.shareStoryViaDm(item.mediaId, item.userId);
+                    if (ok) {
+                      console.log(`[engine] @${profile.username}: \u{1F4E4} shared story slide ${item.mediaId} via DM`);
+                      this.logAction(profile.id, tool.id, "share_story_via_dm", "", item.mediaId, "story", "ok", "Shared story slide via DM");
+                    }
+                  } catch (e) {
+                    console.warn(`[engine] @${profile.username}: story share error: ${e?.message}`);
+                  }
+                }
+              } else {
+                console.log(`[engine] @${profile.username}: \u23ED story share% rolled 0 (${pct}% of ${storyItems.length} slides)`);
               }
             }
           }

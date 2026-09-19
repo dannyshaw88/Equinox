@@ -96,7 +96,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "viewReels", label: "View Reels", description: "Independent reels-watching session, not tied to the timeline feed", subOptions: [
         { key: "vr_enabled",  label: "Enabled",           settingKeys: ["viewReelsEnabled"] },
         { key: "vr_order",    label: "Execution order",   settingKeys: ["viewReelsOrderMin","viewReelsOrderMax"] },
-        { key: "vr_chance",   label: "Chance % (% chance reels run at all)", settingKeys: ["reelWatchChanceMin","reelWatchChanceMax"] },
         { key: "vr_count",    label: "Reels/Op (how many reels to watch)", settingKeys: ["reelWatchCountMin","reelWatchCountMax"] },
         { key: "vr_view_pct", label: "% of each reel to watch", settingKeys: ["reelWatchPercentMin","reelWatchPercentMax"] },
         { key: "vr_like_pct", label: "% of reels to like",      settingKeys: ["reelLikePercentMin","reelLikePercentMax"] },
@@ -118,6 +117,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "cs_order",   label: "Execution order",        settingKeys: ["checkTimelineStoriesOrderMin","checkTimelineStoriesOrderMax"] },
         { key: "cs_chance",  label: "Skip chance %", settingKeys: ["checkTimelineStoriesNotUsedMin","checkTimelineStoriesNotUsedMax"] },
         { key: "cs_like",    label: "Like %",        settingKeys: ["storyLikePctMin","storyLikePctMax"] },
+         { key: "cs_share",   label: "Share %",       settingKeys: ["storySharePctMin","storySharePctMax"] },
       ]},
       { key: "checkDm", label: "Check DMs", description: "Read direct messages", subOptions: [
         { key: "dm_enabled", label: "Enabled",                            settingKeys: ["checkDmEnabled"] },
@@ -514,6 +514,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkTimelineStoriesNotUsedMax: 0,
       storyLikePctMin: 0,
       storyLikePctMax: 0,
+      storySharePctMin: 0,
+      storySharePctMax: 0,
       checkDmEnabled: true,
       checkDmMin: 5,
       checkDmMax: 15,
@@ -613,8 +615,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       forceEmulationRandomise: false,
       reelWatchPercentMin: 0,
       reelWatchPercentMax: 100,
-      reelWatchChanceMin: 100,
-      reelWatchChanceMax: 100,
       reelWatchCountMin: 1,
       reelWatchCountMax: 3,
       reelLikePercentMin: 0,
@@ -662,7 +662,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkTimelineStoriesWatchPctMin: 0, checkTimelineStoriesWatchPctMax: 0,
       checkTimelineStoriesOrderMin: 0, checkTimelineStoriesOrderMax: 0,
       checkTimelineStoriesNotUsedMin: 0, checkTimelineStoriesNotUsedMax: 0,
-      storyLikePctMin: 0, storyLikePctMax: 0,
+      storyLikePctMin: 0, storyLikePctMax: 0, storySharePctMin: 0, storySharePctMax: 0,
       checkDmEnabled: true, checkDmMin: 5, checkDmMax: 15,
       checkDmOrderMin: 0, checkDmOrderMax: 0, checkDmNotUsedMin: 0, checkDmNotUsedMax: 0,
       likeTimelinePostsEnabled: false, likeTimelinePostsMin: 2, likeTimelinePostsMax: 5,
@@ -706,7 +706,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       repostDisableComments: false, repostDisableAtPostCount: 0, repostDisableWhenExhausted: true,
       forceEmulationEnabled: false, forceEmulationRandomise: false,
       reelWatchPercentMin: 0, reelWatchPercentMax: 100,
-      reelWatchChanceMin: 100, reelWatchChanceMax: 100,
       reelWatchCountMin: 1, reelWatchCountMax: 3,
       reelLikePercentMin: 0, reelLikePercentMax: 0,
       repostMin: 1, repostMax: 1,
@@ -1335,12 +1334,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
               {/* Sub-row — settings below title */}
               <div className={`flex items-center gap-2.5 flex-wrap transition-opacity ${!(settings as any).viewReelsEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                 <div className="flex items-center gap-1.5">
-                  {pctInputs("reelWatchChanceMin", "reelWatchChanceMax")}
-                  <Percent className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Chance%</span>
-                </div>
-                <div className="h-4 w-px bg-border/60 shrink-0" />
-                <div className="flex items-center gap-1.5">
                   <Label className="text-xs text-muted-foreground uppercase">Min</Label>
                   <NumField min={0} max={50} className="w-16 h-7 text-xs"
                     value={settings.reelWatchCountMin ?? 1}
@@ -1410,7 +1403,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   </div>
                 </div>
               </div>
-              {/* Single settings row — Users to Watch | Slides per User | Watch % | Like % */}
+              {/* Single settings row — Users to Watch | Slides per User | Watch % | Like % | Share % */}
               <div className={`flex items-center gap-2.5 flex-nowrap overflow-x-auto transition-opacity ${!settings.checkTimelineStoriesEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                 <NumField min={1} max={50} className="w-14 h-7 text-xs"
                   value={settings.checkTimelineStoriesMin ?? 3}
@@ -1447,6 +1440,17 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   onChange={(v) => setSettings({ ...settings, storyLikePctMax: v })}
                 />
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like %</span>
+                <div className="h-4 w-px bg-border/60 shrink-0" />
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
+                  value={settings.storySharePctMin ?? 0}
+                  onChange={(v) => setSettings({ ...settings, storySharePctMin: v })}
+                />
+                <span className="text-[10px] text-muted-foreground">–</span>
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
+                  value={settings.storySharePctMax ?? 0}
+                  onChange={(v) => setSettings({ ...settings, storySharePctMax: v })}
+                />
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Share %</span>
               </div>
             </div>
 

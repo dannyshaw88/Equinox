@@ -1100,6 +1100,7 @@ class AutomationEngine {
               console.log(`[engine] @${freshProfile.username}: auto: unfollow tool enabled`);
               break;
             }
+
           }
         }
 
@@ -3138,24 +3139,13 @@ class AutomationEngine {
       });
 
       // ── View Reels — independent tool, navigate to /reels/ and watch N reels ──
-      // Uses reelWatchCountMin/Max, reelWatchPercentMin/Max. reelWatchChanceMin/Max
-      // is this tool's own "Chance %" (probability the tool fires at all this
-      // session) — decoupled from View Timeline Feed's enabled state.
+      // Uses reelWatchCountMin/Max and reelWatchPercentMin/Max. The enqueue
+      // Skip Chance % is the only probability gate for this tool.
       // There is no mobile-API reel call available in this browser-assisted path, so we
       // navigate to instagram.com/reels/, wait for the video to load, dwell for
       // reelViewPct% of an estimated reel duration, then press ArrowDown to advance.
       ebEnqueue("viewReels", "viewReelsOrderMin", "viewReelsOrderMax", async () => {
       if (s.viewReelsEnabled === true && (s as any).emulationGroupEnabled !== false) {
-        // Normalize reel chance bounds to [0,100], swap if inverted.
-        const reelChanceRaw0 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMin ?? 100)));
-        const reelChanceRaw1 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMax ?? 100)));
-        const reelChanceMin2 = Math.min(reelChanceRaw0, reelChanceRaw1);
-        const reelChanceMax2 = Math.max(reelChanceRaw0, reelChanceRaw1);
-        if (reelChanceMax2 > 0) {
-          const reelChance = reelChanceMin2 + Math.random() * (reelChanceMax2 - reelChanceMin2);
-          const reelChanceRoll = Math.random() * 100;
-          const reelsEnabled = reelChanceRoll < reelChance;
-          if (reelsEnabled) {
             // Normalize count and view-% bounds, swap if inverted.
             const rcMin = Math.max(0, Number(s.reelWatchCountMin ?? 1));
             const rcMax = Math.max(rcMin, Number(s.reelWatchCountMax ?? 3));
@@ -3175,7 +3165,7 @@ class AutomationEngine {
             const reelLikePctMax = Math.max(rlMin, rlMax);
             const reelLikePct = reelLikePctMax > 0 ? reelLikePctMin + Math.random() * (reelLikePctMax - reelLikePctMin) : 0;
             const reelLikeCount = reelLikePctMax > 0 ? Math.round(reelCount * reelLikePct / 100) : 0;
-            console.log(`[engine] @${profile.username}: 🎲 [EB] View Reels chance ${reelChanceRoll.toFixed(1)}% < ${reelChance.toFixed(1)}% — reels ON (${reelCount} reels, like target ${reelLikeCount})`);
+            console.log(`[engine] @${profile.username}: 🎬 [EB] View Reels running (${reelCount} reels, like target ${reelLikeCount})`);
             try {
               await nav("https://www.instagram.com/reels/", "reels feed");
               await sleep(actionDelay());
@@ -3264,10 +3254,6 @@ class AutomationEngine {
               await nav("https://www.instagram.com/", "home (after reels)").catch(() => {});
               await sleep(actionDelay());
             }
-          } else {
-            console.log(`[engine] @${profile.username}: 🎲 [EB] View Reels chance ${reelChanceRoll.toFixed(1)}% ≥ ${reelChance.toFixed(1)}% — skipping`);
-          }
-        }
       }
       });
 
@@ -5050,18 +5036,6 @@ class AutomationEngine {
           this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped — timeline feed already returned 0 posts earlier this session");
           return;
         }
-        // "Chance%" (reelWatchChanceMin/Max) is shared with the EB-only path —
-        // it's a separate roll from the "Skip Chance %" (viewReelsNotUsedMin/Max)
-        // that `enqueue` already applied above. Normalize bounds, swap if inverted.
-        const reelChanceRaw0 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMin ?? 100)));
-        const reelChanceRaw1 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMax ?? 100)));
-        const reelChanceMin = Math.min(reelChanceRaw0, reelChanceRaw1);
-        const reelChanceMax = Math.max(reelChanceRaw0, reelChanceRaw1);
-        const reelChance = reelChanceMin + Math.random() * (reelChanceMax - reelChanceMin);
-        if (Math.random() * 100 >= reelChance) {
-          console.log(`[engine] @${profile.username}: 🎬 View Reels — Chance% roll missed, skipping`);
-          return;
-        }
         const reelCount = randInt(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {
           console.log(`[engine] @${profile.username}: 🎬 View Reels — reel count rolled 0, skipping`);
@@ -5150,6 +5124,31 @@ class AutomationEngine {
                 }
               } else {
                 console.log(`[engine] @${profile.username}: ⏭ story like% rolled 0 (${pct}% of ${storyItems.length} slides)`);
+              }
+            }
+
+            // ── Story slide shares via DM ─────────────────────────────────
+            const storySharePctMin = Number(s.storySharePctMin ?? 0);
+            const storySharePctMax = Number(s.storySharePctMax ?? 0);
+            if (storySharePctMax > 0 && storyItems.length > 0) {
+              const pct = randInt(storySharePctMin, storySharePctMax);
+              const exactCount = storyItems.length * pct / 100;
+              const shareCount = Math.floor(exactCount) + (Math.random() < (exactCount % 1) ? 1 : 0);
+              if (shareCount > 0) {
+                const shuffled = [...storyItems].sort(() => Math.random() - 0.5);
+                for (const item of shuffled.slice(0, shareCount)) {
+                  try {
+                    const ok = await client.shareStoryViaDm(item.mediaId, item.userId);
+                    if (ok) {
+                      console.log(`[engine] @${profile.username}: 📤 shared story slide ${item.mediaId} via DM`);
+                      this.logAction(profile.id, tool.id, "share_story_via_dm", "", item.mediaId, "story", "ok", "Shared story slide via DM");
+                    }
+                  } catch (e: any) {
+                    console.warn(`[engine] @${profile.username}: story share error: ${e?.message}`);
+                  }
+                }
+              } else {
+                console.log(`[engine] @${profile.username}: ⏭ story share% rolled 0 (${pct}% of ${storyItems.length} slides)`);
               }
             }
 
