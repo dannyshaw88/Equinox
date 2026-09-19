@@ -38,6 +38,10 @@ const DEFAULT_PROXY_COL_WIDTHS: Record<ProxyCol, number> = { proxy: 210, type: 9
 const PROXY_COL_LABELS: Record<ProxyCol, string> = { proxy: "Proxy / Adapter", type: "Type", username: "Username", password: "Password", status: "Proxy Status", accounts: "Accounts", acctStatus: "Status", acctTrustScore: "Trust", rotate: "Rotate Every" };
 const ACTIONS_COL_WIDTH = 130;
 
+function displayHostPort(proxy: Proxy): string {
+  return proxy.host === "0.0.0.0" && proxy.port === 8080 ? "" : `${proxy.host}:${proxy.port}`;
+}
+
 // Lightweight status pill for the proxy page (mirrors the full STATUS_META in ProfilesPage)
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -139,9 +143,7 @@ function ProxyRow({
   const isAdapter = proxy.proxyType === "adapter";
 
   // Show blank when the proxy was just added with the default sentinel values
-  const [hostPort, setHostPort] = useState(
-    proxy.host === "0.0.0.0" && proxy.port === 8080 ? "" : `${proxy.host}:${proxy.port}`
-  );
+  const [hostPort, setHostPort] = useState(displayHostPort(proxy));
   const [username, setUsername] = useState(proxy.username ?? "");
   const [password, setPassword] = useState(proxy.password ?? "");
   const [proxyType, setProxyType] = useState<"http" | "socks5" | "adapter">((proxy.proxyType as "http" | "socks5" | "adapter") ?? "http");
@@ -154,7 +156,7 @@ function ProxyRow({
 
   useEffect(() => {
     if (!isAdapter) {
-      setHostPort(`${proxy.host}:${proxy.port}`);
+      setHostPort(displayHostPort(proxy));
     }
     setUsername(proxy.username ?? "");
     setPassword(proxy.password ?? "");
@@ -179,7 +181,7 @@ function ProxyRow({
       }
       if (!host || isNaN(port) || port < 1 || port > 65535) {
         toast({ title: "Invalid format", description: "Use host:port format", variant: "destructive" });
-        setHostPort(`${proxy.host}:${proxy.port}`);
+        setHostPort(displayHostPort(proxy));
         return;
       }
       data = { host, port };
