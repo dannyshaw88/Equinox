@@ -2024,7 +2024,7 @@ export class InstagramWebClient {
       const errorCode: number | undefined = (res.json as any)?.content?.error_code ?? (res.json as any)?.error_code;
       if (errorCode === 4415001) {
         console.warn(`[webClient] mobileSessionGet ${path} → HTTP ${res.status} (prompt_required_4415001 — soft gate, not a logout): ${res.rawBody.slice(0, 200)}`);
-        this._logTransport(path, "GET", Date.now() - _t0, true);
+        this._logTransport(path, "GET", Date.now() - _t0, true, `HTTP ${res.status} — prompt_required_4415001`);
         const softGateErr: any = new Error("prompt_required_4415001");
         // Attach structured metadata so callers (e.g. _buildWarmedIgClient) can
         // tell "Instagram responded with a real HTTP status" apart from a true
@@ -2044,6 +2044,10 @@ export class InstagramWebClient {
       const explicitAuthError = res.status === 401
         || /login_required|logged_out|logout_reason|checkpoint_required|not authorized|session expired|not logged in/i.test(responseText);
       const errMsg = bodyMsg || (explicitAuthError ? "login_required" : `instagram_http_${res.status}`);
+      const responseDetail = bodyMsg
+        || (res.json as any)?.error_type
+        || ((res.json as any)?.error_code !== undefined ? `error_code=${(res.json as any).error_code}` : "")
+        || String(res.rawBody ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
       // When Instagram includes logout_reason, the session is server-side dead.
       // Bake it into the thrown error as "session_expired — ..." so callers like
       // viewStories / viewHighlights propagate it to the engine's session_expired
@@ -2056,7 +2060,7 @@ export class InstagramWebClient {
         ? `session_expired — ${errMsg} | logout_reason:${logoutReason}`
         : errMsg;
       console.warn(`[webClient] mobileSessionGet ${path} → HTTP ${res.status} (${errMsg}${logoutReason !== undefined ? ` [SESSION-KILL logout_reason:${logoutReason}]` : ""}): ${res.rawBody.slice(0, 200)}`);
-      this._logTransport(path, "GET", Date.now() - _t0, true);
+      this._logTransport(path, "GET", Date.now() - _t0, true, `HTTP ${res.status}${responseDetail ? ` — ${responseDetail}` : ""}`);
       const httpErr: any = new Error(throwMsg);
       // Structured metadata (see prompt_required_4415001 branch above for why):
       // httpStatus lets callers distinguish "Instagram answered with an error
@@ -2068,7 +2072,12 @@ export class InstagramWebClient {
       throw httpErr;
     }
     if (!res.json) console.log(`[webClient] mobileSessionGet ${path} status=${res.status} body(200):`, res.rawBody.slice(0, 200));
-    this._logTransport(path, "GET", Date.now() - _t0, false, msgFn?.(res.json));
+    const responseStatus = String(res.json?.status ?? "").toLowerCase();
+    const applicationFailed = responseStatus === "fail" || responseStatus === "error";
+    const applicationDetail = applicationFailed
+      ? `HTTP ${res.status} — status=${responseStatus}${res.json?.message ? ` — ${String(res.json.message).slice(0, 180)}` : ""}`
+      : msgFn?.(res.json);
+    this._logTransport(path, "GET", Date.now() - _t0, applicationFailed, applicationDetail);
     return res.json;
   }
 
@@ -5116,7 +5125,20 @@ export class InstagramWebClient {
     if (res.json?.message === "feedback_required" && !this._abdDismissInProgress) {
       this._lastFeedbackResponse = res.json;
     }
-    this._logTransport(path, "POST", Date.now() - _t0, res.status >= 400);
+    const responseStatus = String(res.json?.status ?? "").toLowerCase();
+    const applicationFailed = responseStatus === "fail" || responseStatus === "error";
+    const responseDetail = (res.json as any)?.message
+      || (res.json as any)?.error_type
+      || ((res.json as any)?.error_code !== undefined ? `error_code=${(res.json as any).error_code}` : "")
+      || String(res.rawBody ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+    const transportFailed = res.status >= 400 || applicationFailed;
+    this._logTransport(
+      path,
+      "POST",
+      Date.now() - _t0,
+      transportFailed,
+      transportFailed ? `HTTP ${res.status}${responseDetail ? ` — ${responseDetail}` : ""}` : undefined,
+    );
     return res.json;
   }
 
