@@ -33,3 +33,4 @@
 - [Windows update data location](windows-update-data-location.md) — packaged Electron state must be isolated under userData, not the replaceable install directory; migrate legacy state once.
 - [Windows same-version update rule](windows-same-version-update.md) — rebuilding without incrementing app.version does not reliably replace or auto-update an installed Electron build.
 - [Human Jitter API actions](human-jitter-api-actions.md) — the API runner must use mobile-session endpoints; embedded-browser clicks are only for the separate EB runner.
+- [Canonical Equinox robot asset](canonical-equinox-robot-asset.md) — `bot-logo.png` is the source of truth for web, Electron, desktop, and tray branding.

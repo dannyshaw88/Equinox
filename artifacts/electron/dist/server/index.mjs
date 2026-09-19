@@ -119018,7 +119018,7 @@ var init_hikerApiClient = __esm({
         const accumulated = [];
         let nextMaxId = null;
         const maxPages = Math.ceil(max / PAGE_SIZE) + 5;
-        for (let page2 = 0; page2 < maxPages && accumulated.length < max; page2++) {
+        for (let page = 0; page < maxPages && accumulated.length < max; page++) {
           let pageResult = null;
           try {
             const qs = new URLSearchParams({ user_id: userId, amount: String(PAGE_SIZE) });
@@ -119027,15 +119027,15 @@ var init_hikerApiClient = __esm({
             if (j && !Array.isArray(j) && (j.detail || j.exc_type)) {
               const detail = j.detail ?? j.exc_type ?? JSON.stringify(j);
               if (/entries not found|not found/i.test(detail)) {
-                console.log(`[hikerApi] getFollowings ${userId} page ${page2}: /v2/ cache miss, trying /v1/\u2026`);
+                console.log(`[hikerApi] getFollowings ${userId} page ${page}: /v2/ cache miss, trying /v1/\u2026`);
               } else {
-                console.warn(`[hikerApi] getFollowings ${userId} page ${page2} v2 error: ${detail}`);
+                console.warn(`[hikerApi] getFollowings ${userId} page ${page} v2 error: ${detail}`);
               }
             } else {
               pageResult = extractPage(j);
             }
           } catch (e) {
-            console.warn(`[hikerApi] getFollowings v2 ${userId} page ${page2}: ${e?.message} \u2014 trying v1`);
+            console.warn(`[hikerApi] getFollowings v2 ${userId} page ${page}: ${e?.message} \u2014 trying v1`);
           }
           if (!pageResult) {
             try {
@@ -119043,17 +119043,17 @@ var init_hikerApiClient = __esm({
               if (nextMaxId) qs.set("next_max_id", nextMaxId);
               const j = await hikerGet(`/v1/user/following?${qs}`, this.token);
               if (j && !Array.isArray(j) && !j?.response && (j.detail || j.exc_type)) {
-                console.warn(`[hikerApi] getFollowings ${userId} page ${page2} v1 error: ${j.detail ?? j.exc_type}`);
+                console.warn(`[hikerApi] getFollowings ${userId} page ${page} v1 error: ${j.detail ?? j.exc_type}`);
                 break;
               }
               pageResult = extractPage(j);
             } catch (e) {
-              console.error(`[hikerApi] getFollowings ${userId} page ${page2} v1 error: ${e?.message}`);
+              console.error(`[hikerApi] getFollowings ${userId} page ${page} v1 error: ${e?.message}`);
               break;
             }
           }
           accumulated.push(...pageResult.users);
-          console.log(`[hikerApi] getFollowings ${userId} page ${page2}: +${pageResult.users.length} (total ${accumulated.length}/${max}, nextMaxId=${pageResult.nextMaxId ?? "none"}, more=${pageResult.more})`);
+          console.log(`[hikerApi] getFollowings ${userId} page ${page}: +${pageResult.users.length} (total ${accumulated.length}/${max}, nextMaxId=${pageResult.nextMaxId ?? "none"}, more=${pageResult.more})`);
           nextMaxId = pageResult.nextMaxId;
           if (!pageResult.more || !nextMaxId || pageResult.users.length === 0) break;
         }
@@ -150679,9 +150679,9 @@ var COOKIES_DIR = process.env.DATABASE_PATH ? path2.join(path2.dirname(process.e
 function cookiePath(profileId) {
   return path2.join(COOKIES_DIR, `cookies-${profileId}.json`);
 }
-async function saveCookies(profileId, page2) {
+async function saveCookies(profileId, page) {
   try {
-    const cookies = await page2.cookies(
+    const cookies = await page.cookies(
       "https://www.instagram.com",
       "https://i.instagram.com",
       "https://instagram.com"
@@ -150743,14 +150743,14 @@ async function saveCookies(profileId, page2) {
     log(`[cookies:${profileId}] Save error: ${e?.message}`, "browser");
   }
 }
-async function loadCookies(profileId, page2) {
+async function loadCookies(profileId, page) {
   try {
     const p = cookiePath(profileId);
     if (!fs.existsSync(p)) return false;
     const raw = fs.readFileSync(p, "utf8");
     const cookies = JSON.parse(raw);
     if (!Array.isArray(cookies) || !cookies.length) return false;
-    await page2.setCookie(...cookies);
+    await page.setCookie(...cookies);
     log(`[cookies:${profileId}] Restored ${cookies.length} cookies`, "browser");
     return true;
   } catch (e) {
@@ -151104,15 +151104,15 @@ async function harvestSignupCookiesFromEB(opts) {
   }
   opts?.onStep?.(`EB harvest: using mobile Chrome UA: ${effectiveUA.slice(0, 80)}${effectiveUA.length > 80 ? "..." : ""}`);
   try {
-    const [page2] = await browser.pages();
-    await page2.setUserAgent(effectiveUA);
+    const [page] = await browser.pages();
+    await page.setUserAgent(effectiveUA);
     const vp = viewportForUA(effectiveUA);
-    await page2.setViewport(vp);
+    await page.setViewport(vp);
     log(`${logPfx} Harvest viewport: ${vp.width}\xD7${vp.height} isMobile=${!!vp.isMobile}`);
     if (opts?.proxyUsername) {
-      await page2.authenticate({ username: opts.proxyUsername, password: opts.proxyPassword ?? "" });
+      await page.authenticate({ username: opts.proxyUsername, password: opts.proxyPassword ?? "" });
     }
-    await applyStealthScripts(page2, effectiveUA, void 0, harvestApiUA ?? void 0);
+    await applyStealthScripts(page, effectiveUA, void 0, harvestApiUA ?? void 0);
     {
       const pbSites = opts?.preBakeSites ?? [];
       const hasYt = !!opts?.preBakeYoutube;
@@ -151149,7 +151149,7 @@ async function harvestSignupCookiesFromEB(opts) {
           const end = Date.now() + ms;
           while (Date.now() < end) {
             try {
-              await page2.evaluate(() => {
+              await page.evaluate(() => {
                 window.scrollBy(0, 120 + Math.random() * 180);
               });
             } catch {
@@ -151165,8 +151165,8 @@ async function harvestSignupCookiesFromEB(opts) {
               try {
                 opts?.onStep?.(`Pre-bake: visiting ${url2}...`);
                 log(`${logPfx} Pre-bake \u2192 ${url2}`);
-                await page2.goto(url2, { waitUntil: "domcontentloaded", timeout: 25e3 });
-                await dismissCookieBanner(page2);
+                await page.goto(url2, { waitUntil: "domcontentloaded", timeout: 25e3 });
+                await dismissCookieBanner(page);
                 await organicScroll(scrollMs());
               } catch (e) {
                 log(`${logPfx} Pre-bake skip (${url2}): ${e?.message}`);
@@ -151177,8 +151177,8 @@ async function harvestSignupCookiesFromEB(opts) {
             try {
               opts?.onStep?.("Pre-bake: visiting YouTube...");
               log(`${logPfx} Pre-bake \u2192 YouTube`);
-              await page2.goto("https://www.youtube.com/", { waitUntil: "domcontentloaded", timeout: 25e3 });
-              await dismissCookieBanner(page2);
+              await page.goto("https://www.youtube.com/", { waitUntil: "domcontentloaded", timeout: 25e3 });
+              await dismissCookieBanner(page);
               await organicScroll(3e3 + Math.random() * 3e3);
               try {
                 const YT_SELECTORS = [
@@ -151192,8 +151192,8 @@ async function harvestSignupCookiesFromEB(opts) {
                 let thumbs = [];
                 for (const sel of YT_SELECTORS) {
                   try {
-                    await page2.waitForSelector(sel, { timeout: 3e3 });
-                    thumbs = await page2.$$(sel);
+                    await page.waitForSelector(sel, { timeout: 3e3 });
+                    thumbs = await page.$$(sel);
                     if (thumbs.length > 0) break;
                   } catch {
                   }
@@ -151202,7 +151202,7 @@ async function harvestSignupCookiesFromEB(opts) {
                   opts?.onStep?.("Pre-bake: clicking YouTube video...");
                   await thumbs[Math.floor(Math.random() * Math.min(6, thumbs.length))].click();
                   await new Promise((r2) => setTimeout(r2, 1500));
-                  await dismissCookieBanner(page2);
+                  await dismissCookieBanner(page);
                   await organicScroll(4e3 + Math.random() * 4e3);
                 } else {
                   opts?.onStep?.("Pre-bake: YouTube homepage loaded (no video grid found \u2014 continuing)");
@@ -151217,8 +151217,8 @@ async function harvestSignupCookiesFromEB(opts) {
             try {
               opts?.onStep?.("Pre-bake: visiting Google...");
               log(`${logPfx} Pre-bake \u2192 Google`);
-              await page2.goto("https://www.google.com/", { waitUntil: "domcontentloaded", timeout: 25e3 });
-              await dismissCookieBanner(page2);
+              await page.goto("https://www.google.com/", { waitUntil: "domcontentloaded", timeout: 25e3 });
+              await dismissCookieBanner(page);
               await new Promise((r2) => setTimeout(r2, 1500));
               const SEARCH_TERMS = [
                 "weather today",
@@ -151235,11 +151235,11 @@ async function harvestSignupCookiesFromEB(opts) {
               try {
                 opts?.onStep?.(`Pre-bake: Google search "${term}"...`);
                 log(`${logPfx} Pre-bake \u2192 Google search: "${term}"`);
-                await page2.type("textarea[name='q'], input[name='q']", term, { delay: 80 + Math.random() * 60 });
-                await page2.keyboard.press("Enter");
-                await page2.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
+                await page.type("textarea[name='q'], input[name='q']", term, { delay: 80 + Math.random() * 60 });
+                await page.keyboard.press("Enter");
+                await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
                 });
-                await dismissCookieBanner(page2);
+                await dismissCookieBanner(page);
                 await organicScroll(3e3 + Math.random() * 3e3);
               } catch (e) {
                 log(`${logPfx} Pre-bake Google search warning: ${e?.message}`);
@@ -151260,7 +151260,7 @@ async function harvestSignupCookiesFromEB(opts) {
       "https://instagram.com"
     ];
     const readIgCookies = async () => {
-      const all = await page2.cookies(...IG_ORIGINS);
+      const all = await page.cookies(...IG_ORIGINS);
       return {
         mid: all.find((c3) => c3.name === "mid")?.value ?? "",
         ig_did: all.find((c3) => c3.name === "ig_did")?.value ?? "",
@@ -151271,7 +151271,7 @@ async function harvestSignupCookiesFromEB(opts) {
     log(`${logPfx} Step 1: Navigating to instagram.com homepage to seed device cookies...`);
     opts?.onStep?.("EB: visiting Instagram homepage to seed device cookies (mid, ig_did)...");
     try {
-      await page2.goto("https://www.instagram.com/", {
+      await page.goto("https://www.instagram.com/", {
         waitUntil: "load",
         timeout: 3e4
       });
@@ -151279,7 +151279,7 @@ async function harvestSignupCookiesFromEB(opts) {
       log(`${logPfx} Homepage navigation warning (continuing): ${e?.message}`);
     }
     await new Promise((r2) => setTimeout(r2, 4e3));
-    await dismissCookieBanner(page2);
+    await dismissCookieBanner(page);
     await new Promise((r2) => setTimeout(r2, 2e3));
     let { mid, ig_did, csrftoken } = await readIgCookies();
     log(`${logPfx} After homepage+6s: mid=${mid ? "\u2713" : "\u2717"} ig_did=${ig_did ? "\u2713" : "\u2717"} csrftoken=${csrftoken ? "\u2713" : "\u2717"}`);
@@ -151287,7 +151287,7 @@ async function harvestSignupCookiesFromEB(opts) {
     log(`${logPfx} Step 2: Navigating to instagram.com/accounts/emailsignup/ ...`);
     opts?.onStep?.("EB: navigating to Instagram signup page...");
     try {
-      await page2.goto("https://www.instagram.com/accounts/emailsignup/", {
+      await page.goto("https://www.instagram.com/accounts/emailsignup/", {
         waitUntil: "load",
         timeout: 3e4
       });
@@ -151295,7 +151295,7 @@ async function harvestSignupCookiesFromEB(opts) {
       log(`${logPfx} Signup page navigation warning (still checking cookies): ${e?.message}`);
     }
     await new Promise((r2) => setTimeout(r2, 4e3));
-    await dismissCookieBanner(page2);
+    await dismissCookieBanner(page);
     await new Promise((r2) => setTimeout(r2, 2e3));
     {
       const after = await readIgCookies();
@@ -151322,7 +151322,7 @@ async function harvestSignupCookiesFromEB(opts) {
         const end = Date.now() + ms;
         while (Date.now() < end) {
           try {
-            await page2.evaluate(() => {
+            await page.evaluate(() => {
               window.scrollBy(0, 80 + Math.random() * 200);
             });
           } catch {
@@ -151336,7 +151336,7 @@ async function harvestSignupCookiesFromEB(opts) {
       } catch {
       }
       try {
-        await page2.goto("https://www.instagram.com/explore/", { waitUntil: "domcontentloaded", timeout: 15e3 });
+        await page.goto("https://www.instagram.com/explore/", { waitUntil: "domcontentloaded", timeout: 15e3 });
         await new Promise((r2) => setTimeout(r2, 2e3 + Math.random() * 2e3));
         await warmUpScroll(2e4 + Math.random() * 15e3);
       } catch {
@@ -151347,7 +151347,7 @@ async function harvestSignupCookiesFromEB(opts) {
       if (postWarm.csrftoken) csrftoken = postWarm.csrftoken;
       opts?.onStep?.("EB warm-up: Instagram session browsing complete \u2713");
     }
-    const allCookies = await page2.cookies(
+    const allCookies = await page.cookies(
       "https://www.instagram.com",
       "https://i.instagram.com",
       "https://instagram.com"
@@ -151627,10 +151627,10 @@ function viewportForUA(ua) {
   }
   return { width: 1280, height: 760 };
 }
-async function applyStealthScripts(page2, userAgent, overrideTZ, apiUA) {
+async function applyStealthScripts(page, userAgent, overrideTZ, apiUA) {
   const mobile = isMobileUA(userAgent);
   const meta = buildUAMetadata(userAgent);
-  await page2.evaluateOnNewDocument((mobile2, meta2, _overrideTZ, _apiUA) => {
+  await page.evaluateOnNewDocument((mobile2, meta2, _overrideTZ, _apiUA) => {
     try {
       delete navigator.webdriver;
     } catch (_2) {
@@ -152391,12 +152391,12 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
     _launchingProfiles.delete(profileId);
     throw new Error(msg);
   }
-  const [page2] = await browser.pages();
+  const [page] = await browser.pages();
   const uaMeta = buildUAMetadata(userAgent);
-  await (uaMeta ? page2.setUserAgent(userAgent, uaMeta) : page2.setUserAgent(userAgent));
-  await page2.setViewport({ width: 1280, height: 760 });
+  await (uaMeta ? page.setUserAgent(userAgent, uaMeta) : page.setUserAgent(userAgent));
+  await page.setViewport({ width: 1280, height: 760 });
   if (proxy?.username && proxy?.type !== "socks5") {
-    await page2.authenticate({ username: proxy.username, password: proxy.password ?? "" });
+    await page.authenticate({ username: proxy.username, password: proxy.password ?? "" });
   }
   log(`Chrome launched for profile ${profileId}`, "browser");
   let resolvedTZ;
@@ -152421,9 +152421,9 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
     } catch {
     }
   }
-  await applyStealthScripts(page2, userAgent, resolvedTZ, userAgentApi);
-  await page2.setExtraHTTPHeaders({ "Accept-Language": resolvedAcceptLang });
-  const fetchCdp = await page2.createCDPSession();
+  await applyStealthScripts(page, userAgent, resolvedTZ, userAgentApi);
+  await page.setExtraHTTPHeaders({ "Accept-Language": resolvedAcceptLang });
+  const fetchCdp = await page.createCDPSession();
   await fetchCdp.send("Fetch.enable", {
     patterns: [
       { urlPattern: "*update_risky_contactpoint*", requestStage: "Request" },
@@ -152460,8 +152460,8 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
     fetchCdp.send("Fetch.continueRequest", { requestId }).catch(() => {
     });
   });
-  page2.on("framenavigated", async (frame) => {
-    if (frame !== page2.mainFrame()) return;
+  page.on("framenavigated", async (frame) => {
+    if (frame !== page.mainFrame()) return;
     const sNav = sessions.get(profileId);
     const navUrl = frame.url();
     log(`[nav:${profileId}] framenavigated \u2192 ${navUrl}`, "browser");
@@ -152472,17 +152472,17 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
     }
     const url2 = frame.url();
     await new Promise((r2) => setTimeout(r2, 1500));
-    await dismissCookieBanner(page2);
-    await dismissInstagramPopups(page2);
+    await dismissCookieBanner(page);
+    await dismissInstagramPopups(page);
     await new Promise((r2) => setTimeout(r2, 1500));
-    await dismissCookieBanner(page2);
-    await dismissInstagramPopups(page2);
+    await dismissCookieBanner(page);
+    await dismissInstagramPopups(page);
     setTimeout(() => {
-      dismissCookieBanner(page2).catch(() => {
+      dismissCookieBanner(page).catch(() => {
       });
     }, 3e3);
     if (url2 && url2.includes("instagram.com") && !url2.includes("/accounts/login") && !url2.includes("/accounts/emailsignup") && !url2.includes("about:blank")) {
-      await saveCookies(profileId, page2);
+      await saveCookies(profileId, page);
     }
   });
   const STATIC_EXT = /\.(jpg|jpeg|png|gif|webp|svg|ico|css|js|woff2?|ttf|eot|mp4|mp3)(\?.*)?$/i;
@@ -152514,7 +152514,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
     }
   };
   const pending = /* @__PURE__ */ new Map();
-  page2.on("response", (res) => {
+  page.on("response", (res) => {
     const status = res.status();
     if (status >= 300 && status < 400) {
       const loc = res.headers()["location"] ?? "(no location)";
@@ -152544,7 +152544,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
       }
     }
   });
-  page2.on("requestfailed", (req) => {
+  page.on("requestfailed", (req) => {
     const err = req.failure()?.errorText ?? "unknown";
     const url2 = req.url();
     if (url2.includes("instagram.com") || url2.startsWith("chrome-error")) {
@@ -152560,14 +152560,14 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
             const scrapingUrl = new URL(url2);
             const nextRaw = scrapingUrl.searchParams.get("next") ?? "";
             if (nextRaw.includes("/consent/")) {
-              await page2.goto(nextRaw, { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
+              await page.goto(nextRaw, { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
               });
             } else {
-              await page2.goto(url2, { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
+              await page.goto(url2, { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
               });
             }
           } catch {
-            await page2.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
+            await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
             });
           }
         }, 1500);
@@ -152578,7 +152578,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
           sc._approvalPolling = true;
           sc.navProtectedUntil = Date.now() + 31e4;
           Promise.resolve().then(async () => {
-            await page2.goto("about:blank", { waitUntil: "domcontentloaded", timeout: 5e3 }).catch(() => {
+            await page.goto("about:blank", { waitUntil: "domcontentloaded", timeout: 5e3 }).catch(() => {
             });
             await startScreencast(profileId).catch(() => {
             });
@@ -152596,7 +152596,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
             sendStatus(profileId, `\u26A0 Instagram security check detected \u2014 loading challenge page\u2026`);
             const inChromeResolved = await followChallengeRedirectsInChrome(
               profileId,
-              page2,
+              page,
               startChallengeUrl,
               30
             );
@@ -152613,9 +152613,9 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
               return;
             }
             log(`[challenge:${profileId}] in-Chrome hop-follow did not resolve (chain infinite) \u2014 falling back to phone-approval polling`, "browser");
-            await startApprovalPolling(profileId, page2);
+            await startApprovalPolling(profileId, page);
           }).catch(() => {
-            startApprovalPolling(profileId, page2);
+            startApprovalPolling(profileId, page);
           });
         }
         return;
@@ -152636,7 +152636,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
         sc.navProtectedUntil = Date.now() + 36e5;
         log(`[challenge:${profileId}] manual redirect-follow already attempted \u2014 injecting challenge info page`, "browser");
         sendStatus(profileId, `\u26A0 Instagram verification page could not load. Open this link in your own browser: ${sc.challengeUrl}`);
-        injectChallengePage(page2, sc.challengeUrl).catch(() => {
+        injectChallengePage(page, sc.challengeUrl).catch(() => {
         });
         return;
       }
@@ -152644,7 +152644,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
       sc.navProtectedUntil = Date.now() + 12e4;
       log(`[challenge:${profileId}] ERR_TOO_MANY_REDIRECTS \u2014 starting manual CDP redirect-follow from: ${sc.challengeUrl.slice(0, 100)}`, "browser");
       sendStatus(profileId, `\u26A0 Instagram verification required. Attempting to load the challenge page\u2026`);
-      followChallengeRedirects(profileId, page2, sc.challengeUrl).then((ok) => {
+      followChallengeRedirects(profileId, page, sc.challengeUrl).then((ok) => {
         const s2 = sessions.get(profileId);
         if (!s2) return;
         if (ok) {
@@ -152655,14 +152655,14 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
           s2.navProtectedUntil = Date.now() + 36e5;
           log(`[challenge:${profileId}] manual redirect-follow failed \u2014 injecting challenge info page`, "browser");
           sendStatus(profileId, `\u26A0 Instagram requires verification for this account. Open this link in your browser to complete it: ${s2.challengeUrl} \u2014 After finishing the check, click Clear EB Session here to reset and log back in.`);
-          injectChallengePage(page2, s2.challengeUrl ?? "").catch(() => {
+          injectChallengePage(page, s2.challengeUrl ?? "").catch(() => {
           });
         }
       }).catch(() => {
         const s2 = sessions.get(profileId);
         if (s2) {
           s2.navProtectedUntil = Date.now() + 36e5;
-          injectChallengePage(page2, s2.challengeUrl ?? "").catch(() => {
+          injectChallengePage(page, s2.challengeUrl ?? "").catch(() => {
           });
         }
       });
@@ -152670,7 +152670,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
   });
   const _diagStartMs = Date.now();
   const _diagWindow = {};
-  page2.on("request", (req) => {
+  page.on("request", (req) => {
     if (isIgApiCall(req.url())) {
       pending.set(req.url(), { startMs: Date.now(), method: req.method() });
     }
@@ -152687,7 +152687,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
       }
     }
   });
-  page2.on("response", (res) => {
+  page.on("response", (res) => {
     const url2 = res.url();
     const info = pending.get(url2);
     if (!info) return;
@@ -152711,14 +152711,14 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
       }
     });
   });
-  const session = { browser, page: page2, pages: [page2], activePage: 0, ws: null, frameLoop: null, framePending: false, screencastCdp: null, housekeepLoop: null, lastScreencastFrameAt: Date.now(), lastUrl: "", proxyKey: newProxyKey, userAgent, userAgentApi: userAgentApi ?? null, sessionToken: /* @__PURE__ */ Symbol(), lastActivityAt: Date.now(), startedAt: Date.now(), resolvedTZ };
+  const session = { browser, page, pages: [page], activePage: 0, ws: null, frameLoop: null, framePending: false, screencastCdp: null, housekeepLoop: null, lastScreencastFrameAt: Date.now(), lastUrl: "", proxyKey: newProxyKey, userAgent, userAgentApi: userAgentApi ?? null, sessionToken: /* @__PURE__ */ Symbol(), lastActivityAt: Date.now(), startedAt: Date.now(), resolvedTZ };
   sessions.set(profileId, session);
   log(`Chrome launched for profile ${profileId}`, "browser");
   {
     let _diagTick = 0;
     let _diagPrevMetrics = {};
     let _diagCdp = null;
-    page2.createCDPSession().then((cdp) => {
+    page.createCDPSession().then((cdp) => {
       _diagCdp = cdp;
       return cdp.send("Performance.enable", { timeDomain: "timeTicks" });
     }).catch(() => {
@@ -152804,12 +152804,12 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
     } catch {
     }
   });
-  page2.on("filechooser", (chooser) => {
+  page.on("filechooser", (chooser) => {
     pendingFileChoosers.set(profileId, chooser);
     const s = sessions.get(profileId);
     if (s) wsWrite(s.ws, { type: "fileChooserNeeded" });
   });
-  page2.on("console", (msg) => {
+  page.on("console", (msg) => {
     const s = sessions.get(profileId);
     if (!s) return;
     const level = msg.type();
@@ -152820,7 +152820,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
   const DEVICE_COOKIE_NAMES_SET = /* @__PURE__ */ new Set(["mid", "ig_did", "ig_nrcb", "datr"]);
   let udirDeviceTokens = [];
   try {
-    const staleCookies = await page2.cookies(
+    const staleCookies = await page.cookies(
       "https://www.instagram.com",
       "https://i.instagram.com",
       "https://instagram.com"
@@ -152829,10 +152829,10 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
       udirDeviceTokens = staleCookies.filter((c3) => DEVICE_COOKIE_NAMES_SET.has(c3.name));
       const sessionCookies = staleCookies.filter((c3) => !DEVICE_COOKIE_NAMES_SET.has(c3.name));
       if (sessionCookies.length) {
-        await page2.deleteCookie(...sessionCookies).catch(() => null);
+        await page.deleteCookie(...sessionCookies).catch(() => null);
       }
       if (udirDeviceTokens.length) {
-        await page2.setCookie(...udirDeviceTokens).catch(() => null);
+        await page.setCookie(...udirDeviceTokens).catch(() => null);
       }
       const names = sessionCookies.map((c3) => c3.name).join(", ");
       log(`[cookies:${profileId}] Purged ${sessionCookies.length} stale session cookies before load (preserved device tokens: ${udirDeviceTokens.map((c3) => c3.name).join(", ") || "none"}): ${names}`, "browser");
@@ -152842,13 +152842,13 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
   } catch (e) {
     log(`[cookies:${profileId}] Stale-cookie purge failed (non-fatal): ${e?.message}`, "browser");
   }
-  let cookiesLoaded = await loadCookies(profileId, page2);
+  let cookiesLoaded = await loadCookies(profileId, page);
   try {
-    const existingNrcb = (await page2.cookies(
+    const existingNrcb = (await page.cookies(
       "https://www.instagram.com"
     ).catch(() => [])).filter((c3) => c3.name === "ig_nrcb");
     if (existingNrcb.length === 0) {
-      await page2.setCookie({
+      await page.setCookie({
         name: "ig_nrcb",
         value: "1",
         domain: ".instagram.com",
@@ -152902,7 +152902,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
         });
         fs.mkdirSync(COOKIES_DIR, { recursive: true });
         fs.writeFileSync(cookiePath(profileId), JSON.stringify(puppeteerCookies, null, 2), "utf8");
-        cookiesLoaded = await loadCookies(profileId, page2);
+        cookiesLoaded = await loadCookies(profileId, page);
         log(`[cookies:${profileId}] DB re-seed ${cookiesLoaded ? "succeeded \u2713" : "failed \u2014 will open login page"}`, "browser");
       }
     } catch (e) {
@@ -152911,7 +152911,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
   }
   if (udirDeviceTokens.length && cookiesLoaded) {
     try {
-      await page2.setCookie(...udirDeviceTokens).catch(() => null);
+      await page.setCookie(...udirDeviceTokens).catch(() => null);
       const jsonRaw = (() => {
         try {
           const p = cookiePath(profileId);
@@ -152948,7 +152948,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
     }
     const dbMid = parsedDbCookies["mid"] ?? "";
     const dbIgDid = dbDeviceState.igDid ?? parsedDbCookies["ig_did"] ?? "";
-    const nowInChrome = await page2.cookies(
+    const nowInChrome = await page.cookies(
       "https://www.instagram.com",
       "https://i.instagram.com",
       "https://instagram.com"
@@ -152965,7 +152965,7 @@ async function getOrCreateSession(profileId, userAgent, proxy, userAgentApi) {
       toAssert.push({ name: "ig_did", value: dbIgDid, domain: ".instagram.com", path: "/", secure: true, httpOnly: false, sameSite: "Lax", expires: Math.floor(Date.now() / 1e3) + 365 * 24 * 3600 * 10 });
     }
     if (toAssert.length) {
-      await page2.setCookie(...toAssert).catch(() => null);
+      await page.setCookie(...toAssert).catch(() => null);
       log(`[cookies:${profileId}] \u2713 DB device tokens asserted into Chrome (${toAssert.map((c3) => c3.name).join(", ")})`, "browser");
     } else if (dbMid || dbIgDid) {
       log(`[cookies:${profileId}] \u2713 Chrome device tokens already match DB \u2014 no assertion needed`, "browser");
@@ -153257,7 +153257,7 @@ function _httpGetOneHop(url2, headers, proxy) {
     req.end();
   });
 }
-async function followChallengeRedirectsInChrome(profileId, page2, startUrl, maxHops = 120) {
+async function followChallengeRedirectsInChrome(profileId, page, startUrl, maxHops = 120) {
   const sc = sessions.get(profileId);
   if (!sc) return false;
   let hopCount = 0;
@@ -153271,10 +153271,10 @@ async function followChallengeRedirectsInChrome(profileId, page2, startUrl, maxH
     const deadline = Date.now() + maxHops * 4e3;
     while (hopCount <= maxHops && Date.now() < deadline) {
       nextHopUrl = null;
-      await page2.goto(currentUrl, { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
+      await page.goto(currentUrl, { waitUntil: "domcontentloaded", timeout: 15e3 }).catch(() => {
       });
       await new Promise((r2) => setTimeout(r2, 150));
-      const finalUrl = page2.url();
+      const finalUrl = page.url();
       if (!finalUrl.startsWith("chrome-error://") && !finalUrl.startsWith("about:") && finalUrl.includes("instagram.com")) {
         log(
           `[challenge:${profileId}] in-Chrome hop ${hopCount}: loaded ${finalUrl.slice(0, 100)}`,
@@ -153306,7 +153306,7 @@ async function followChallengeRedirectsInChrome(profileId, page2, startUrl, maxH
   }
   return resolved;
 }
-async function startApprovalPolling(profileId, page2) {
+async function startApprovalPolling(profileId, page) {
   const MAX_TIME_MS = 3e5;
   const startMs = Date.now();
   let resolved = false;
@@ -153335,9 +153335,9 @@ async function startApprovalPolling(profileId, page2) {
       const checkUrl = sessions.get(profileId)?.challengeUrl ?? "";
       if (!checkUrl?.includes("instagram.com")) break;
       log(`[challenge:${profileId}] approval check #${checkCount} \u2014 navigating Chrome to latest token`, "browser");
-      await page2.goto(checkUrl, { waitUntil: "domcontentloaded", timeout: 2e4 }).catch(() => {
+      await page.goto(checkUrl, { waitUntil: "domcontentloaded", timeout: 2e4 }).catch(() => {
       });
-      const finalUrl = page2.url();
+      const finalUrl = page.url();
       const onChromeError = finalUrl.startsWith("chrome-error://") || finalUrl.startsWith("about:");
       if (!onChromeError && finalUrl.includes("instagram.com")) {
         const isChallengePage = finalUrl.includes("update_risky_contactpoint") || finalUrl.includes("/challenge/");
@@ -153381,12 +153381,12 @@ async function startApprovalPolling(profileId, page2) {
     sendStatus(profileId, `\u26A0 Verification timed out \u2014 no approval in 5 minutes. Press Clear EB Session and try again.`);
   }
 }
-async function injectChallengePage(page2, challengeUrl) {
+async function injectChallengePage(page, challengeUrl) {
   try {
-    await page2.goto("about:blank", { waitUntil: "domcontentloaded", timeout: 5e3 }).catch(() => {
+    await page.goto("about:blank", { waitUntil: "domcontentloaded", timeout: 5e3 }).catch(() => {
     });
     const safeUrl = challengeUrl.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    await page2.setContent(`<!DOCTYPE html>
+    await page.setContent(`<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Instagram Verification Required</title></head>
 <body style="margin:0;padding:32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#e0e0e0">
@@ -153407,10 +153407,10 @@ async function injectChallengePage(page2, challengeUrl) {
   } catch {
   }
 }
-async function followChallengeRedirects(profileId, page2, startUrl, proxy, maxHops = 80) {
+async function followChallengeRedirects(profileId, page, startUrl, proxy, maxHops = 80) {
   const MAX_HOPS = maxHops;
   try {
-    const rawCookies = await page2.cookies("https://www.instagram.com").catch(() => []);
+    const rawCookies = await page.cookies("https://www.instagram.com").catch(() => []);
     const cookieMap = /* @__PURE__ */ new Map();
     for (const c3 of rawCookies) {
       cookieMap.set(c3.name, c3.value);
@@ -153456,7 +153456,7 @@ async function followChallengeRedirects(profileId, page2, startUrl, proxy, maxHo
           path: "/"
         }));
         if (cookiesToSet.length > 0) {
-          await page2.setCookie(...cookiesToSet).catch(() => {
+          await page.setCookie(...cookiesToSet).catch(() => {
           });
           log(
             `[challenge:${profileId}] synced ${cookiesToSet.length} accumulated cookies back to Chrome`,
@@ -153467,9 +153467,9 @@ async function followChallengeRedirects(profileId, page2, startUrl, proxy, maxHo
           `[challenge:${profileId}] chain resolved in ${hop} hops \u2014 navigating Chrome to: ${currentUrl.slice(0, 100)}`,
           "browser"
         );
-        await page2.goto(currentUrl, { waitUntil: "domcontentloaded", timeout: 2e4 }).catch(() => {
+        await page.goto(currentUrl, { waitUntil: "domcontentloaded", timeout: 2e4 }).catch(() => {
         });
-        if (page2.url().startsWith("chrome-error://")) {
+        if (page.url().startsWith("chrome-error://")) {
           log(`[challenge:${profileId}] Chrome still on chrome-error after synced goto \u2014 treating as unresolved`, "browser");
           return false;
         }
@@ -154322,7 +154322,7 @@ async function clearEbSessionCookies(profileId, igApiCookies) {
   }
   log(`EB session fully cleared for profile ${profileId} \u2014 all Chrome state wiped, device tokens preserved in seed file`, "browser");
 }
-async function dismissCookieBanner(page2) {
+async function dismissCookieBanner(page) {
   const ACCEPT_TEXTS = [
     "allow all cookies",
     "accept all cookies",
@@ -154346,7 +154346,7 @@ async function dismissCookieBanner(page2) {
     // Dutch
   ];
   try {
-    const btnRect = await page2.evaluate((texts) => {
+    const btnRect = await page.evaluate((texts) => {
       function isCookieAcceptBtn(btn) {
         const r2 = btn.getBoundingClientRect();
         if (r2.width <= 0 || r2.height <= 0) return false;
@@ -154378,14 +154378,14 @@ async function dismissCookieBanner(page2) {
       return null;
     }, ACCEPT_TEXTS).catch(() => null);
     if (btnRect) {
-      await page2.mouse.click(btnRect.x, btnRect.y);
+      await page.mouse.click(btnRect.x, btnRect.y);
     }
   } catch {
   }
 }
-async function dismissInstagramPopups(page2) {
+async function dismissInstagramPopups(page) {
   try {
-    await page2.evaluate(() => {
+    await page.evaluate(() => {
       const ACCEPT_TEXTS = /* @__PURE__ */ new Set([
         "save info",
         "save login info",
@@ -154633,16 +154633,16 @@ async function runSilentLeakTest(profileId, accountData) {
     });
   }
 }
-async function fillField(page2, selector, text2) {
-  await page2.click(selector);
-  await page2.keyboard.down("Control");
-  await page2.keyboard.press("a");
-  await page2.keyboard.up("Control");
-  await page2.keyboard.press("Backspace");
+async function fillField(page, selector, text2) {
+  await page.click(selector);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("a");
+  await page.keyboard.up("Control");
+  await page.keyboard.press("Backspace");
   const _delay = (ms) => new Promise((r2) => setTimeout(r2, ms));
   let cdpSession = null;
   try {
-    cdpSession = await page2.createCDPSession();
+    cdpSession = await page.createCDPSession();
     const IME_DOWN = { type: "rawKeyDown", key: "Unidentified", windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 };
     const IME_UP = { type: "keyUp", key: "Unidentified", windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 };
     for (const char of text2) {
@@ -154651,12 +154651,12 @@ async function fillField(page2, selector, text2) {
         await cdpSession.send("Input.insertText", { text: char });
         await cdpSession.send("Input.dispatchKeyEvent", IME_UP);
       } catch {
-        await page2.keyboard.type(char, { delay: 0 });
+        await page.keyboard.type(char, { delay: 0 });
       }
       await _delay(55 + Math.random() * 45);
     }
   } catch {
-    await page2.type(selector, text2, { delay: 55 });
+    await page.type(selector, text2, { delay: 55 });
   } finally {
     if (cdpSession) await cdpSession.detach().catch(() => {
     });
@@ -155424,19 +155424,19 @@ async function _startSignupScreencast() {
   }
 }
 async function signupBrowserInput(msg) {
-  const page2 = _signupPage;
-  if (!page2) return;
+  const page = _signupPage;
+  if (!page) return;
   try {
     switch (msg.type) {
       case "navigate":
         if (_signupWs) wsWrite(_signupWs, { type: "loading", loading: true });
-        await page2.goto(msg.url, { waitUntil: "domcontentloaded", timeout: 2e4 });
+        await page.goto(msg.url, { waitUntil: "domcontentloaded", timeout: 2e4 });
         if (_signupWs) wsWrite(_signupWs, { type: "loading", loading: false });
         break;
       case "click": {
         const cx = msg.x, cy = msg.y;
-        await page2.mouse.click(cx, cy);
-        await page2.evaluate((px, py) => {
+        await page.mouse.click(cx, cy);
+        await page.evaluate((px, py) => {
           function fireClick(target) {
             const opts = { bubbles: true, cancelable: true, composed: true, clientX: px, clientY: py };
             target.dispatchEvent(new PointerEvent("pointerover", opts));
@@ -155476,22 +155476,22 @@ async function signupBrowserInput(msg) {
         break;
       }
       case "mousemove":
-        await page2.mouse.move(msg.x, msg.y);
+        await page.mouse.move(msg.x, msg.y);
         break;
       case "scroll":
-        await page2.mouse.move(msg.x, msg.y);
-        await page2.mouse.wheel({ deltaX: msg.deltaX ?? 0, deltaY: msg.deltaY ?? 0 });
+        await page.mouse.move(msg.x, msg.y);
+        await page.mouse.wheel({ deltaX: msg.deltaX ?? 0, deltaY: msg.deltaY ?? 0 });
         break;
       case "keydown":
-        await page2.keyboard.down(msg.key);
+        await page.keyboard.down(msg.key);
         break;
       case "keyup":
-        await page2.keyboard.up(msg.key);
+        await page.keyboard.up(msg.key);
         break;
       case "type": {
         const text2 = msg.text ?? "";
-        await page2.keyboard.type(text2, { delay: 30 });
-        await page2.evaluate(() => {
+        await page.keyboard.type(text2, { delay: 30 });
+        await page.evaluate(() => {
           const el = document.activeElement;
           if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
@@ -155506,14 +155506,14 @@ async function signupBrowserInput(msg) {
       }
       case "fill": {
         const d3 = (ms) => new Promise((r2) => setTimeout(r2, ms));
-        await page2.keyboard.down("Control");
-        await page2.keyboard.press("a");
-        await page2.keyboard.up("Control");
+        await page.keyboard.down("Control");
+        await page.keyboard.press("a");
+        await page.keyboard.up("Control");
         await d3(40);
-        await page2.keyboard.press("Backspace");
+        await page.keyboard.press("Backspace");
         await d3(40);
-        await page2.keyboard.type(msg.text ?? "", { delay: 35 });
-        await page2.evaluate(() => {
+        await page.keyboard.type(msg.text ?? "", { delay: 35 });
+        await page.evaluate(() => {
           const el = document.activeElement;
           if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
@@ -155527,18 +155527,18 @@ async function signupBrowserInput(msg) {
         break;
       }
       case "keycombo":
-        await page2.keyboard.down(msg.modifier);
-        await page2.keyboard.press(msg.key);
-        await page2.keyboard.up(msg.modifier);
+        await page.keyboard.down(msg.modifier);
+        await page.keyboard.press(msg.key);
+        await page.keyboard.up(msg.modifier);
         break;
       case "back":
-        await page2.goBack();
+        await page.goBack();
         break;
       case "forward":
-        await page2.goForward();
+        await page.goForward();
         break;
       case "reload":
-        await page2.reload({ waitUntil: "domcontentloaded", timeout: 15e3 });
+        await page.reload({ waitUntil: "domcontentloaded", timeout: 15e3 });
         break;
     }
   } catch {
@@ -155607,12 +155607,12 @@ async function openSignupBrowser(opts) {
   }
   _signupBrowser = browser;
   try {
-    const [page2] = await browser.pages();
-    if (opts?.userAgent) await page2.setUserAgent(opts.userAgent);
+    const [page] = await browser.pages();
+    if (opts?.userAgent) await page.setUserAgent(opts.userAgent);
     const vp = opts?.userAgent ? viewportForUA(opts.userAgent) : { width: 412, height: 915, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true };
-    await page2.setViewport(vp);
+    await page.setViewport(vp);
     if (opts?.proxyUsername) {
-      await page2.authenticate({ username: opts.proxyUsername, password: opts.proxyPassword ?? "" });
+      await page.authenticate({ username: opts.proxyUsername, password: opts.proxyPassword ?? "" });
     }
     let signupBrowserAcceptLang = "en-US,en;q=0.9";
     if (opts?.proxyHost) {
@@ -155622,9 +155622,9 @@ async function openSignupBrowser(opts) {
       } catch {
       }
     }
-    await page2.setExtraHTTPHeaders({ "Accept-Language": signupBrowserAcceptLang });
+    await page.setExtraHTTPHeaders({ "Accept-Language": signupBrowserAcceptLang });
     try {
-      const _cdp = await page2.createCDPSession();
+      const _cdp = await page.createCDPSession();
       const _chrVer = (opts?.userAgent ?? "").match(/Chrome\/(\d+)/)?.[1] ?? "130";
       await _cdp.send("Network.setExtraHTTPHeaders", {
         headers: {
@@ -155636,10 +155636,10 @@ async function openSignupBrowser(opts) {
       });
     } catch {
     }
-    await applyStealthScripts(page2, opts?.userAgent ?? "", void 0, void 0).catch(() => {
+    await applyStealthScripts(page, opts?.userAgent ?? "", void 0, void 0).catch(() => {
     });
     const _ghostSalt = (Date.now() ^ (Math.random() * 4294967295 | 0)) >>> 0;
-    await page2.evaluateOnNewDocument(`
+    await page.evaluateOnNewDocument(`
       (() => {
         const _gS = ${_ghostSalt};
         const _frac = (_gS & 0xFFFF) / 0x10000; // 0 \u2013 0.9999\u2026
@@ -155742,9 +155742,9 @@ async function openSignupBrowser(opts) {
       })();
     `).catch(() => {
     });
-    _signupPage = page2;
-    page2.on("framenavigated", (frame) => {
-      if (frame !== page2.mainFrame()) return;
+    _signupPage = page;
+    page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame()) return;
       const url2 = frame.url();
       if (url2 && url2 !== "about:blank" && _signupWs && _signupWs.readyState === wrapper_default.OPEN) {
         try {
@@ -155758,7 +155758,7 @@ async function openSignupBrowser(opts) {
       }, 500);
       if (url2 && url2.includes("instagram.com") && !_ghostWarmupDone) {
         setTimeout(() => {
-          dismissCookieBanner(page2).catch(() => {
+          dismissCookieBanner(page).catch(() => {
           });
         }, 2500);
       }
@@ -155774,9 +155774,9 @@ async function openSignupBrowser(opts) {
         }
       }
     });
-    await page2.goto(opts?.initialUrl || "https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 3e4 });
+    await page.goto(opts?.initialUrl || "https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 3e4 });
     setTimeout(() => {
-      dismissCookieBanner(page2).catch(() => {
+      dismissCookieBanner(page).catch(() => {
       });
     }, 2500);
     if (_signupWs && _signupWs.readyState === wrapper_default.OPEN) {
@@ -155841,7 +155841,7 @@ var _pendingEBSignups = /* @__PURE__ */ new Map();
 function isEBSignupSession(sessionId) {
   return _pendingEBSignups.has(sessionId);
 }
-async function warmupSignupSession(page2, opts) {
+async function warmupSignupSession(page, opts) {
   const step = opts.onStep ?? (() => {
   });
   const delay = (ms) => new Promise((r2) => setTimeout(r2, ms));
@@ -155883,10 +155883,10 @@ async function warmupSignupSession(page2, opts) {
     const label = url2.replace("https://www.instagram.com", "ig.com");
     step(`EB warmup: viewing trending reel ${i2 + 1}/${reelsCount} \u2014 ${label}...`);
     try {
-      await page2.goto(url2, { waitUntil: "domcontentloaded", timeout: 25e3 });
+      await page.goto(url2, { waitUntil: "domcontentloaded", timeout: 25e3 });
       await delay(jitter(1500, 1e3));
-      await dismissCookieBanner(page2);
-      await dismissInstagramPopups(page2).catch(() => {
+      await dismissCookieBanner(page);
+      await dismissInstagramPopups(page).catch(() => {
       });
       const reelIdle = reelsIdleMs();
       const pollMs = 3e3;
@@ -155894,7 +155894,7 @@ async function warmupSignupSession(page2, opts) {
       for (let p = 0; p < polls; p++) {
         await delay(pollMs);
         try {
-          const nowUrl = page2.url();
+          const nowUrl = page.url();
           if (nowUrl && nowUrl.includes("instagram.com") && !nowUrl.includes("/reel/") && !nowUrl.includes("/p/") && !nowUrl.includes("/reels/") && !nowUrl.includes("/explore")) {
             const shortUrl = nowUrl.split("?")[0].replace("https://www.instagram.com", "ig.com");
             step(`EB warmup: redirected to ${shortUrl} \u2014 moving to next reel`);
@@ -155902,10 +155902,10 @@ async function warmupSignupSession(page2, opts) {
           }
         } catch {
         }
-        await dismissInstagramPopups(page2).catch(() => {
+        await dismissInstagramPopups(page).catch(() => {
         });
         try {
-          await page2.evaluate(() => window.scrollBy(0, 80 + Math.random() * 120));
+          await page.evaluate(() => window.scrollBy(0, 80 + Math.random() * 120));
         } catch {
         }
       }
@@ -155981,22 +155981,22 @@ async function createInstagramAccountViaEBForm(params) {
     }
   };
   try {
-    const [page2] = await browser.pages();
+    const [page] = await browser.pages();
     const GHOST_DEFAULT_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro Build/AD1A.240530.047) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.66 Mobile Safari/537.36";
     const effectiveUA = userAgent || GHOST_DEFAULT_UA;
-    await page2.setUserAgent(effectiveUA);
-    await page2.setViewport(viewportForUA(effectiveUA));
+    await page.setUserAgent(effectiveUA);
+    await page.setViewport(viewportForUA(effectiveUA));
     let ebFormAcceptLang = "en-US,en;q=0.9";
     try {
       const geo = await resolveProxyGeo(proxyHost2, proxyPort ?? 80, proxyUsername, proxyPassword);
       if (geo.countryCode) ebFormAcceptLang = localeToAcceptLanguage(countryToIgLocale(geo.countryCode));
     } catch {
     }
-    await page2.setExtraHTTPHeaders({ "Accept-Language": ebFormAcceptLang });
-    if (proxyUsername) await page2.authenticate({ username: proxyUsername, password: proxyPassword ?? "" });
+    await page.setExtraHTTPHeaders({ "Accept-Language": ebFormAcceptLang });
+    if (proxyUsername) await page.authenticate({ username: proxyUsername, password: proxyPassword ?? "" });
     let cdp = null;
     try {
-      cdp = await page2.createCDPSession();
+      cdp = await page.createCDPSession();
       await cdp.send("Network.setExtraHTTPHeaders", {
         headers: {
           "Accept-Language": ebFormAcceptLang,
@@ -156028,7 +156028,7 @@ async function createInstagramAccountViaEBForm(params) {
       await tap(x3, y2);
       await delay(400);
       try {
-        await page2.evaluate(() => {
+        await page.evaluate(() => {
           const el = document.activeElement;
           if (!el) return;
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
@@ -156050,16 +156050,16 @@ async function createInstagramAccountViaEBForm(params) {
       } catch {
       }
     };
-    await applyStealthScripts(page2, effectiveUA).catch(
+    await applyStealthScripts(page, effectiveUA).catch(
       (e) => step(`EB: stealth warn: ${e?.message?.slice(0, 60)}`)
     );
     step("EB: stealth scripts applied \u2713");
-    await warmupSignupSession(page2, { onStep: step });
+    await warmupSignupSession(page, { onStep: step });
     const EMAIL_FORM_SELECTORS = 'input[aria-label="Email"], input[name="emailOrPhone"], input[type="email"], input[placeholder*="email" i], input[autocomplete="email"], input[name="email"], input[name="emailAddress"]';
     const PHONE_GATE_LABELS = ["sign up with email address", "sign up with email", "use email address", "use email", "use your email address"];
     step("EB: navigating to Instagram homepage...");
     try {
-      await page2.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 3e4 });
+      await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 3e4 });
     } catch (e) {
       step(`EB: homepage nav warning: ${e?.message?.slice(0, 80)}`);
     }
@@ -156080,7 +156080,7 @@ async function createInstagramAccountViaEBForm(params) {
       "alle accepteren"
     ];
     for (let att = 0; att < 6; att++) {
-      const cPos = await page2.evaluate((labels) => {
+      const cPos = await page.evaluate((labels) => {
         const a2 = document.querySelector("[data-cookiebanner='accept_button']");
         if (a2) {
           const r2 = a2.getBoundingClientRect();
@@ -156099,7 +156099,7 @@ async function createInstagramAccountViaEBForm(params) {
       step(`EB: tapping cookie banner (attempt ${att + 1})...`);
       await tap(cPos.x, cPos.y);
       await delay(1500);
-      const stillUp = await page2.evaluate((labels) => {
+      const stillUp = await page.evaluate((labels) => {
         for (const el of Array.from(document.querySelectorAll("button,[role='button'],a"))) {
           if (labels.indexOf((el.innerText || el.textContent || "").trim().toLowerCase()) !== -1) return true;
         }
@@ -156112,9 +156112,9 @@ async function createInstagramAccountViaEBForm(params) {
     }
     await delay(1e3);
     let signupNavigated = false;
-    const homepageUrl = page2.url();
+    const homepageUrl = page.url();
     for (let att = 0; att < 4 && !signupNavigated; att++) {
-      const sPos = await page2.evaluate(() => {
+      const sPos = await page.evaluate(() => {
         let el = document.querySelector("a[href*='/accounts/signup']");
         if (!el) {
           const all = Array.from(document.querySelectorAll("a,button,[role='button']"));
@@ -156132,7 +156132,7 @@ async function createInstagramAccountViaEBForm(params) {
         step(`EB: tapping 'Sign up' at (${sPos.x}, ${sPos.y}) \u2014 attempt ${att + 1}...`);
         await tap(sPos.x, sPos.y);
         await delay(400);
-        await page2.evaluate(() => {
+        await page.evaluate(() => {
           let el = document.querySelector("a[href*='/accounts/signup']");
           if (!el) {
             const all = Array.from(document.querySelectorAll("a,button,[role='button']"));
@@ -156148,13 +156148,13 @@ async function createInstagramAccountViaEBForm(params) {
       }
       for (let poll = 0; poll < 10 && !signupNavigated; poll++) {
         await delay(500);
-        const nowUrl = page2.url();
+        const nowUrl = page.url();
         if (nowUrl !== homepageUrl) {
           signupNavigated = true;
           step(`EB: navigated \u2192 ${nowUrl.replace("https://www.instagram.com", "ig.com")} \u2713`);
           break;
         }
-        const pgVisible = await page2.evaluate((labels) => {
+        const pgVisible = await page.evaluate((labels) => {
           const all = Array.from(document.querySelectorAll("button,a,[role='button']"));
           return all.some((e) => {
             const t2 = (e.textContent || "").trim().toLowerCase();
@@ -156173,17 +156173,17 @@ async function createInstagramAccountViaEBForm(params) {
       }
     }
     if (!signupNavigated) {
-      const diagText = await page2.evaluate(() => document.body.innerText.slice(0, 200)).catch(() => "");
+      const diagText = await page.evaluate(() => document.body.innerText.slice(0, 200)).catch(() => "");
       step(`EB: could not navigate past homepage \u2014 page: "${diagText}"`);
       await cleanup();
       return { status: "error", message: "Could not navigate past Instagram homepage \u2014 'Sign up' tap did not trigger navigation. Check proxy and try again.", steps };
     }
     await delay(1500);
-    let emailFormReady = await page2.evaluate((sel) => !!document.querySelector(sel), EMAIL_FORM_SELECTORS).catch(() => false);
+    let emailFormReady = await page.evaluate((sel) => !!document.querySelector(sel), EMAIL_FORM_SELECTORS).catch(() => false);
     if (!emailFormReady) {
       step("EB: looking for 'Sign up with email' on phone gate...");
       for (let att = 0; att < 4; att++) {
-        const ePos = await page2.evaluate((labels) => {
+        const ePos = await page.evaluate((labels) => {
           for (const el of Array.from(document.querySelectorAll("a,button,[role='button'],span,div"))) {
             const txt = (el.innerText || el.textContent || "").trim().toLowerCase();
             if (labels.some((l2) => txt === l2 || txt.includes(l2))) {
@@ -156197,7 +156197,7 @@ async function createInstagramAccountViaEBForm(params) {
           step(`EB: tapping 'Sign up with email' at (${ePos.x}, ${ePos.y}) \u2014 attempt ${att + 1}...`);
           await tap(ePos.x, ePos.y);
           await delay(1800);
-          emailFormReady = await page2.waitForSelector(EMAIL_FORM_SELECTORS, { timeout: 6e3 }).then(() => true).catch(() => false);
+          emailFormReady = await page.waitForSelector(EMAIL_FORM_SELECTORS, { timeout: 6e3 }).then(() => true).catch(() => false);
           if (emailFormReady) {
             step("EB: email form ready \u2713");
             break;
@@ -156212,20 +156212,20 @@ async function createInstagramAccountViaEBForm(params) {
       step("EB: already on email form (phone gate skipped) \u2713");
     }
     if (!emailFormReady) {
-      const diagUrl = page2.url();
-      const diagText = await page2.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "");
+      const diagUrl = page.url();
+      const diagText = await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "");
       step(`EB: email form not found \u2014 url=${diagUrl} page="${diagText}"`);
       await cleanup();
       return { status: "error", message: "Could not reach the email signup form \u2014 Instagram may have changed their signup flow", steps };
     }
     try {
-      await page2.screenshot({ path: "/tmp/eb-diag-final.png", fullPage: true });
+      await page.screenshot({ path: "/tmp/eb-diag-final.png", fullPage: true });
     } catch {
     }
     await delay(300);
     step("EB: filling signup form...");
     const getFieldCoords = async (selectors) => {
-      return page2.evaluate((sels) => {
+      return page.evaluate((sels) => {
         for (const sel of sels) {
           const el = document.querySelector(sel);
           if (el) {
@@ -156243,7 +156243,7 @@ async function createInstagramAccountViaEBForm(params) {
       return { status: "error", message: "Could not find email field on Instagram's signup page \u2014 the form layout may have changed", steps };
     }
     await clearAndType(emailCoords.x, emailCoords.y, email3);
-    await page2.evaluate(() => {
+    await page.evaluate(() => {
       if (document.activeElement) document.activeElement.blur();
     }).catch(() => {
     });
@@ -156252,7 +156252,7 @@ async function createInstagramAccountViaEBForm(params) {
     const nameCoords = await getFieldCoords(['input[name="fullName"]', 'input[placeholder*="full name" i]', 'input[placeholder*="name" i]']);
     if (nameCoords) {
       await clearAndType(nameCoords.x, nameCoords.y, firstName);
-      await page2.evaluate(() => {
+      await page.evaluate(() => {
         if (document.activeElement) document.activeElement.blur();
       }).catch(() => {
       });
@@ -156262,7 +156262,7 @@ async function createInstagramAccountViaEBForm(params) {
     const usernameCoords = await getFieldCoords(['input[name="username"]', 'input[placeholder*="username" i]']);
     if (usernameCoords) {
       await clearAndType(usernameCoords.x, usernameCoords.y, username);
-      await page2.evaluate(() => {
+      await page.evaluate(() => {
         if (document.activeElement) document.activeElement.blur();
       }).catch(() => {
       });
@@ -156272,7 +156272,7 @@ async function createInstagramAccountViaEBForm(params) {
     const passwordCoords = await getFieldCoords(['input[name="password"]', 'input[type="password"]', 'input[placeholder*="password" i]']);
     if (passwordCoords) {
       await clearAndType(passwordCoords.x, passwordCoords.y, password);
-      await page2.evaluate(() => {
+      await page.evaluate(() => {
         if (document.activeElement) document.activeElement.blur();
       }).catch(() => {
       });
@@ -156280,7 +156280,7 @@ async function createInstagramAccountViaEBForm(params) {
       await delay(800);
     }
     await delay(500);
-    const nextBtnCoords = await page2.evaluate(() => {
+    const nextBtnCoords = await page.evaluate(() => {
       const LABELS = ["next", "sign up", "register", "create account", "continue"];
       for (const btn of Array.from(document.querySelectorAll("button, [role='button']"))) {
         const txt = (btn.innerText || btn.textContent || "").trim().toLowerCase();
@@ -156308,13 +156308,13 @@ async function createInstagramAccountViaEBForm(params) {
     step("EB: clicked Sign Up \u2713 \u2014 waiting for next page...");
     for (let _i = 0; _i < 30; _i++) {
       await delay(500);
-      const nextReady = await page2.evaluate(() => {
+      const nextReady = await page.evaluate(() => {
         const t2 = document.body.innerText.toLowerCase();
         return t2.includes("birthday") || t2.includes("date of birth") || t2.includes("your age") || t2.includes("confirmation code") || t2.includes("verify your email") || t2.includes("welcome") || t2.includes("check your email") || t2.includes("we sent a code");
       }).catch(() => false);
       if (nextReady) break;
     }
-    const onBirthday = await page2.evaluate(() => {
+    const onBirthday = await page.evaluate(() => {
       const t2 = document.body.innerText.toLowerCase();
       return t2.includes("birthday") || t2.includes("date of birth") || t2.includes("your age");
     }).catch(() => false);
@@ -156323,14 +156323,14 @@ async function createInstagramAccountViaEBForm(params) {
       await delay(1e3);
       const MONTHS = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
       const mName = MONTHS[month] ?? "";
-      await page2.waitForSelector(
+      await page.waitForSelector(
         'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select',
         { timeout: 8e3, visible: true }
       ).catch(() => {
         step("EB: DOB waitForSelector timed out \u2014 form may not have loaded");
       });
       await delay(800);
-      const dobDiag = await page2.evaluate(() => {
+      const dobDiag = await page.evaluate(() => {
         const selects = Array.from(document.querySelectorAll("select")).map((s) => ({
           tag: "select",
           name: s.name,
@@ -156356,7 +156356,7 @@ async function createInstagramAccountViaEBForm(params) {
       const dateStr = `${mm}/${dd}/${yyyy}`;
       let dobFilled = false;
       if (dobDiag.selects.length >= 2) {
-        const dobResult = await page2.evaluate((m2, mn, d3, y2) => {
+        const dobResult = await page.evaluate((m2, mn, d3, y2) => {
           function setSelectNative(sel, value) {
             const ns = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
             if (ns) ns.call(sel, value);
@@ -156450,7 +156450,7 @@ async function createInstagramAccountViaEBForm(params) {
           "November",
           "December"
         ];
-        const colInfo = await page2.evaluate((targetM, targetD, targetY, monthNames) => {
+        const colInfo = await page.evaluate((targetM, targetD, targetY, monthNames) => {
           const listboxes = Array.from(document.querySelectorAll('[role="listbox"]')).filter((lb) => {
             const r2 = lb.getBoundingClientRect();
             return r2.width > 0 && r2.height > 0;
@@ -156513,7 +156513,7 @@ async function createInstagramAccountViaEBForm(params) {
         }
       }
       if (!dobFilled) {
-        const dobInputHandle = await page2.$([
+        const dobInputHandle = await page.$([
           'input[placeholder*="Birthday" i]',
           'input[aria-label*="Birthday" i]',
           'input[placeholder*="birth" i]',
@@ -156528,7 +156528,7 @@ async function createInstagramAccountViaEBForm(params) {
           if (dobBox) {
             await tap(Math.round(dobBox.x + dobBox.width / 2), Math.round(dobBox.y + dobBox.height / 2));
             await delay(300);
-            await page2.evaluate(() => {
+            await page.evaluate(() => {
               const el = document.activeElement;
               if (!el) return;
               const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
@@ -156545,7 +156545,7 @@ async function createInstagramAccountViaEBForm(params) {
             } catch {
             }
             await delay(400);
-            const actualVal = await page2.evaluate((el) => el.value, dobInputHandle).catch(() => "?");
+            const actualVal = await page.evaluate((el) => el.value, dobInputHandle).catch(() => "?");
             step(`EB: inserted date "${dateStr}" into text input \u2014 field shows "${actualVal}"`);
             dobFilled = true;
           }
@@ -156555,7 +156555,7 @@ async function createInstagramAccountViaEBForm(params) {
       }
       await delay(400);
       step("EB: birthday filled \u2713");
-      await page2.evaluate(() => {
+      await page.evaluate(() => {
         for (const btn of Array.from(document.querySelectorAll('button, [role="button"]'))) {
           const txt = (btn.innerText || btn.textContent || "").trim().toLowerCase();
           if (["next", "continue", "done", "confirm"].some((l2) => txt.includes(l2))) {
@@ -156568,22 +156568,22 @@ async function createInstagramAccountViaEBForm(params) {
         }
       });
       step("EB: clicked Next on birthday \u2713 \u2014 waiting for result...");
-      const _preUrl = page2.url();
+      const _preUrl = page.url();
       for (let _i = 0; _i < 40; _i++) {
         await delay(500);
-        if (page2.url() !== _preUrl) break;
-        const nextReady = await page2.evaluate(() => {
+        if (page.url() !== _preUrl) break;
+        const nextReady = await page.evaluate(() => {
           const t2 = document.body.innerText.toLowerCase();
           return t2.includes("confirmation code") || t2.includes("verify your email") || t2.includes("we sent a code") || t2.includes("check your email") || t2.includes("welcome") || t2.includes("phone number");
         }).catch(() => false);
         if (nextReady) break;
       }
     }
-    const finalUrl = page2.url();
-    const finalText = await page2.evaluate(() => document.body.innerText).catch(() => "");
+    const finalUrl = page.url();
+    const finalText = await page.evaluate(() => document.body.innerText).catch(() => "");
     step(`EB: result URL: ${finalUrl}`);
     if (finalUrl.includes("instagram.com") && !finalUrl.includes("/accounts/") && !finalUrl.includes("emailsignup")) {
-      const allCookies = await page2.cookies("https://www.instagram.com", "https://i.instagram.com");
+      const allCookies = await page.cookies("https://www.instagram.com", "https://i.instagram.com");
       const cookieStrings = allCookies.map((c3) => `${c3.name}=${c3.value}`);
       step(`EB: signup successful \u2713 \u2014 ${cookieStrings.length} cookies extracted`);
       await cleanup();
@@ -156597,7 +156597,7 @@ async function createInstagramAccountViaEBForm(params) {
       step(`EB: ${kind} verification required`);
       const { randomUUID: randomUUID2 } = await import("node:crypto");
       const sessionId = randomUUID2();
-      _pendingEBSignups.set(sessionId, { browser, page: page2, tmpDataDir, steps: [...steps] });
+      _pendingEBSignups.set(sessionId, { browser, page, tmpDataDir, steps: [...steps] });
       setTimeout(async () => {
         const s = _pendingEBSignups.get(sessionId);
         if (s) {
@@ -156615,7 +156615,7 @@ async function createInstagramAccountViaEBForm(params) {
       const msg = needsEmailVerify ? `Check ${email3} for a 6-digit code` : "Enter the SMS code sent to your phone";
       return { status: needsEmailVerify ? "email_verification" : "phone_verification", steps, sessionId, message: msg };
     }
-    const errEl = await page2.evaluate(() => {
+    const errEl = await page.evaluate(() => {
       for (const sel of ['[role="alert"]', 'p[id*="error"]', 'span[id*="error"]', 'div[class*="error" i] p']) {
         const el = document.querySelector(sel);
         if (el?.innerText?.trim()) return el.innerText.trim();
@@ -156635,7 +156635,7 @@ async function createInstagramAccountViaEBForm(params) {
 async function submitSignupCodeViaEB(sessionId, code) {
   const session = _pendingEBSignups.get(sessionId);
   if (!session) return { status: "error", steps: [], message: "EB session not found \u2014 it may have expired" };
-  const { browser, page: page2, tmpDataDir, steps: prevSteps } = session;
+  const { browser, page, tmpDataDir, steps: prevSteps } = session;
   const steps = [...prevSteps];
   const delay = (ms) => new Promise((r2) => setTimeout(r2, ms));
   const step = (msg) => {
@@ -156646,7 +156646,7 @@ async function submitSignupCodeViaEB(sessionId, code) {
   try {
     let cdp = null;
     try {
-      cdp = await page2.createCDPSession();
+      cdp = await page.createCDPSession();
     } catch {
     }
     const tapTouch = async (x3, y2) => {
@@ -156673,11 +156673,11 @@ async function submitSignupCodeViaEB(sessionId, code) {
       'input[name="verificationCode"]',
       'input[name="code"]'
     ]) {
-      const el = await page2.$(sel).catch(() => null);
+      const el = await page.$(sel).catch(() => null);
       if (!el) continue;
       const box = await el.boundingBox().catch(() => null);
       if (!box || box.width === 0) continue;
-      const visibleCount = await page2.evaluate((selector) => {
+      const visibleCount = await page.evaluate((selector) => {
         const inputs = Array.from(document.querySelectorAll(selector));
         return inputs.filter((i2) => {
           const r2 = i2.getBoundingClientRect();
@@ -156685,13 +156685,13 @@ async function submitSignupCodeViaEB(sessionId, code) {
         }).length;
       }, sel).catch(() => 1);
       if (visibleCount > 1) {
-        const inputs = await page2.$$(sel);
+        const inputs = await page.$$(sel);
         for (let i2 = 0; i2 < inputs.length && i2 < code.length; i2++) {
           const b3 = await inputs[i2].boundingBox().catch(() => null);
           if (!b3) continue;
           await tapTouch(Math.round(b3.x + b3.width / 2), Math.round(b3.y + b3.height / 2));
           await delay(150);
-          await page2.evaluate(() => {
+          await page.evaluate(() => {
             const el2 = document.activeElement;
             if (!el2) return;
             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
@@ -156716,7 +156716,7 @@ async function submitSignupCodeViaEB(sessionId, code) {
       }
       await tapTouch(Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2));
       await delay(300);
-      await page2.evaluate(() => {
+      await page.evaluate(() => {
         const el2 = document.activeElement;
         if (!el2) return;
         const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
@@ -156734,7 +156734,7 @@ async function submitSignupCodeViaEB(sessionId, code) {
         } catch {
         }
       }
-      await page2.evaluate(() => {
+      await page.evaluate(() => {
         const el2 = document.activeElement;
         if (!el2) return;
         el2.dispatchEvent(new Event("input", { bubbles: true }));
@@ -156746,15 +156746,15 @@ async function submitSignupCodeViaEB(sessionId, code) {
       break;
     }
     if (!filled) return { status: "error", steps, message: "Could not find the verification code input on the page" };
-    const preCodeUrl = page2.url();
+    const preCodeUrl = page.url();
     let autoSubmitted = false;
     for (let _i = 0; _i < 12; _i++) {
       await delay(500);
-      if (page2.url() !== preCodeUrl) {
+      if (page.url() !== preCodeUrl) {
         autoSubmitted = true;
         break;
       }
-      const done = await page2.evaluate(() => {
+      const done = await page.evaluate(() => {
         const t2 = (document.body?.innerText || "").toLowerCase();
         return t2.includes("welcome") || t2.includes("your account") || t2.includes("set up") || t2.includes("add a photo");
       }).catch(() => false);
@@ -156764,7 +156764,7 @@ async function submitSignupCodeViaEB(sessionId, code) {
       }
     }
     if (!autoSubmitted) {
-      const confirmPos = await page2.evaluate(() => {
+      const confirmPos = await page.evaluate(() => {
         for (const btn of Array.from(document.querySelectorAll('button, [role="button"]'))) {
           const txt = (btn.innerText || btn.textContent || "").trim().toLowerCase();
           if (["confirm", "next", "continue", "verify", "submit"].some((l2) => txt.includes(l2))) {
@@ -156783,8 +156783,8 @@ async function submitSignupCodeViaEB(sessionId, code) {
       step("EB: auto-submitted \u2713");
       await delay(2e3);
     }
-    const url2 = page2.url();
-    const allCookies = await page2.cookies("https://www.instagram.com", "https://i.instagram.com");
+    const url2 = page.url();
+    const allCookies = await page.cookies("https://www.instagram.com", "https://i.instagram.com");
     const cookieStrings = allCookies.map((c3) => `${c3.name}=${c3.value}`);
     const hasSession = cookieStrings.some((c3) => c3.startsWith("sessionid="));
     if (hasSession || url2.includes("instagram.com") && !url2.includes("/accounts/")) {
@@ -156800,7 +156800,7 @@ async function submitSignupCodeViaEB(sessionId, code) {
       }
       return { status: "success", steps, sessionCookies: cookieStrings };
     }
-    const pageText = await page2.evaluate(() => document.body.innerText).catch(() => "");
+    const pageText = await page.evaluate(() => document.body.innerText).catch(() => "");
     step(`EB: code submission did not complete \u2014 ${pageText.slice(0, 200)}`);
     return { status: "error", steps, message: `Verification failed \u2014 ${pageText.slice(0, 200)}` };
   } catch (e) {
@@ -157671,7 +157671,7 @@ var InstagramWebClient = class {
       return false;
     }
   }
-  // timed() is a pure execution wrapper — it no longer logs to api_calls.
+  // timed() is a pure execution wrapper and does not log to api_calls.
   // All HTTP call logging happens exclusively at the transport layer:
   //   • mobileSessionGet / mobileSessionPost / webGet / webPost / ebGet → _logTransport()
   //   • IgApiClient (ig.*) → hooked in _newAutomationIgClient() → _logTransport()
@@ -157691,15 +157691,6 @@ var InstagramWebClient = class {
       throw e;
     } finally {
       this._inTimedCall = false;
-      const durationMs = Date.now() - _t0;
-      if (this.logCallFn) {
-        const isError2 = _threw || this._lastTimedCallIsError;
-        const doLog = isError2 ? true : !shouldLog || shouldLog(_result);
-        if (doLog) {
-          const msg = typeof message === "function" ? _threw ? opName : message(_result) : message ?? opName;
-          this.logCallFn(opName, durationMs, msg, isError2);
-        }
-      }
     }
   }
   _opNameFromPath(path6, _method) {
@@ -157742,7 +157733,9 @@ var InstagramWebClient = class {
         "/api/v1/direct_v2/inbox": ["DM inbox loaded", "DM inbox failed"],
         "/api/v1/direct_v2/threads/*/items": ["DM sent", "DM send failed"],
         "/api/v1/direct_v2/threads": ["DM thread action", "DM thread failed"],
-        "/api/v1/news/inbox": ["Activity checked", "Activity check failed"],
+        "/api/v1/news/inbox": ["Notifications inbox loaded", "Notifications inbox failed"],
+        "/api/v1/news/activities": ["Your Activity loaded", "Your Activity failed"],
+        "/api/v1/feed/saved": ["Saved media loaded", "Saved media failed"],
         "/api/v1/users/*/info": ["Profile loaded", "Profile load failed"],
         "/api/v1/accounts/account_security_info": ["Account security info fetched", "Security info failed"],
         "/api/v1/accounts/current_user": ["Session verified", "Session verify failed"],
@@ -159550,14 +159543,17 @@ var InstagramWebClient = class {
   async visitNotifications() {
     return this.timed("VisitNotifications", async () => {
       const j = await this.mobileSessionGet(`/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true`);
-      return !!(j?.new_stories || j?.old_stories || j?.counts);
+      return !!j && j.status !== "fail";
     }, "Visit notifications");
   }
   // ── Visit own profile ─────────────────────────────────────────────────────
   // Simulates a user tapping their own profile tab.
   async visitOwnProfile() {
+    const userIdCookie = this.mobileCookieJar.find((c3) => c3.startsWith("ds_user_id=")) ?? this.cookieJar.find((c3) => c3.startsWith("ds_user_id="));
+    const userId = userIdCookie?.split("=")[1] ?? "";
+    if (!userId) return false;
     return this.timed("VisitOwnProfile", async () => {
-      const j = await this.mobileSessionGet(`/api/v1/accounts/current_user/?edit=true`);
+      const j = await this.mobileSessionGet(`/api/v1/users/${userId}/info/`);
       return !!j?.user;
     }, "Visit own profile");
   }
@@ -159643,8 +159639,25 @@ var InstagramWebClient = class {
   async visitSettingsAndActivity() {
     return this.timed("VisitSettingsAndActivity", async () => {
       const j = await this.mobileSessionPost(`/api/v1/accounts/account_security_info/`);
-      return !!(j?.status !== "fail");
+      return !!j && j.status !== "fail";
     }, "Visit settings and activity");
+  }
+  // ── Open Your Activity from Settings ──────────────────────────────────────
+  // The mobile app requests the activity feed through news/activities/.
+  // This is separate from news/inbox, which is the notifications inbox.
+  async viewActivity() {
+    return this.timed("ViewActivity", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/news/activities/`);
+      return !!j && j.status !== "fail";
+    }, "View Your Activity");
+  }
+  // ── Open Saved Media from Settings ─────────────────────────────────────────
+  // The Saved tab is the saved feed, not a normal timeline feed.
+  async viewSavedMedia() {
+    return this.timed("ViewSavedMedia", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/feed/saved/?count=12`);
+      return !!j && j.status !== "fail";
+    }, "View saved media");
   }
   // ── Scroll the home timeline feed ────────────────────────────────────────
   // Fetches the main home feed and marks up to `count` posts as seen,
@@ -159746,14 +159759,14 @@ var InstagramWebClient = class {
     };
     const page1Raw = j?.feed_items ?? j?.items ?? [];
     console.log(`[webClient] viewTimelineFeed: page 1 \u2014 ${page1Raw.length} raw items`);
-    if (!page1Raw.length) return { viewed: 0 };
+    if (!page1Raw.length) return { viewed: 0, feedEmpty: true };
     onPageEvent?.("feed_load", page1Raw.length);
     await processAndMarkPage(page1Raw);
     let nextMaxId = j?.next_max_id ?? null;
     const MAX_PAGES = 8;
-    let page2 = 1;
-    while (viewed < count && nextMaxId && page2 < MAX_PAGES) {
-      console.log(`[webClient] viewTimelineFeed: page ${page2 + 1} \u2014 have ${viewed}/${count} seen, cursor=${String(nextMaxId).slice(0, 24)}\u2026`);
+    let page = 1;
+    while (viewed < count && nextMaxId && page < MAX_PAGES) {
+      console.log(`[webClient] viewTimelineFeed: page ${page + 1} \u2014 have ${viewed}/${count} seen, cursor=${String(nextMaxId).slice(0, 24)}\u2026`);
       const pageJ = await this.mobileSessionPost(
         `/api/v1/feed/timeline/`,
         new URLSearchParams({ reason: "pagination", max_id: nextMaxId, is_pull_to_refresh: "0" }).toString()
@@ -159764,9 +159777,9 @@ var InstagramWebClient = class {
       onPageEvent?.("feed_load", pageRaw.length);
       await processAndMarkPage(pageRaw);
       nextMaxId = pageJ?.next_max_id ?? null;
-      page2++;
+      page++;
     }
-    console.log(`[webClient] viewTimelineFeed: ${page2} page(s) \u2014 ${viewed} posts seen`);
+    console.log(`[webClient] viewTimelineFeed: ${page} page(s) \u2014 ${viewed} posts seen`);
     return { viewed, items: viewedItems, reelWatches };
   }
   // ── View Reels (independent tool) — fetch timeline pages and watch ONLY
@@ -159842,12 +159855,12 @@ var InstagramWebClient = class {
       }
     };
     const page1Raw = j?.feed_items ?? j?.items ?? [];
-    if (!page1Raw.length) return { watched: 0, reelWatches: [] };
+    if (!page1Raw.length) return { watched: 0, feedEmpty: true, reelWatches: [] };
     await processPage(page1Raw);
     let nextMaxId = j?.next_max_id ?? null;
     const MAX_PAGES = 12;
-    let page2 = 1;
-    while (watched < reelCount && nextMaxId && page2 < MAX_PAGES) {
+    let page = 1;
+    while (watched < reelCount && nextMaxId && page < MAX_PAGES) {
       const pageJ = await this.mobileSessionPost(
         `/api/v1/feed/timeline/`,
         new URLSearchParams({ reason: "pagination", max_id: nextMaxId, is_pull_to_refresh: "0" }).toString()
@@ -159857,9 +159870,9 @@ var InstagramWebClient = class {
       if (!pageRaw.length) break;
       await processPage(pageRaw);
       nextMaxId = pageJ?.next_max_id ?? null;
-      page2++;
+      page++;
     }
-    console.log(`[webClient] viewReelsFromFeed: ${page2} page(s) \u2014 ${watched} reel(s) watched`);
+    console.log(`[webClient] viewReelsFromFeed: ${page} page(s) \u2014 ${watched} reel(s) watched`);
     return { watched, reelWatches };
   }
   // ── Open / view a single feed post (simulates tapping into it) ───────────
@@ -160085,10 +160098,7 @@ var InstagramWebClient = class {
     });
   }
   // ── Share a story slide to a random DM thread ─────────────────────────────
-  // Fetches the DM inbox to find an existing thread, picks one at random,
-  // and sends the story as a story_share broadcast — exactly what the share
-  // button on a story does.  The inbox fetch here is a prerequisite for
-  // finding a thread ID — it is NOT a "check DMs" action.
+  // Fetches an existing DM thread and sends the story as a story_share item.
   async shareStoryViaDm(mediaId, ownerId) {
     return this.timed("ShareStoryViaDM", async () => {
       const j = this.isLoggedIn ? await this.webGet(`/api/v1/direct_v2/inbox/?limit=20`) : await this.mobileSessionGet(`/api/v1/direct_v2/inbox/?visual_message_return_type=unseen&thread_message_limit=1&limit=20`);
@@ -162047,12 +162057,12 @@ Content-Disposition: form-data; name="${part.name}"`;
       const users = [];
       const seen = /* @__PURE__ */ new Set();
       let maxId = "";
-      let page2 = 0;
+      let page = 0;
       const maxPages = Math.min(Math.ceil(maxUsers / 12) + 2, 25);
-      while (users.length < maxUsers && page2 < maxPages) {
+      while (users.length < maxUsers && page < maxPages) {
         const body = new URLSearchParams({
           tab_type: "recent",
-          page: String(page2 + 1),
+          page: String(page + 1),
           surface: "grid",
           ...maxId ? { max_id: maxId } : {}
         }).toString();
@@ -162071,7 +162081,7 @@ Content-Disposition: form-data; name="${part.name}"`;
         }
         maxId = j.next_max_id ?? "";
         if (!maxId || !j.more_available) break;
-        page2++;
+        page++;
       }
       console.log(`[webClient] hashtag #${tag}: found ${users.length} users`);
       return users.slice(0, maxUsers);
@@ -162083,7 +162093,7 @@ Content-Disposition: form-data; name="${part.name}"`;
       const users = [];
       let maxId = "";
       const maxPages = Math.min(Math.ceil(maxFollowers / 50) + 2, 25);
-      for (let page2 = 0; page2 < maxPages && users.length < maxFollowers; page2++) {
+      for (let page = 0; page < maxPages && users.length < maxFollowers; page++) {
         const qs = new URLSearchParams({ count: "50", ...maxId ? { max_id: maxId } : {} });
         const j = await this.mobileSessionGet(`/api/v1/friendships/${userId}/followers/?${qs}`);
         if (!j?.users?.length) break;
@@ -166029,10 +166039,10 @@ ${err?.stack ?? ""}`);
   // Waits for at least one element matching `selector` to appear on the page.
   // SPA content loads asynchronously; without this, browser actions that fire
   // immediately after navigation frequently find nothing and silently no-op.
-  async waitForSelector(page2, selector, timeoutMs = 8e3) {
+  async waitForSelector(page, selector, timeoutMs = 8e3) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      const found = await page2.evaluate((sel) => !!document.querySelector(sel), selector).catch(() => false);
+      const found = await page.evaluate((sel) => !!document.querySelector(sel), selector).catch(() => false);
       if (found) return true;
       await sleep(400);
     }
@@ -166447,7 +166457,7 @@ ${err?.stack ?? ""}`);
   // Navigates the EB to Instagram pages to simulate human presence without any mobile API call.
   async runBrowserOnlyHumanSession(profile, tool, state) {
     const ebIpcPort = process.env.EB_IPC_PORT;
-    let page2;
+    let page;
     let _weOpenedEb = false;
     if (ebIpcPort) {
       const { ok, weOpenedIt } = await this.ensureSilentEbOpen(profile);
@@ -166457,7 +166467,7 @@ ${err?.stack ?? ""}`);
         return;
       }
       _weOpenedEb = weOpenedIt;
-      page2 = new EbIpcPage(profile.id, ebIpcPort);
+      page = new EbIpcPage(profile.id, ebIpcPort);
     } else {
       const browser = getExistingBrowser(profile.id);
       if (!browser) {
@@ -166466,8 +166476,8 @@ ${err?.stack ?? ""}`);
         return;
       }
       const pages = await browser.pages();
-      page2 = pages[0];
-      if (!page2) {
+      page = pages[0];
+      if (!page) {
         console.log(`[engine] @${profile.username}: [EB-only] no EB page found`);
         return;
       }
@@ -166484,14 +166494,14 @@ ${err?.stack ?? ""}`);
       Math.max(2e3, Math.round(winMax / rMin))
     );
     try {
-      const nav2 = async (url2, label) => {
+      const nav = async (url2, label) => {
         console.log(`[engine] @${profile.username}: \u{1F310} [EB-only] \u2192 ${label}`);
-        await page2.goto(url2, { waitUntil: "domcontentloaded", timeout: 3e4 });
+        await page.goto(url2, { waitUntil: "domcontentloaded", timeout: 3e4 });
       };
       const waitFor = async (selector, timeoutMs = 8e3) => {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
-          const found = await page2.evaluate((sel) => !!document.querySelector(sel), selector).catch(() => false);
+          const found = await page.evaluate((sel) => !!document.querySelector(sel), selector).catch(() => false);
           if (found) return true;
           await sleep(400);
         }
@@ -166508,9 +166518,9 @@ ${err?.stack ?? ""}`);
       ebEnqueue("humanJitter", "humanSessionOrderMin", "humanSessionOrderMax", async () => {
         if (s.humanSessionEnabled === true && s.emulationGroupEnabled !== false && !_jitterSkipped) {
           try {
-            await nav2("https://www.instagram.com/", "home (jitter)");
+            await nav("https://www.instagram.com/", "home (jitter)");
             await sleep(actionDelay2());
-            await nav2(`https://www.instagram.com/${profile.username}/`, "own profile (jitter)");
+            await nav(`https://www.instagram.com/${profile.username}/`, "own profile (jitter)");
             await sleep(actionDelay2());
             this.logAction(profile.id, tool.id, "eb_browse", "", "", "", "ok", "EB: Human Jitter");
             this.logGhostBrowserCall(profile.id, profile.username, "human_session_audit", "EB: Human Jitter");
@@ -166529,11 +166539,11 @@ ${err?.stack ?? ""}`);
         if (s.viewTimelineFeedEnabled === true && s.emulationGroupEnabled !== false) {
           try {
             feedCount = randInt2(Number(s.viewTimelineFeedMin ?? 3), Number(s.viewTimelineFeedMax ?? 8));
-            if (page2.url() !== "https://www.instagram.com/" && !page2.url().startsWith("https://www.instagram.com/?")) {
-              await nav2("https://www.instagram.com/", "home feed");
+            if (page.url() !== "https://www.instagram.com/" && !page.url().startsWith("https://www.instagram.com/?")) {
+              await nav("https://www.instagram.com/", "home feed");
               await sleep(actionDelay2());
             }
-            await page2.evaluate(() => {
+            await page.evaluate(() => {
               try {
                 Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
               } catch {
@@ -166548,7 +166558,7 @@ ${err?.stack ?? ""}`);
             const _feedSelector = "article, div[data-media-id]";
             feedHadPosts = await waitFor(_feedSelector, 2e4);
             if (!feedHadPosts) {
-              const _feedDebug = await page2.evaluate(() => {
+              const _feedDebug = await page.evaluate(() => {
                 const t2 = document.title;
                 const url2 = location.href;
                 const articles = document.querySelectorAll("article").length;
@@ -166557,7 +166567,7 @@ ${err?.stack ?? ""}`);
                 return `title="${t2}" url="${url2.slice(0, 100)}" articles=${articles} main-imgs=${mainImgs} all-imgs=${allImgs}`;
               }).catch(() => "evaluate failed");
               console.log(`[engine] @${profile.username}: [EB-only] \u{1F4F0} feed waitFor timed out \u2014 DOM: ${_feedDebug}`);
-              const _challengeUrl = await page2.evaluate(() => location.href).catch(() => "");
+              const _challengeUrl = await page.evaluate(() => location.href).catch(() => "");
               const _challengeStatus = classifyEbChallengeUrl(_challengeUrl);
               if (_challengeStatus) {
                 console.warn(`[engine] @${profile.username}: [EB-only] \u{1F6A7} challenge page detected during feed load (${_challengeStatus}) \u2014 url: ${_challengeUrl.slice(0, 120)}`);
@@ -166573,7 +166583,7 @@ ${err?.stack ?? ""}`);
               }
             }
             if (feedHadPosts) {
-              const _isSuggestionsPage = await page2.evaluate(() => {
+              const _isSuggestionsPage = await page.evaluate(() => {
                 const articles = Array.from(document.querySelectorAll("article"));
                 if (articles.length === 0) return false;
                 if (!articles.every((a2) => !a2.querySelector("time"))) return false;
@@ -166602,11 +166612,11 @@ ${err?.stack ?? ""}`);
             let expanded = 0;
             let liked = 0;
             for (let i2 = 0; i2 < feedCount && !state.stop.stopped; i2++) {
-              await page2.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
+              await page.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
               });
               await sleep(actionDelay2());
               if (ecPctMax > 0 && Math.random() * 100 < ecPct) {
-                const clicked = await page2.evaluate(() => {
+                const clicked = await page.evaluate(() => {
                   const articles = Array.from(document.querySelectorAll("article:not([data-eb-caption-done])"));
                   const target = articles.find((a2) => {
                     const rect = a2.getBoundingClientRect();
@@ -166630,7 +166640,7 @@ ${err?.stack ?? ""}`);
                 }
               }
               if (likeCount > 0 && liked < likeCount) {
-                const likedOne = await page2.evaluate(() => {
+                const likedOne = await page.evaluate(() => {
                   const articles = Array.from(document.querySelectorAll("article"));
                   const target = articles.find((a2) => !a2.hasAttribute("data-eb-liked") && !!a2.querySelector('svg[aria-label="Like"]'));
                   if (!target) return false;
@@ -166654,7 +166664,7 @@ ${err?.stack ?? ""}`);
               }
             }
             if (!feedHadPosts && !_ebSuggestionsPageDetected) {
-              const recheck = await page2.evaluate(() => !!(document.querySelector("article time") || document.querySelector("div[data-media-id]"))).catch(() => false);
+              const recheck = await page.evaluate(() => !!(document.querySelector("article time") || document.querySelector("div[data-media-id]"))).catch(() => false);
               if (recheck) {
                 console.log(`[engine] @${profile.username}: [EB-only] \u{1F4F0} feed re-check found posts after all \u2014 not empty`);
                 feedHadPosts = true;
@@ -166686,119 +166696,106 @@ ${err?.stack ?? ""}`);
       });
       ebEnqueue("viewReels", "viewReelsOrderMin", "viewReelsOrderMax", async () => {
         if (s.viewReelsEnabled === true && s.emulationGroupEnabled !== false) {
-          const reelChanceRaw0 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMin ?? 100)));
-          const reelChanceRaw1 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMax ?? 100)));
-          const reelChanceMin2 = Math.min(reelChanceRaw0, reelChanceRaw1);
-          const reelChanceMax2 = Math.max(reelChanceRaw0, reelChanceRaw1);
-          if (reelChanceMax2 > 0) {
-            const reelChance = reelChanceMin2 + Math.random() * (reelChanceMax2 - reelChanceMin2);
-            const reelChanceRoll = Math.random() * 100;
-            const reelsEnabled = reelChanceRoll < reelChance;
-            if (reelsEnabled) {
-              const rcMin = Math.max(0, Number(s.reelWatchCountMin ?? 1));
-              const rcMax = Math.max(rcMin, Number(s.reelWatchCountMax ?? 3));
-              const reelCount = randInt2(rcMin, rcMax);
-              const rvMin = Math.min(100, Math.max(0, Number(s.reelWatchPercentMin ?? 50)));
-              const rvMax = Math.min(100, Math.max(0, Number(s.reelWatchPercentMax ?? 100)));
-              const reelViewPctMin = Math.min(rvMin, rvMax);
-              const reelViewPctMax = Math.max(rvMin, rvMax);
-              const rlMin = Math.min(100, Math.max(0, Number(s.reelLikePercentMin ?? 0)));
-              const rlMax = Math.min(100, Math.max(0, Number(s.reelLikePercentMax ?? 0)));
-              const reelLikePctMin = Math.min(rlMin, rlMax);
-              const reelLikePctMax = Math.max(rlMin, rlMax);
-              const reelLikePct = reelLikePctMax > 0 ? reelLikePctMin + Math.random() * (reelLikePctMax - reelLikePctMin) : 0;
-              const reelLikeCount = reelLikePctMax > 0 ? Math.round(reelCount * reelLikePct / 100) : 0;
-              console.log(`[engine] @${profile.username}: \u{1F3B2} [EB] View Reels chance ${reelChanceRoll.toFixed(1)}% < ${reelChance.toFixed(1)}% \u2014 reels ON (${reelCount} reels, like target ${reelLikeCount})`);
-              try {
-                await nav2("https://www.instagram.com/reels/", "reels feed");
-                await sleep(actionDelay2());
-                const videoFound = await waitFor("video", 15e3);
-                if (!videoFound) {
-                  const _reelDebug = await page2.evaluate(() => {
-                    return `url="${location.href.slice(0, 120)}" title="${document.title}" videos=${document.querySelectorAll("video").length} imgs=${document.querySelectorAll("img").length} bodyLen=${document.body?.innerHTML?.length ?? 0}`;
-                  }).catch(() => "evaluate failed");
-                  console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} reels debug \u2014 ${_reelDebug}`);
+          const rcMin = Math.max(0, Number(s.reelWatchCountMin ?? 1));
+          const rcMax = Math.max(rcMin, Number(s.reelWatchCountMax ?? 3));
+          const reelCount = randInt2(rcMin, rcMax);
+          const rvMin = Math.min(100, Math.max(0, Number(s.reelWatchPercentMin ?? 50)));
+          const rvMax = Math.min(100, Math.max(0, Number(s.reelWatchPercentMax ?? 100)));
+          const reelViewPctMin = Math.min(rvMin, rvMax);
+          const reelViewPctMax = Math.max(rvMin, rvMax);
+          const rlMin = Math.min(100, Math.max(0, Number(s.reelLikePercentMin ?? 0)));
+          const rlMax = Math.min(100, Math.max(0, Number(s.reelLikePercentMax ?? 0)));
+          const reelLikePctMin = Math.min(rlMin, rlMax);
+          const reelLikePctMax = Math.max(rlMin, rlMax);
+          const reelLikePct = reelLikePctMax > 0 ? reelLikePctMin + Math.random() * (reelLikePctMax - reelLikePctMin) : 0;
+          const reelLikeCount = reelLikePctMax > 0 ? Math.round(reelCount * reelLikePct / 100) : 0;
+          console.log(`[engine] @${profile.username}: \u{1F3AC} [EB] View Reels running (${reelCount} reels, like target ${reelLikeCount})`);
+          try {
+            await nav("https://www.instagram.com/reels/", "reels feed");
+            await sleep(actionDelay2());
+            const videoFound = await waitFor("video", 15e3);
+            if (!videoFound) {
+              const _reelDebug = await page.evaluate(() => {
+                return `url="${location.href.slice(0, 120)}" title="${document.title}" videos=${document.querySelectorAll("video").length} imgs=${document.querySelectorAll("img").length} bodyLen=${document.body?.innerHTML?.length ?? 0}`;
+              }).catch(() => "evaluate failed");
+              console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} reels debug \u2014 ${_reelDebug}`);
+            }
+            let watched = 0;
+            let totalWatchMs = 0;
+            let totalViewPct = 0;
+            let reelLiked = 0;
+            if (videoFound) {
+              await page.evaluate(() => {
+                try {
+                  Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
+                } catch {
                 }
-                let watched = 0;
-                let totalWatchMs = 0;
-                let totalViewPct = 0;
-                let reelLiked = 0;
-                if (videoFound) {
-                  await page2.evaluate(() => {
-                    try {
-                      Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
-                    } catch {
-                    }
-                    try {
-                      Object.defineProperty(document, "hidden", { get: () => false, configurable: true });
-                    } catch {
-                    }
-                    document.dispatchEvent(new Event("visibilitychange"));
-                  }).catch(() => {
-                  });
-                  for (let i2 = 0; i2 < reelCount && !state.stop.stopped; i2++) {
-                    const reelViewPct = reelViewPctMin + Math.random() * Math.max(0, reelViewPctMax - reelViewPctMin);
-                    const reelDurMs = randInt2(8e3, 2e4);
-                    const watchMs = Math.max(2e3, Math.round(reelViewPct / 100 * reelDurMs));
-                    await sleep(watchMs);
-                    if (reelLikeCount > 0 && reelLiked < reelLikeCount) {
-                      const likedReel = await page2.evaluate(() => {
-                        const heartSvg = document.querySelector('svg[aria-label="Like"]');
-                        if (!heartSvg) return false;
-                        const btn = heartSvg.closest('[role="button"], button');
-                        if (!btn) return false;
-                        btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-                        btn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
-                        btn.click();
-                        return true;
-                      }).catch(() => false);
-                      if (likedReel) {
-                        reelLiked++;
-                        await storage.incrementStat(profile.id, "like").catch(() => {
-                        });
-                        await sleep(actionDelay2());
-                      }
-                    }
-                    await page2.evaluate(() => {
-                      try {
-                        document.body.focus();
-                      } catch {
-                      }
-                    }).catch(() => {
+                try {
+                  Object.defineProperty(document, "hidden", { get: () => false, configurable: true });
+                } catch {
+                }
+                document.dispatchEvent(new Event("visibilitychange"));
+              }).catch(() => {
+              });
+              for (let i2 = 0; i2 < reelCount && !state.stop.stopped; i2++) {
+                const reelViewPct = reelViewPctMin + Math.random() * Math.max(0, reelViewPctMax - reelViewPctMin);
+                const reelDurMs = randInt2(8e3, 2e4);
+                const watchMs = Math.max(2e3, Math.round(reelViewPct / 100 * reelDurMs));
+                await sleep(watchMs);
+                if (reelLikeCount > 0 && reelLiked < reelLikeCount) {
+                  const likedReel = await page.evaluate(() => {
+                    const heartSvg = document.querySelector('svg[aria-label="Like"]');
+                    if (!heartSvg) return false;
+                    const btn = heartSvg.closest('[role="button"], button');
+                    if (!btn) return false;
+                    btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+                    btn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+                    btn.click();
+                    return true;
+                  }).catch(() => false);
+                  if (likedReel) {
+                    reelLiked++;
+                    await storage.incrementStat(profile.id, "like").catch(() => {
                     });
-                    await page2.keyboard.press("ArrowDown").catch(() => {
-                    });
-                    await sleep(randInt2(600, 1400));
-                    watched++;
-                    totalWatchMs += watchMs;
-                    totalViewPct += reelViewPct;
+                    await sleep(actionDelay2());
                   }
-                } else {
-                  console.log(`[engine] @${profile.username}: [EB-only] no video found on /reels/, skipping`);
                 }
-                const avgPct = watched > 0 ? Math.round(totalViewPct / watched) : 0;
-                const totalSec = Math.round(totalWatchMs / 1e3);
-                const reelDetail = `EB watched ${watched} reel(s) \xB7 avg ${avgPct}% view \xB7 ${totalSec}s total`;
-                this.logAction(profile.id, tool.id, "view_reel_from_feed", "", "", "reel", watched > 0 ? "ok" : "skipped", reelDetail);
-                this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", reelDetail);
-                console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} watched ${watched} reels`);
-                if (reelLiked > 0) {
-                  this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "reel", "ok", `EB liked ${reelLiked} reel(s) while watching`);
-                  this.logGhostBrowserCall(profile.id, profile.username, "like_timeline_post", `EB liked ${reelLiked} reel(s) while watching`);
-                  console.log(`[engine] @${profile.username}: [EB-only] \u2764\uFE0F liked ${reelLiked} reels`);
-                }
-              } catch (e) {
-                console.warn(`[engine] @${profile.username}: [EB-only] reels feed error: ${e?.message}`);
-                this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", e?.message ?? "error", true);
-              }
-              if (!state.stop.stopped) {
-                await nav2("https://www.instagram.com/", "home (after reels)").catch(() => {
+                await page.evaluate(() => {
+                  try {
+                    document.body.focus();
+                  } catch {
+                  }
+                }).catch(() => {
                 });
-                await sleep(actionDelay2());
+                await page.keyboard.press("ArrowDown").catch(() => {
+                });
+                await sleep(randInt2(600, 1400));
+                watched++;
+                totalWatchMs += watchMs;
+                totalViewPct += reelViewPct;
               }
             } else {
-              console.log(`[engine] @${profile.username}: \u{1F3B2} [EB] View Reels chance ${reelChanceRoll.toFixed(1)}% \u2265 ${reelChance.toFixed(1)}% \u2014 skipping`);
+              console.log(`[engine] @${profile.username}: [EB-only] no video found on /reels/, skipping`);
             }
+            const avgPct = watched > 0 ? Math.round(totalViewPct / watched) : 0;
+            const totalSec = Math.round(totalWatchMs / 1e3);
+            const reelDetail = `EB watched ${watched} reel(s) \xB7 avg ${avgPct}% view \xB7 ${totalSec}s total`;
+            this.logAction(profile.id, tool.id, "view_reel_from_feed", "", "", "reel", watched > 0 ? "ok" : "skipped", reelDetail);
+            this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", reelDetail);
+            console.log(`[engine] @${profile.username}: [EB-only] \u{1F3AC} watched ${watched} reels`);
+            if (reelLiked > 0) {
+              this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "reel", "ok", `EB liked ${reelLiked} reel(s) while watching`);
+              this.logGhostBrowserCall(profile.id, profile.username, "like_timeline_post", `EB liked ${reelLiked} reel(s) while watching`);
+              console.log(`[engine] @${profile.username}: [EB-only] \u2764\uFE0F liked ${reelLiked} reels`);
+            }
+          } catch (e) {
+            console.warn(`[engine] @${profile.username}: [EB-only] reels feed error: ${e?.message}`);
+            this.logGhostBrowserCall(profile.id, profile.username, "view_reel_from_feed", e?.message ?? "error", true);
+          }
+          if (!state.stop.stopped) {
+            await nav("https://www.instagram.com/", "home (after reels)").catch(() => {
+            });
+            await sleep(actionDelay2());
           }
         }
       });
@@ -166830,9 +166827,9 @@ ${err?.stack ?? ""}`);
             for (let i2 = 0; i2 < storyCount && !state.stop.stopped; i2++) {
               try {
                 if (i2 === 0) {
-                  await nav2("https://www.instagram.com/", `home (stories ${i2 + 1}/${storyCount})`);
+                  await nav("https://www.instagram.com/", `home (stories ${i2 + 1}/${storyCount})`);
                   await sleep(actionDelay2());
-                  await page2.evaluate(() => {
+                  await page.evaluate(() => {
                     try {
                       Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
                     } catch {
@@ -166846,7 +166843,7 @@ ${err?.stack ?? ""}`);
                   });
                   const trayPresent = await waitFor(storySelector, 6e3);
                   if (!trayPresent) {
-                    const _storyDebug = await page2.evaluate(() => {
+                    const _storyDebug = await page.evaluate(() => {
                       const url2 = location.href.slice(0, 100);
                       const ulLi = document.querySelectorAll("ul li").length;
                       const canvases = document.querySelectorAll("canvas").length;
@@ -166859,7 +166856,7 @@ ${err?.stack ?? ""}`);
                     break;
                   }
                   hasTray = true;
-                  const clicked = await page2.evaluate((sel) => {
+                  const clicked = await page.evaluate((sel) => {
                     const matches = Array.from(document.querySelectorAll(sel));
                     const el = matches[0];
                     if (!el) return false;
@@ -166873,7 +166870,7 @@ ${err?.stack ?? ""}`);
                   if (!clicked) break;
                   await sleep(randInt2(1200, 2500));
                 } else {
-                  const viewerOpen = await page2.evaluate(
+                  const viewerOpen = await page.evaluate(
                     () => !!document.querySelector('section[role="dialog"], div[role="dialog"], div[aria-label="Story"]')
                   ).catch(() => false);
                   if (!viewerOpen) {
@@ -166881,13 +166878,13 @@ ${err?.stack ?? ""}`);
                     escapeSent = true;
                     break;
                   }
-                  const prevHref = await page2.evaluate(() => location.href).catch(() => "");
+                  const prevHref = await page.evaluate(() => location.href).catch(() => "");
                   const prevUser = (prevHref.match(/\/stories\/([^/]+)\//) ?? [])[1] ?? "";
                   let advanced = false;
                   for (let attempt = 0; attempt < 10 && !advanced && !state.stop.stopped; attempt++) {
-                    await page2.keyboard.press("ArrowRight");
+                    await page.keyboard.press("ArrowRight");
                     await sleep(450);
-                    const newHref = await page2.evaluate(() => location.href).catch(() => "");
+                    const newHref = await page.evaluate(() => location.href).catch(() => "");
                     const newUser = (newHref.match(/\/stories\/([^/]+)\//) ?? [])[1] ?? "";
                     if (newUser && newUser !== prevUser) {
                       advanced = true;
@@ -166902,7 +166899,7 @@ ${err?.stack ?? ""}`);
                   if (escapeSent) break;
                   if (!advanced) {
                     console.log(`[engine] @${profile.username}: [EB-only] story viewer ended at user ${i2}/${storyCount} (no next user)`);
-                    await page2.keyboard.press("Escape").catch(() => {
+                    await page.keyboard.press("Escape").catch(() => {
                     });
                     await sleep(randInt2(800, 1600));
                     escapeSent = true;
@@ -166919,7 +166916,7 @@ ${err?.stack ?? ""}`);
                 const watchPct = watchPctMin + Math.random() * (watchPctMax - watchPctMin);
                 const slideDwellMs = watchPct > 0 ? Math.max(1500, Math.round(watchPct / 100 * 15e3)) : randInt2(1500, 3500);
                 for (let s2 = 0; s2 < slides && !state.stop.stopped; s2++) {
-                  await page2.evaluate(() => {
+                  await page.evaluate(() => {
                     const overlay = document.querySelector(
                       'section[role="dialog"], div[role="dialog"], div[aria-label="Story"]'
                     ) ?? document.body;
@@ -166937,7 +166934,7 @@ ${err?.stack ?? ""}`);
               }
             }
             if (storiesViewed > 0 && !escapeSent) {
-              await page2.keyboard.press("Escape").catch(() => {
+              await page.keyboard.press("Escape").catch(() => {
               });
               await sleep(randInt2(800, 1600));
             }
@@ -166954,7 +166951,7 @@ ${err?.stack ?? ""}`);
         if (s.checkDmEnabled === true && s.emulationGroupEnabled !== false) {
           try {
             const dmCount = randInt2(Number(s.checkDmMin ?? 1), Number(s.checkDmMax ?? 5));
-            await nav2("https://www.instagram.com/direct/inbox/", "DM inbox");
+            await nav("https://www.instagram.com/direct/inbox/", "DM inbox");
             await sleep(actionDelay2());
             const hasThreads = await waitFor('a[href*="/direct/t/"]', 8e3);
             if (!hasThreads) {
@@ -166964,7 +166961,7 @@ ${err?.stack ?? ""}`);
               let opened = 0;
               for (let i2 = 0; i2 < dmCount && !state.stop.stopped; i2++) {
                 try {
-                  const clicked = await page2.evaluate((idx) => {
+                  const clicked = await page.evaluate((idx) => {
                     const links = Array.from(document.querySelectorAll('a[href*="/direct/t/"]'));
                     const thread = links[idx]?.closest('div[role="listitem"]') ?? links[idx];
                     if (!thread) return false;
@@ -166977,7 +166974,7 @@ ${err?.stack ?? ""}`);
                   if (!clicked) break;
                   await sleep(actionDelay2());
                   opened++;
-                  await nav2("https://www.instagram.com/direct/inbox/", "DM inbox");
+                  await nav("https://www.instagram.com/direct/inbox/", "DM inbox");
                   await sleep(actionDelay2());
                   const stillHas = await waitFor('a[href*="/direct/t/"]', 5e3);
                   if (!stillHas) break;
@@ -166999,11 +166996,11 @@ ${err?.stack ?? ""}`);
           const likeCount = randInt2(Number(s.likeTimelinePostsMin ?? 0), Number(s.likeTimelinePostsMax ?? 0));
           if (likeCount > 0) {
             try {
-              if (!page2.url().startsWith("https://www.instagram.com/")) {
-                await nav2("https://www.instagram.com/", "home (likes)");
+              if (!page.url().startsWith("https://www.instagram.com/")) {
+                await nav("https://www.instagram.com/", "home (likes)");
                 await sleep(actionDelay2());
               }
-              await page2.evaluate(() => {
+              await page.evaluate(() => {
                 try {
                   Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
                 } catch {
@@ -167018,10 +167015,10 @@ ${err?.stack ?? ""}`);
               await waitFor('svg[aria-label="Like"]', 12e3);
               let liked = 0;
               for (let attempt = 0; liked < likeCount && attempt < likeCount * 6 && !state.stop.stopped; attempt++) {
-                await page2.evaluate(() => window.scrollBy(0, 350)).catch(() => {
+                await page.evaluate(() => window.scrollBy(0, 350)).catch(() => {
                 });
                 await sleep(700);
-                const clickedOne = await page2.evaluate(() => {
+                const clickedOne = await page.evaluate(() => {
                   const articles = Array.from(document.querySelectorAll("article"));
                   const target = articles.find((a2) => !!a2.querySelector('svg[aria-label="Like"]'));
                   if (!target) return false;
@@ -167057,7 +167054,7 @@ ${err?.stack ?? ""}`);
       ebEnqueue("follow", "followOrderMin", "followOrderMax", async () => {
         const _followTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "follow");
         if (_followTool?.enabled === true) {
-          await this.runBrowserFollowSession(profile, _followTool, page2, actionDelay2, state).catch((e) => {
+          await this.runBrowserFollowSession(profile, _followTool, page, actionDelay2, state).catch((e) => {
             console.warn(`[engine] @${profile.username}: [EB-only] follow session error: ${e?.message}`);
           });
         }
@@ -167065,7 +167062,7 @@ ${err?.stack ?? ""}`);
       ebEnqueue("unfollow", "unfollowOrderMin", "unfollowOrderMax", async () => {
         const _unfollowTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "unfollow");
         if (_unfollowTool?.enabled === true) {
-          await this.runBrowserUnfollowSession(profile, _unfollowTool, page2, actionDelay2, state).catch((e) => {
+          await this.runBrowserUnfollowSession(profile, _unfollowTool, page, actionDelay2, state).catch((e) => {
             console.warn(`[engine] @${profile.username}: [EB-only] unfollow session error: ${e?.message}`);
           });
         }
@@ -167073,7 +167070,7 @@ ${err?.stack ?? ""}`);
       ebEnqueue("contact", "contactOrderMin", "contactOrderMax", async () => {
         const _contactTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "contact");
         if (_contactTool?.enabled === true) {
-          await this.runBrowserContactSession(profile, _contactTool, page2, actionDelay2, state).catch((e) => {
+          await this.runBrowserContactSession(profile, _contactTool, page, actionDelay2, state).catch((e) => {
             console.warn(`[engine] @${profile.username}: [EB-only] contact session error: ${e?.message}`);
           });
         }
@@ -167214,8 +167211,8 @@ ${err?.stack ?? ""}`);
         try {
           const scrollMin = Math.max(1, Number(s.exploreScrollMin ?? 5));
           const scrollMax = Math.max(scrollMin, Number(s.exploreScrollMax ?? 15));
-          const clickMin = Math.max(0, Number(s.exploreClickMin ?? 1));
-          const clickMax = Math.max(clickMin, Number(s.exploreClickMax ?? 3));
+          const clickPctMin = Math.min(100, Math.max(0, Number(s.exploreClickMin ?? 10)));
+          const clickPctMax = Math.min(100, Math.max(clickPctMin, Number(s.exploreClickMax ?? 30)));
           const likePctMin = Math.min(100, Math.max(0, Number(s.exploreLikePctMin ?? 0)));
           const likePctMax = Math.min(100, Math.max(likePctMin, Number(s.exploreLikePctMax ?? 30)));
           const visitProfPctMin = Math.min(100, Math.max(0, Number(s.exploreVisitProfilePctMin ?? 0)));
@@ -167224,18 +167221,22 @@ ${err?.stack ?? ""}`);
           const profScrollMax = Math.max(profScrollMin, Number(s.exploreProfileScrollMax ?? 8));
           const profClickMin = Math.max(0, Number(s.exploreProfileClickMin ?? 1));
           const profClickMax = Math.max(profClickMin, Number(s.exploreProfileClickMax ?? 3));
-          await nav2("https://www.instagram.com/explore/", "explore page");
+          await nav("https://www.instagram.com/explore/", "explore page");
           await sleep(actionDelay2());
           const scrolls = randInt2(scrollMin, scrollMax);
           for (let i2 = 0; i2 < scrolls && !state.stop.stopped; i2++) {
-            await page2.evaluate(() => window.scrollBy(0, 400 + Math.random() * 300)).catch(() => {
+            await page.evaluate(() => window.scrollBy(0, 400 + Math.random() * 300)).catch(() => {
             });
             await sleep(actionDelay2());
           }
-          const clickCount = randInt2(clickMin, clickMax);
+          const availablePostCount = await page.evaluate(
+            () => document.querySelectorAll('a[href^="/p/"], a[href^="/reel/"]').length
+          ).catch(() => 0);
+          const clickPct = randInt2(clickPctMin, clickPctMax);
+          const clickCount = clickPct > 0 && availablePostCount > 0 ? Math.max(1, Math.round(availablePostCount * clickPct / 100)) : 0;
           let clicked = 0;
           for (let attempt = 0; clicked < clickCount && attempt < clickCount * 4 && !state.stop.stopped; attempt++) {
-            const opened = await page2.evaluate(() => {
+            const opened = await page.evaluate(() => {
               const links = Array.from(document.querySelectorAll('a[href^="/p/"], a[href^="/reel/"]'));
               const a2 = links[Math.floor(Math.random() * Math.min(links.length, 12))];
               if (!a2) return false;
@@ -167246,7 +167247,7 @@ ${err?.stack ?? ""}`);
               await sleep(randInt2(1500, 3500));
               const likePct = likePctMin + Math.random() * (likePctMax - likePctMin);
               if (likePct > 0 && Math.random() * 100 < likePct) {
-                await page2.evaluate(() => {
+                await page.evaluate(() => {
                   const btn = document.querySelector('svg[aria-label="Like"]')?.closest("button");
                   btn?.click();
                 }).catch(() => {
@@ -167255,7 +167256,7 @@ ${err?.stack ?? ""}`);
               }
               const visitPct = visitProfPctMin + Math.random() * (visitProfPctMax - visitProfPctMin);
               if (visitPct > 0 && Math.random() * 100 < visitPct) {
-                const navigatedToProfile = await page2.evaluate(() => {
+                const navigatedToProfile = await page.evaluate(() => {
                   const profileLink = document.querySelector('header a[href^="/"]');
                   if (!profileLink) return false;
                   profileLink.click();
@@ -167265,28 +167266,28 @@ ${err?.stack ?? ""}`);
                   await sleep(randInt2(1200, 2500));
                   const profScrolls = randInt2(profScrollMin, profScrollMax);
                   for (let ps = 0; ps < profScrolls && !state.stop.stopped; ps++) {
-                    await page2.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
+                    await page.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
                     });
                     await sleep(randInt2(600, 1400));
                   }
                   const profClicks = randInt2(profClickMin, profClickMax);
                   for (let pc = 0; pc < profClicks && !state.stop.stopped; pc++) {
-                    await page2.evaluate(() => {
+                    await page.evaluate(() => {
                       const posts = Array.from(document.querySelectorAll('a[href^="/p/"]'));
                       const p = posts[Math.floor(Math.random() * Math.min(posts.length, 9))];
                       p?.click();
                     }).catch(() => {
                     });
                     await sleep(randInt2(1e3, 2500));
-                    await page2.keyboard.press("Escape").catch(() => {
+                    await page.keyboard.press("Escape").catch(() => {
                     });
                     await sleep(randInt2(400, 800));
                   }
-                  await nav2("https://www.instagram.com/explore/", "explore page (after profile)");
+                  await nav("https://www.instagram.com/explore/", "explore page (after profile)");
                   await sleep(actionDelay2());
                 }
               }
-              await page2.keyboard.press("Escape").catch(() => {
+              await page.keyboard.press("Escape").catch(() => {
               });
               await sleep(randInt2(400, 900));
               clicked++;
@@ -167325,17 +167326,17 @@ ${err?.stack ?? ""}`);
         const saveCount = savePct > 0 ? Math.round(feedCount * savePct / 100) : 0;
         if (saveCount > 0) {
           try {
-            if (!page2.url().startsWith("https://www.instagram.com/")) {
-              await nav2("https://www.instagram.com/", "home (save)");
+            if (!page.url().startsWith("https://www.instagram.com/")) {
+              await nav("https://www.instagram.com/", "home (save)");
               await sleep(actionDelay2());
             }
             await waitFor('svg[aria-label="Save"]', 8e3);
             let saved = 0;
             for (let attempt = 0; saved < saveCount && attempt < saveCount * 6 && !state.stop.stopped; attempt++) {
-              await page2.evaluate(() => window.scrollBy(0, 350)).catch(() => {
+              await page.evaluate(() => window.scrollBy(0, 350)).catch(() => {
               });
               await sleep(700);
-              const clickedOne = await page2.evaluate(() => {
+              const clickedOne = await page.evaluate(() => {
                 const icons = Array.from(document.querySelectorAll('svg[aria-label="Save"]'));
                 const h4 = icons[0];
                 if (!h4) return false;
@@ -167363,17 +167364,17 @@ ${err?.stack ?? ""}`);
         const shareCount = sharePct > 0 && Math.random() * 100 < sharePct ? randInt2(1, 2) : 0;
         if (shareCount > 0) {
           try {
-            if (!page2.url().startsWith("https://www.instagram.com/")) {
-              await nav2("https://www.instagram.com/", "home (share)");
+            if (!page.url().startsWith("https://www.instagram.com/")) {
+              await nav("https://www.instagram.com/", "home (share)");
               await sleep(actionDelay2());
             }
             await waitFor('svg[aria-label="Share Post"]', 8e3);
             let shared = 0;
             for (let attempt = 0; shared < shareCount && attempt < shareCount * 6 && !state.stop.stopped; attempt++) {
-              await page2.evaluate(() => window.scrollBy(0, 350)).catch(() => {
+              await page.evaluate(() => window.scrollBy(0, 350)).catch(() => {
               });
               await sleep(700);
-              const opened = await page2.evaluate(() => {
+              const opened = await page.evaluate(() => {
                 const icons = Array.from(document.querySelectorAll('svg[aria-label="Share Post"]'));
                 const h4 = icons[0];
                 if (!h4) return false;
@@ -167382,7 +167383,7 @@ ${err?.stack ?? ""}`);
               }).catch(() => false);
               if (opened) {
                 await sleep(randInt2(800, 1600));
-                await page2.keyboard.press("Escape").catch(() => {
+                await page.keyboard.press("Escape").catch(() => {
                 });
                 shared++;
                 await sleep(actionDelay2());
@@ -167408,7 +167409,7 @@ ${err?.stack ?? ""}`);
     }
   }
   // ── Browser-assisted follow session ────────────────────────────────────────
-  async runBrowserFollowSession(profile, followTool, page2, actionDelay2, state) {
+  async runBrowserFollowSession(profile, followTool, page, actionDelay2, state) {
     const fs6 = followTool.settings;
     const globalSettings2 = await storage.getGlobalSettings();
     const hikerEnabled = globalSettings2.hikerApiEnabled === "true";
@@ -167461,11 +167462,11 @@ ${err?.stack ?? ""}`);
       this.logGhostBrowserCall(profile.id, profile.username, "browse_profile", `[${label}] Profile browsing started for @${candidate.username}`);
       console.log(`[engine] @${profile.username}: [EB-only] [${label}] browsing profile of @${candidate.username}`);
       try {
-        if (!page2.url().includes(`/${candidate.username}/`)) {
-          await page2.goto(`https://www.instagram.com/${candidate.username}/`, { waitUntil: "domcontentloaded", timeout: 25e3 });
+        if (!page.url().includes(`/${candidate.username}/`)) {
+          await page.goto(`https://www.instagram.com/${candidate.username}/`, { waitUntil: "domcontentloaded", timeout: 25e3 });
           await sleep(randInt2(1200, 2200));
         }
-        await this.waitForSelector(page2, "header", 6e3);
+        await this.waitForSelector(page, "header", 6e3);
       } catch (err) {
         console.warn(`[engine] @${profile.username}: [EB-only] [${label}] failed to load profile: ${err?.message}`);
         this.logAction(profile.id, followTool.id, "browse_profile", candidate.username, "", "profile", "error", `Failed to load profile: ${err?.message ?? err}`);
@@ -167476,9 +167477,9 @@ ${err?.stack ?? ""}`);
       if (Math.random() * 100 < feedChance) {
         try {
           const feedCount = randInt2(injectBrowsingFeedMin, injectBrowsingFeedMax);
-          sawFeed = await this.waitForSelector(page2, "article a, main a[href*='/p/'], main a[href*='/reel/']", 6e3);
+          sawFeed = await this.waitForSelector(page, "article a, main a[href*='/p/'], main a[href*='/reel/']", 6e3);
           for (let i2 = 0; i2 < feedCount && !state.stop.stopped; i2++) {
-            await page2.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
+            await page.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
             });
             await sleep(randInt2(800, 1600));
           }
@@ -167494,7 +167495,7 @@ ${err?.stack ?? ""}`);
         const likePct = randInt2(injectBrowsingLikePctMin, injectBrowsingLikePctMax);
         if (Math.random() * 100 < likePct) {
           try {
-            const opened = await page2.evaluate(() => {
+            const opened = await page.evaluate(() => {
               const link2 = document.querySelector('main a[href*="/p/"], main a[href*="/reel/"]');
               if (!link2) return false;
               link2.click();
@@ -167502,14 +167503,14 @@ ${err?.stack ?? ""}`);
             }).catch(() => false);
             if (opened) {
               await sleep(randInt2(1200, 2200));
-              const liked = await page2.evaluate(() => {
+              const liked = await page.evaluate(() => {
                 const heart = document.querySelector('svg[aria-label="Like"]');
                 const btn = heart?.closest('[role="button"], button');
                 if (!btn) return false;
                 btn.click();
                 return true;
               }).catch(() => false);
-              await page2.keyboard.press("Escape").catch(() => {
+              await page.keyboard.press("Escape").catch(() => {
               });
               if (liked) {
                 await storage.incrementStat(profile.id, "like").catch(() => {
@@ -167528,7 +167529,7 @@ ${err?.stack ?? ""}`);
         const storiesPct = randInt2(injectBrowsingStoriesPctMin, injectBrowsingStoriesPctMax);
         if (Math.random() * 100 < storiesPct) {
           try {
-            const clicked = await page2.evaluate(() => {
+            const clicked = await page.evaluate(() => {
               const canvas = document.querySelector("header canvas");
               const btn = canvas?.closest('div[role="button"], button, a');
               const target = btn ?? (document.querySelector('header img[alt*="profile picture"]')?.closest('div[role="button"], a') ?? null);
@@ -167538,7 +167539,7 @@ ${err?.stack ?? ""}`);
             }).catch(() => false);
             if (clicked) {
               await sleep(randInt2(2e3, 4e3));
-              const inStoryViewer = await this.waitForSelector(page2, 'section[role="dialog"], div[role="dialog"]', 3e3);
+              const inStoryViewer = await this.waitForSelector(page, 'section[role="dialog"], div[role="dialog"]', 3e3);
               if (inStoryViewer) {
                 this.logAction(profile.id, followTool.id, "view_stories", candidate.username, "", "story", "ok", `Watched stories from profile browse`);
                 this.logGhostBrowserCall(profile.id, profile.username, "view_stories", `EB watched stories of @${candidate.username}`);
@@ -167546,7 +167547,7 @@ ${err?.stack ?? ""}`);
                 });
                 console.log(`[engine] @${profile.username}: [EB-only] [${label}] watched stories of @${candidate.username}`);
               }
-              await page2.keyboard.press("Escape").catch(() => {
+              await page.keyboard.press("Escape").catch(() => {
               });
               await sleep(randInt2(500, 1e3));
             } else {
@@ -167562,7 +167563,7 @@ ${err?.stack ?? ""}`);
         const highlightsPct = randInt2(injectBrowsingHighlightsPctMin, injectBrowsingHighlightsPctMax);
         if (Math.random() * 100 < highlightsPct) {
           try {
-            const clicked = await page2.evaluate(() => {
+            const clicked = await page.evaluate(() => {
               const link2 = document.querySelector('a[href*="/stories/highlights/"]');
               if (!link2) return false;
               link2.click();
@@ -167570,13 +167571,13 @@ ${err?.stack ?? ""}`);
             }).catch(() => false);
             if (clicked) {
               await sleep(randInt2(2e3, 4e3));
-              const inViewer = await this.waitForSelector(page2, 'section[role="dialog"], div[role="dialog"]', 3e3);
+              const inViewer = await this.waitForSelector(page, 'section[role="dialog"], div[role="dialog"]', 3e3);
               if (inViewer) {
                 this.logAction(profile.id, followTool.id, "view_highlights", candidate.username, "", "highlight", "ok", `Viewed highlights from profile browse`);
                 this.logGhostBrowserCall(profile.id, profile.username, "view_highlights", `EB viewed highlights of @${candidate.username}`);
                 console.log(`[engine] @${profile.username}: [EB-only] [${label}] viewed highlights of @${candidate.username}`);
               }
-              await page2.keyboard.press("Escape").catch(() => {
+              await page.keyboard.press("Escape").catch(() => {
               });
               await sleep(randInt2(500, 1e3));
             } else {
@@ -167592,7 +167593,7 @@ ${err?.stack ?? ""}`);
         const reelsPct = randInt2(injectBrowsingReelsPctMin, injectBrowsingReelsPctMax);
         if (Math.random() * 100 < reelsPct) {
           try {
-            const wentToReelsTab = await page2.evaluate((username) => {
+            const wentToReelsTab = await page.evaluate((username) => {
               const link2 = document.querySelector(`a[href="/${username}/reels/"]`);
               if (!link2) return false;
               link2.click();
@@ -167600,7 +167601,7 @@ ${err?.stack ?? ""}`);
             }, candidate.username).catch(() => false);
             if (wentToReelsTab) {
               await sleep(randInt2(1500, 2500));
-              const opened = await page2.evaluate(() => {
+              const opened = await page.evaluate(() => {
                 const link2 = document.querySelector('main a[href*="/reel/"]');
                 if (!link2) return false;
                 link2.click();
@@ -167608,7 +167609,7 @@ ${err?.stack ?? ""}`);
               }).catch(() => false);
               if (opened) {
                 await sleep(randInt2(3e3, 6e3));
-                await page2.keyboard.press("Escape").catch(() => {
+                await page.keyboard.press("Escape").catch(() => {
                 });
                 this.logAction(profile.id, followTool.id, "view_reels", candidate.username, "", "reel", "ok", `Viewed reels from profile browse`);
                 this.logGhostBrowserCall(profile.id, profile.username, "view_reels", `EB viewed reels of @${candidate.username}`);
@@ -167617,7 +167618,7 @@ ${err?.stack ?? ""}`);
                 console.log(`[engine] @${profile.username}: [EB-only] [${label}] no reels found on @${candidate.username}'s profile \u2014 skipping`);
               }
               await sleep(randInt2(400, 800));
-              await page2.evaluate((username) => {
+              await page.evaluate((username) => {
                 const link2 = document.querySelector(`a[href="/${username}/"]`) ?? document.querySelector('header a[href^="/"][href$="/"]');
                 if (link2) link2.click();
               }, candidate.username).catch(() => {
@@ -167671,9 +167672,9 @@ ${err?.stack ?? ""}`);
       if (state.stop.stopped || maxPerDay > 0 && this.daily(state) >= maxPerDay) break;
       if (maxPerHour > 0 && this.hourly(state) >= maxPerHour) break;
       try {
-        await page2.goto(`https://www.instagram.com/${candidate.username}/`, { waitUntil: "domcontentloaded", timeout: 25e3 });
+        await page.goto(`https://www.instagram.com/${candidate.username}/`, { waitUntil: "domcontentloaded", timeout: 25e3 });
         await sleep(randInt2(1500, 3e3));
-        await page2.evaluate(() => {
+        await page.evaluate(() => {
           try {
             Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
           } catch {
@@ -167685,7 +167686,7 @@ ${err?.stack ?? ""}`);
           document.dispatchEvent(new Event("visibilitychange"));
         }).catch(() => {
         });
-        await this.waitForSelector(page2, "header button", 6e3);
+        await this.waitForSelector(page, "header button", 6e3);
         let abandonedAfterBrowse = false;
         if (injectBrowsingEnabled && injectBrowsingBeforeFollow) {
           const beforePct = randInt2(injectBrowsingBeforePctMin, injectBrowsingBeforePctMax);
@@ -167700,11 +167701,11 @@ ${err?.stack ?? ""}`);
               }
             }
             if (!abandonedAfterBrowse) {
-              await this.waitForSelector(page2, "header button", 6e3);
+              await this.waitForSelector(page, "header button", 6e3);
             }
           }
         }
-        const result = abandonedAfterBrowse ? { clicked: false, reason: "not_found" } : await page2.evaluate(() => {
+        const result = abandonedAfterBrowse ? { clicked: false, reason: "not_found" } : await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll("button, [role='button']"));
           window.__ebFollowDebug = btns.slice(0, 30).map((b3) => {
             const t2 = b3.textContent?.trim().slice(0, 30);
@@ -167737,7 +167738,7 @@ ${err?.stack ?? ""}`);
           return { clicked: false, reason: "not_found", isPrivate };
         }).catch(() => ({ clicked: false, reason: "not_found" }));
         if (!result.clicked && !abandonedAfterBrowse) {
-          const _followDebug = await page2.evaluate(() => window.__ebFollowDebug ?? "n/a").catch(() => "eval failed");
+          const _followDebug = await page.evaluate(() => window.__ebFollowDebug ?? "n/a").catch(() => "eval failed");
           console.log(`[engine] @${profile.username}: [EB-only] follow debug @${candidate.username} \u2014 buttons: ${_followDebug}`);
         }
         if (result.clicked) {
@@ -167797,7 +167798,7 @@ ${err?.stack ?? ""}`);
     console.log(`[engine] @${profile.username}: [EB-only] follow session done \u2014 ${followed}/${candidates.length} followed`);
   }
   // ── Browser-assisted unfollow session ─────────────────────────────────────
-  async runBrowserUnfollowSession(profile, unfollowTool, page2, actionDelay2, state) {
+  async runBrowserUnfollowSession(profile, unfollowTool, page, actionDelay2, state) {
     const us = unfollowTool.settings;
     const processCount = randInt2(Number(us.processMin ?? 3), Number(us.processMax ?? 8));
     const maxPerDay = randInt2(Number(us.maxPerDayMin ?? 0), Number(us.maxPerDayMax ?? 0));
@@ -167818,9 +167819,9 @@ ${err?.stack ?? ""}`);
     for (const fu of candidates) {
       if (state.stop.stopped || maxPerDay > 0 && this.daily(state) >= maxPerDay) break;
       try {
-        await page2.goto(`https://www.instagram.com/${fu.instagramUsername}/`, { waitUntil: "domcontentloaded", timeout: 25e3 });
+        await page.goto(`https://www.instagram.com/${fu.instagramUsername}/`, { waitUntil: "domcontentloaded", timeout: 25e3 });
         await sleep(randInt2(1500, 3e3));
-        const clicked = await page2.evaluate(async () => {
+        const clicked = await page.evaluate(async () => {
           const btns = Array.from(document.querySelectorAll("button"));
           const followingBtn = btns.find((b3) => b3.textContent?.trim() === "Following");
           if (!followingBtn) return false;
@@ -167853,7 +167854,7 @@ ${err?.stack ?? ""}`);
   // Mirrors runContactUsersSession but drives the embedded browser instead of
   // the mobile API — navigates to the recipient's DM thread, types the queued
   // message text, and sends via the on-screen Send button/Enter key.
-  async runBrowserContactSession(profile, contactTool, page2, actionDelay2, state) {
+  async runBrowserContactSession(profile, contactTool, page, actionDelay2, state) {
     const cs = contactTool.settings;
     const pending = await storage.getContactPendingMessages(profile.id, "pending");
     if (!pending.length) {
@@ -167870,15 +167871,15 @@ ${err?.stack ?? ""}`);
     for (const msg of queue) {
       if (state.stop.stopped) break;
       try {
-        await page2.goto(`https://www.instagram.com/direct/t/${msg.instagramUserId || msg.instagramUsername}/`, { waitUntil: "domcontentloaded", timeout: 25e3 }).catch(() => {
+        await page.goto(`https://www.instagram.com/direct/t/${msg.instagramUserId || msg.instagramUsername}/`, { waitUntil: "domcontentloaded", timeout: 25e3 }).catch(() => {
         });
         await sleep(randInt2(1500, 3e3));
-        const hasComposer = await this.waitForSelector(page2, 'div[role="textbox"], textarea[placeholder="Message..."]', 6e3);
+        const hasComposer = await this.waitForSelector(page, 'div[role="textbox"], textarea[placeholder="Message..."]', 6e3);
         if (!hasComposer) {
-          await page2.goto("https://www.instagram.com/direct/new/", { waitUntil: "domcontentloaded", timeout: 25e3 }).catch(() => {
+          await page.goto("https://www.instagram.com/direct/new/", { waitUntil: "domcontentloaded", timeout: 25e3 }).catch(() => {
           });
           await sleep(randInt2(1200, 2200));
-          const typedRecipient = await page2.evaluate((username) => {
+          const typedRecipient = await page.evaluate((username) => {
             const input = document.querySelector('input[name="queryBox"], input[placeholder="Search..."]');
             if (!input) return false;
             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
@@ -167888,7 +167889,7 @@ ${err?.stack ?? ""}`);
           }, msg.instagramUsername).catch(() => false);
           if (!typedRecipient) throw new Error("could not find recipient search box");
           await sleep(1800);
-          const pickedRecipient = await page2.evaluate((username) => {
+          const pickedRecipient = await page.evaluate((username) => {
             const rows = Array.from(document.querySelectorAll('div[role="button"]'));
             const row = rows.find((r2) => r2.textContent?.toLowerCase().includes(username.toLowerCase()));
             if (!row) return false;
@@ -167897,7 +167898,7 @@ ${err?.stack ?? ""}`);
           }, msg.instagramUsername).catch(() => false);
           if (!pickedRecipient) throw new Error(`recipient @${msg.instagramUsername} not found in search results`);
           await sleep(800);
-          await page2.evaluate(() => {
+          await page.evaluate(() => {
             const btns = Array.from(document.querySelectorAll("button"));
             const next = btns.find((b3) => b3.textContent?.trim() === "Next" || b3.textContent?.trim() === "Chat");
             next?.click();
@@ -167905,8 +167906,8 @@ ${err?.stack ?? ""}`);
           });
           await sleep(1200);
         }
-        await this.waitForSelector(page2, 'div[role="textbox"], textarea[placeholder="Message..."]', 8e3);
-        const typed = await page2.evaluate((text2) => {
+        await this.waitForSelector(page, 'div[role="textbox"], textarea[placeholder="Message..."]', 8e3);
+        const typed = await page.evaluate((text2) => {
           const box = document.querySelector('div[role="textbox"]');
           if (box) {
             box.focus();
@@ -167924,7 +167925,7 @@ ${err?.stack ?? ""}`);
         }, msg.messageText).catch(() => false);
         if (!typed) throw new Error("could not find message composer box");
         await sleep(randInt2(600, 1200));
-        await page2.keyboard.press("Enter").catch(() => {
+        await page.keyboard.press("Enter").catch(() => {
         });
         await sleep(randInt2(1e3, 2e3));
         sent++;
@@ -167968,6 +167969,7 @@ ${err?.stack ?? ""}`);
       );
       return;
     }
+    let timelineFeedEmpty = false;
     let sessionError = null;
     const checkSessionErr = async (e, actionLabel) => {
       const msg = e?.message ?? "";
@@ -168025,95 +168027,63 @@ ${err?.stack ?? ""}`);
           const threshold = randInt2(Math.min(lo, hi), Math.max(lo, hi));
           return Math.random() * 100 < threshold;
         };
-        const clickHamburgerItem = async (itemText) => {
-          await nav("https://www.instagram.com/", "home (jitter-menu)");
-          await sleep(randInt2(1500, 2500));
-          const moreClicked = await page.evaluate(() => {
-            const btn = document.querySelector('svg[aria-label="More"]')?.closest('[role="link"],a,[role="button"],div[tabindex]') ?? Array.from(document.querySelectorAll("span,div")).find((el) => el.textContent?.trim() === "More")?.closest('[role="link"],a,[role="button"],div[tabindex]');
-            if (!btn) return false;
-            btn.scrollIntoView({ block: "center", behavior: "instant" });
-            btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-            btn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
-            btn.click();
-            return true;
-          }).catch(() => false);
-          if (!moreClicked) return false;
-          await sleep(randInt2(700, 1200));
-          const itemClicked = await page.evaluate((text2) => {
-            const byRole = Array.from(document.querySelectorAll('[role="menuitem"]')).find((el) => el.textContent?.trim() === text2);
-            const bySpan = Array.from(document.querySelectorAll("span,li")).find((el) => el.textContent?.trim() === text2);
-            const target = byRole ?? bySpan;
-            if (!target) return false;
-            target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-            target.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
-            target.click();
-            return true;
-          }, itemText).catch(() => false);
-          await sleep(randInt2(1e3, 2e3));
-          return itemClicked;
+        const runJitterApiAction = async (label, chanceMinKey, chanceMaxKey, actionType, run) => {
+          if (!willRun(chanceMinKey, chanceMaxKey)) {
+            console.log(`[engine] @${profile.username}: ${label} skipped (run chance)`);
+            return;
+          }
+          client.setApiCallSource("Human Session Emulation");
+          try {
+            const ok = await run();
+            const detail = ok ? `API: ${label} completed` : `API: ${label} returned no valid response`;
+            console.log(`[engine] @${profile.username}: ${label} \u2014 ${ok ? "ok" : "failed"}`);
+            this.logAction(profile.id, tool.id, actionType, "", "", "", ok ? "ok" : "error", detail);
+          } catch (e) {
+            if (await checkSessionErr(e, label)) return;
+            const message = e?.message ?? "unknown error";
+            console.warn(`[engine] @${profile.username}: ${label} API error: ${message}`);
+            this.logAction(profile.id, tool.id, actionType, "", "", "", "error", `API: ${label} failed \u2014 ${message.slice(0, 300)}`);
+          }
         };
-        if (willRun("notificationsRunChanceMin", "notificationsRunChanceMax")) {
-          try {
-            await nav("https://www.instagram.com/", "home (notifications)");
-            await sleep(randInt2(1200, 2e3));
-            const clicked = await page.evaluate(() => {
-              const btn = document.querySelector('svg[aria-label="Notifications"]')?.closest('[role="link"],a,[role="button"]') ?? document.querySelector('a[href*="/accounts/activity"]') ?? Array.from(document.querySelectorAll('[role="link"],a')).find((el) => el.textContent?.trim() === "Notifications");
-              if (!btn) return false;
-              btn.scrollIntoView({ block: "center", behavior: "instant" });
-              btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-              btn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
-              btn.click();
-              return true;
-            }).catch(() => false);
-            await sleep(actionDelay());
-            console.log(`[engine] @${profile.username}: \u{1F514} EB tapped notifications icon (${clicked ? "ok" : "btn not found"})`);
-            this.logAction(profile.id, tool.id, "visit_notifications", "", "", "", "ok", "EB: tapped notifications icon");
-            this.logGhostBrowserCall(profile.id, profile.username, "visit_notifications", "EB: tapped notifications icon");
-          } catch (e) {
-            console.warn(`[engine] @${profile.username}: notifications EB error: ${e?.message}`);
-          }
-        }
-        if (willRun("ownProfileRunChanceMin", "ownProfileRunChanceMax")) {
-          try {
-            await nav(`https://www.instagram.com/${profile.username}/`, "own profile (jitter)");
-            await sleep(actionDelay());
-            console.log(`[engine] @${profile.username}: \u{1F464} EB visited own profile`);
-            this.logAction(profile.id, tool.id, "visit_own_profile", "", "", "", "ok", "EB: visited own profile page");
-            this.logGhostBrowserCall(profile.id, profile.username, "visit_own_profile", "EB: visited own profile page");
-          } catch (e) {
-            console.warn(`[engine] @${profile.username}: own profile EB error: ${e?.message}`);
-          }
-        }
-        if (willRun("settingsActivityRunChanceMin", "settingsActivityRunChanceMax")) {
-          try {
-            const ok = await clickHamburgerItem("Settings");
-            console.log(`[engine] @${profile.username}: \u2699\uFE0F EB opened Settings via menu (${ok ? "ok" : "btn not found"})`);
-            this.logAction(profile.id, tool.id, "visit_settings", "", "", "", ok ? "ok" : "skipped", "EB: opened Settings via hamburger menu");
-            this.logGhostBrowserCall(profile.id, profile.username, "visit_settings", "EB: opened Settings via hamburger menu");
-          } catch (e) {
-            console.warn(`[engine] @${profile.username}: settings EB error: ${e?.message}`);
-          }
-        }
-        if (willRun("viewActivityRunChanceMin", "viewActivityRunChanceMax")) {
-          try {
-            const ok = await clickHamburgerItem("Your activity");
-            console.log(`[engine] @${profile.username}: \u{1F4CA} EB opened Your Activity via menu (${ok ? "ok" : "btn not found"})`);
-            this.logAction(profile.id, tool.id, "view_activity", "", "", "", ok ? "ok" : "skipped", "EB: opened Your Activity via hamburger menu");
-            this.logGhostBrowserCall(profile.id, profile.username, "view_activity", "EB: opened Your Activity via hamburger menu");
-          } catch (e) {
-            console.warn(`[engine] @${profile.username}: activity EB error: ${e?.message}`);
-          }
-        }
-        if (willRun("viewSavedRunChanceMin", "viewSavedRunChanceMax")) {
-          try {
-            const ok = await clickHamburgerItem("Saved");
-            console.log(`[engine] @${profile.username}: \u{1F516} EB opened Saved via menu (${ok ? "ok" : "btn not found"})`);
-            this.logAction(profile.id, tool.id, "view_saved", "", "", "", ok ? "ok" : "skipped", "EB: opened Saved via hamburger menu");
-            this.logGhostBrowserCall(profile.id, profile.username, "view_saved", "EB: opened Saved via hamburger menu");
-          } catch (e) {
-            console.warn(`[engine] @${profile.username}: saved EB error: ${e?.message}`);
-          }
-        }
+        await runJitterApiAction(
+          "notifications",
+          "notificationsRunChanceMin",
+          "notificationsRunChanceMax",
+          "visit_notifications",
+          () => client.visitNotifications()
+        );
+        await sleep(actionDelay());
+        await runJitterApiAction(
+          "own profile",
+          "ownProfileRunChanceMin",
+          "ownProfileRunChanceMax",
+          "visit_own_profile",
+          () => client.visitOwnProfile()
+        );
+        await sleep(actionDelay());
+        await runJitterApiAction(
+          "settings",
+          "settingsActivityRunChanceMin",
+          "settingsActivityRunChanceMax",
+          "visit_settings",
+          () => client.visitSettingsAndActivity()
+        );
+        await sleep(actionDelay());
+        await runJitterApiAction(
+          "Your Activity",
+          "viewActivityRunChanceMin",
+          "viewActivityRunChanceMax",
+          "view_activity",
+          () => client.viewActivity()
+        );
+        await sleep(actionDelay());
+        await runJitterApiAction(
+          "Saved Media",
+          "viewSavedRunChanceMin",
+          "viewSavedRunChanceMax",
+          "view_saved",
+          () => client.viewSavedMedia()
+        );
       }
     );
     enqueue(
@@ -168125,6 +168095,11 @@ ${err?.stack ?? ""}`);
       "viewTimelineFeedOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
+        if (timelineFeedEmpty) {
+          console.log(`[engine] @${profile.username}: \u23ED View Timeline Feed skipped \u2014 timeline already returned 0 posts this session`);
+          this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
+          return;
+        }
         const feedCount = randInt2(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
         let viewed = 0;
         let vtfResult = null;
@@ -168153,6 +168128,7 @@ ${err?.stack ?? ""}`);
             return;
           }
           viewed = vtfResult.viewed;
+          if (vtfResult.feedEmpty) timelineFeedEmpty = true;
           console.log(`[engine] @${profile.username}: \u{1F4F0} viewed ${viewed} timeline post(s)`);
           this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `Viewed ${viewed} timeline post${viewed === 1 ? "" : "s"}`);
           if (vtfResult.reelWatches?.length) {
@@ -168313,13 +168289,9 @@ ${err?.stack ?? ""}`);
       "viewReelsOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
-        const reelChanceRaw0 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMin ?? 100)));
-        const reelChanceRaw1 = Math.min(100, Math.max(0, Number(s.reelWatchChanceMax ?? 100)));
-        const reelChanceMin = Math.min(reelChanceRaw0, reelChanceRaw1);
-        const reelChanceMax = Math.max(reelChanceRaw0, reelChanceRaw1);
-        const reelChance = reelChanceMin + Math.random() * (reelChanceMax - reelChanceMin);
-        if (Math.random() * 100 >= reelChance) {
-          console.log(`[engine] @${profile.username}: \u{1F3AC} View Reels \u2014 Chance% roll missed, skipping`);
+        if (timelineFeedEmpty) {
+          console.log(`[engine] @${profile.username}: \u23ED View Reels skipped \u2014 timeline already returned 0 posts this session`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
           return;
         }
         const reelCount = randInt2(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
@@ -168340,6 +168312,7 @@ ${err?.stack ?? ""}`);
             return;
           }
           console.log(`[engine] @${profile.username}: \u{1F3AC} watched ${result.watched} reel(s)`);
+          if (result.feedEmpty) timelineFeedEmpty = true;
           if (result.watched > 0) {
             this.logAction(profile.id, tool.id, "view_reels", "", "", "", "ok", `Watched ${result.watched} reel(s)`);
           } else {
@@ -168948,9 +168921,10 @@ ${err?.stack ?? ""}`);
           const exploreItems = await c3.visitExplorePage(exploreScrollCount);
           console.log(`[engine] @${profile.username}: \u{1F52D} explore page \u2014 fetched ${exploreItems.length} item(s)`);
           this.logAction(profile.id, tool.id, "visit_explore_page", "", "", "", "ok", `Visited explore page, fetched ${exploreItems.length} posts`);
-          const exploreClickMin = Math.max(0, Number(s.exploreClickMin ?? 1));
-          const exploreClickMax = Math.max(exploreClickMin, Number(s.exploreClickMax ?? 3));
-          const exploreClickCount = randInt2(exploreClickMin, exploreClickMax);
+          const exploreClickPctMin = Math.min(100, Math.max(0, Number(s.exploreClickMin ?? 10)));
+          const exploreClickPctMax = Math.min(100, Math.max(exploreClickPctMin, Number(s.exploreClickMax ?? 30)));
+          const exploreClickPct = randInt2(exploreClickPctMin, exploreClickPctMax);
+          const exploreClickCount = exploreClickPct > 0 && exploreItems.length > 0 ? Math.max(1, Math.round(exploreItems.length * exploreClickPct / 100)) : 0;
           const toClick = [...exploreItems].sort(() => 0.5 - Math.random()).slice(0, exploreClickCount);
           for (const item of toClick) {
             try {
@@ -170507,19 +170481,19 @@ ${err?.stack ?? ""}`);
     }
     const sessionVisits = [];
     try {
-      const page2 = bakePage;
+      const page = bakePage;
       for (const site of sitesToVisit) {
         if (state.stop.stopped) break;
         const url2 = site.startsWith("http") ? site : `https://${site}`;
         try {
           console.log(`[cookie-baker] @${profile.username}: \u2192 ${url2}`);
-          await page2.goto(url2, { waitUntil: "domcontentloaded", timeout: 3e4 });
-          await dismissCookieBanner2(page2);
+          await page.goto(url2, { waitUntil: "domcontentloaded", timeout: 3e4 });
+          await dismissCookieBanner2(page);
           const scrollMs = randInt2(
             (settings.scrollDelayMin ?? 5) * 1e3,
             (settings.scrollDelayMax ?? 15) * 1e3
           );
-          await cookieBakerScroll(page2, scrollMs, state);
+          await cookieBakerScroll(page, scrollMs, state);
           if (state.stop.stopped) break;
           const visitRecord = {
             url: url2,
@@ -170534,7 +170508,7 @@ ${err?.stack ?? ""}`);
               hostname2 = new URL(url2).hostname;
             } catch {
             }
-            const internalLinks = hostname2 ? await page2.evaluate(
+            const internalLinks = hostname2 ? await page.evaluate(
               (h4) => Array.from(document.querySelectorAll("a[href]")).map((a2) => a2.href).filter((href) => {
                 try {
                   return new URL(href).hostname === h4 && href !== window.location.href;
@@ -170549,13 +170523,13 @@ ${err?.stack ?? ""}`);
               if (state.stop.stopped) break;
               try {
                 console.log(`[cookie-baker] @${profile.username}:   \u21B3 ${link2}`);
-                await page2.goto(link2, { waitUntil: "domcontentloaded", timeout: 2e4 });
-                await dismissCookieBanner2(page2);
+                await page.goto(link2, { waitUntil: "domcontentloaded", timeout: 2e4 });
+                await dismissCookieBanner2(page);
                 const innerMs = randInt2(
                   (settings.internalScrollDelayMin ?? 3) * 1e3,
                   (settings.internalScrollDelayMax ?? 10) * 1e3
                 );
-                await cookieBakerScroll(page2, innerMs, state);
+                await cookieBakerScroll(page, innerMs, state);
                 visitRecord.linksVisited.push(link2);
               } catch {
               }
@@ -170657,9 +170631,9 @@ ${err?.stack ?? ""}`);
     });
   }
 };
-async function dismissCookieBanner2(page2) {
+async function dismissCookieBanner2(page) {
   try {
-    await page2.evaluate(async () => {
+    await page.evaluate(async () => {
       const ACCEPT_RE = /^(accept|accept all|accept cookies|accept & close|accept and close|allow all|allow cookies|allow all cookies|i agree|i accept|agree|agree all|ok|okay|got it|continue|proceed|confirm|dismiss|close|yes|yes, i accept|yes, i agree|consent|i consent|save & exit|save and exit|save settings|confirm my choices|that's ok|that's fine|no problem|understood)/i;
       const SELECTORS = [
         // Generic accept / agree buttons
@@ -170757,11 +170731,11 @@ async function dismissCookieBanner2(page2) {
   }
   await new Promise((r2) => setTimeout(r2, 600));
 }
-async function cookieBakerScroll(page2, durationMs, state) {
+async function cookieBakerScroll(page, durationMs, state) {
   const end = Date.now() + durationMs;
   while (Date.now() < end && !state.stop.stopped) {
     const amount = 100 + Math.floor(Math.random() * 300);
-    await page2.evaluate((n) => window.scrollBy(0, n), amount).catch(() => {
+    await page.evaluate((n) => window.scrollBy(0, n), amount).catch(() => {
     });
     await new Promise((r2) => setTimeout(r2, 400 + Math.floor(Math.random() * 600)));
   }
