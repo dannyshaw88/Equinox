@@ -2703,14 +2703,12 @@ export async function openEbWindow(opts: {
       // by the close-handler (which uses setPosition+setSkipTaskbar instead of
       // hide() so Chromium's compositor keeps running during automation).
       existing.win.setSkipTaskbar(false);
-      if (!isGhostBrowser && !existing.win.isMaximized()) {
-        // Use explicit workArea bounds so the window never covers the Windows taskbar.
-        // This also moves it back on-screen if the close-handler had parked it off-screen.
-        const _eb = existing.win.getBounds();
-        const _disp = eScreen.getDisplayNearestPoint({ x: _eb.x, y: _eb.y });
-        existing.win.setBounds(_disp.workArea);
-      }
       if (!existing.win.isVisible()) existing.win.show();
+      if (!isGhostBrowser && !existing.win.isMaximized()) {
+        // Reopened regular account EBs, including Verify, should use the same
+        // maximized default as a newly created account EB.
+        existing.win.maximize();
+      }
       existing.win.focus();
 
       // Toolbar is a native BrowserView — it is always present; nothing to re-inject.
@@ -3262,12 +3260,10 @@ export async function openEbWindow(opts: {
         win.show();
       }
     } else {
-      // All regular account EBs — maximize so the OS title-bar maximize
-      // button shows as inactive (window is already maximized).
-      // win.maximize() both maximizes AND shows the window, but calling
-      // show() first ensures the window is visible before maximize fires.
-      win.show();
+      // All regular account EBs, including Verify — maximize before showing so
+      // the user never sees an unmaximized window flash during startup.
       win.maximize();
+      win.show();
     }
   });
 
