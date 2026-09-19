@@ -1248,7 +1248,7 @@ export function ProfilesPage() {
         className="hidden"
         onChange={handleGroupIconFile}
       />
-      <div className="mb-3">
+      <div className="mb-7">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="text-3xl font-bold tracking-tight text-foreground shrink-0">Account Manager</h1>
           <Button
