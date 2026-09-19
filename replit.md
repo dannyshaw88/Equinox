@@ -1,4 +1,6 @@
-# Danny's Bot
+# Equinox
+
+Equinox is the product name. Legacy package paths, repository URLs, and environment variable names containing `danny` remain unchanged because they are technical identifiers used by the existing build and release configuration.
 
 An Instagram automation platform for managing multiple accounts with tools for following, unfollowing, DMs, contact messaging, auto-reply, and session activity tracking.
 
@@ -341,7 +343,7 @@ Every push to `main` triggers `.github/workflows/build.yml` which runs two jobs:
 
 ### How the user gets the installer
 
-61. Go to `github.com/dannyshaw88/dannys-bot/actions`
+61. Go to `https://github.com/dannyshaw88/Equinox/actions`
 62. Click the latest successful run
 63. Scroll to the Artifacts section at the bottom
 64. Download **`Equinox-Windows-Installer`** (88MB) — this is the real installer
