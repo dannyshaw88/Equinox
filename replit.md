@@ -1,4 +1,6 @@
-# Danny's Bot
+# Equinox
+
+Equinox is the product name. Legacy package paths, repository URLs, and environment variable names containing `danny` remain unchanged because they are technical identifiers used by the existing build and release configuration.
 
 An Instagram automation platform for managing multiple accounts with tools for following, unfollowing, DMs, contact messaging, auto-reply, and session activity tracking.
 
