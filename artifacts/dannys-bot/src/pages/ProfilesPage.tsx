@@ -41,7 +41,7 @@ const STATUS_META: Record<string, {
 }> = {
   pending:              { label: "Pending",              icon: Clock,       pill: "bg-slate-50  text-slate-600  border-slate-200"  },
   verifying:            { label: "Verifying",            icon: Loader2,     pill: "bg-blue-50   text-blue-600   border-blue-200"   },
-  verifying_to_api:     { label: "Verifying to API",     icon: Loader2,     pill: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  verifying_to_api:     { label: "Verifying to API",     icon: Loader2,     pill: "bg-blue-50   text-blue-600   border-blue-200"   },
   valid:                { label: "Valid",                icon: ShieldCheck, pill: "bg-green-50  text-green-700  border-green-200"  },
   banned:               { label: "Banned",               icon: Ban,         pill: "bg-red-50    text-red-700    border-red-200"    },
   captcha:              { label: "Captcha",              icon: ScanFace,    pill: "bg-amber-50  text-amber-700  border-amber-200"  },
@@ -1460,7 +1460,13 @@ export function ProfilesPage() {
             <>
           {(() => {
             const renderProfileRow = (profile: typeof filteredProfiles[0], idx: number) => {
-              const acctStatus = (verifyingIds.has(profile.id) ? "verifying" : (profile.accountStatus ?? "pending")) as AccountStatus;
+              // The scheduled handoff is the durable source of truth.  During the
+              // short window between the Verify response and the next profile
+              // poll, a stale accountStatus can still say "pending" even though
+              // the server has already persisted the API deadline and message.
+              const hasScheduledApiVerify = !!(profile.apiVerifyAfter && profile.statusMessage?.includes("Mobile API verification is scheduled"));
+              const persistedStatus = hasScheduledApiVerify ? "verifying_to_api" : (profile.accountStatus ?? "pending");
+              const acctStatus = (verifyingIds.has(profile.id) ? "verifying" : persistedStatus) as AccountStatus;
               const isStopped  = acctStatus === "stopped";
               const isEven     = idx % 2 === 1;
               const hasProxy   = !!(profile.proxyId || (profile.proxyHost && profile.proxyPort) || (profile as any).useHomeIp);

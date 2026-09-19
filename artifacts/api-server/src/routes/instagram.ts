@@ -75,7 +75,6 @@ import {
   getEbLiveStats,
   hasActiveWS,
   sendEbWsMessage,
-  electronSilentVerify,
   browserFill2fa,
   createInstagramAccountViaEBForm,
   submitSignupCodeViaEB,
@@ -2366,18 +2365,18 @@ export async function registerInstagramRoutes(
         console.warn(`[verify:${profileId}] @${profile.username} — /eb/open failed (non-fatal): ${openErr?.message}`);
       }
       try {
-        console.log(`[verify:${profileId}] @${profile.username} — calling electronSilentVerify`);
-        const silentRes = await electronSilentVerify({
+        // Use the same auto-login handler as the browser window's Login button.
+        // This keeps Verify on the current paste-based credential flow instead
+        // of the older silent-verify wrapper.
+        console.log(`[verify:${profileId}] @${profile.username} — calling shared browser auto-login`);
+        loginResult = await browserAutoLogin(
           profileId,
-          username:  profile.username,
-          password:  profile.password!,
-          twoFAKey:  profile.twoFASecretKey || "",
-          proxy:     proxyConfig ? { host: proxyConfig.host, port: proxyConfig.port, user: proxyConfig.username, pass: proxyConfig.password } : undefined,
-          userAgent: ebUA,
-        });
-        console.log(`[verify:${profileId}] @${profile.username} — electronSilentVerify done: ok=${silentRes.ok} msg="${silentRes.message}" cookies=${silentRes.cookies.length} (${silentRes.cookies.map(c => c.name).join(",")})`);
-        loginResult    = { ok: silentRes.ok, message: silentRes.message };
-        _silentCookies = silentRes.cookies;
+          profile.username,
+          profile.password!,
+          profile.twoFASecretKey || "",
+        );
+        _silentCookies = await getSessionPageCookies(profileId);
+        console.log(`[verify:${profileId}] @${profile.username} — shared browser auto-login done: ok=${loginResult.ok} msg="${loginResult.message}" cookies=${_silentCookies.length} (${_silentCookies.map(c => c.name).join(",")})`);
       } catch (ebErr: any) {
         loginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
       } finally {
@@ -5085,16 +5084,15 @@ export async function registerInstagramRoutes(
 
         if (process.env.EB_IPC_PORT) {
           try {
-            const silentRes = await electronSilentVerify({
-              profileId: profile.id,
-              username:  profile.username,
-              password:  profile.password!,
-              twoFAKey:  profile.twoFASecretKey || "",
-              proxy:     bulkProxyConfig ? { host: bulkProxyConfig.host, port: bulkProxyConfig.port, user: bulkProxyConfig.username, pass: bulkProxyConfig.password } : undefined,
-              userAgent: bulkEbUA,
-            });
-            bulkLoginResult    = { ok: silentRes.ok, message: silentRes.message };
-            _bulkSilentCookies = silentRes.cookies;
+            // Keep bulk Verify on the same current browser auto-login handler
+            // used by the Login button rather than the legacy silent wrapper.
+            bulkLoginResult = await browserAutoLogin(
+              profile.id,
+              profile.username,
+              profile.password!,
+              profile.twoFASecretKey || "",
+            );
+            _bulkSilentCookies = await getSessionPageCookies(profile.id);
           } catch (ebErr: any) {
             bulkLoginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
           }

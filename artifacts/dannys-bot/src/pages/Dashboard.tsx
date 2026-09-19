@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.528",
+    date: "20 Sep 2026",
+    items: [
+      {
+        category: "Fixed",
+        text: "Account verification now uses the same browser Login flow and visibly stays in the animated Verifying to API state while mobile verification is scheduled.",
+      },
+    ],
+  },
+  {
     version: "1.1.527",
     date: "19 Sep 2026",
     items: [
