@@ -48,7 +48,8 @@
     "vite": "^6.3.5"
   },
   "optionalDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "4.59.0"
+    "@rollup/rollup-win32-x64-msvc": "4.59.0",
+    "lightningcss-win32-x64-msvc": "1.31.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

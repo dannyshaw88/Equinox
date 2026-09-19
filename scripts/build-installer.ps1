@@ -103,6 +103,48 @@ if ($env:OS -eq "Windows_NT") {
         -not (Test-Path -LiteralPath $windowsRollupLink)) {
         throw "pnpm installed the Rollup package but did not link it into Rollup's virtual store."
     }
+
+    $windowsLightningPackage = Get-ChildItem `
+        -LiteralPath $pnpmStoreDirectory `
+        -Directory `
+        -Filter "lightningcss-win32-x64-msvc@*" `
+        -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    $lightningcssPackageDirectory = Get-ChildItem `
+        -LiteralPath $pnpmStoreDirectory `
+        -Directory `
+        -Filter "lightningcss@*" `
+        -ErrorAction SilentlyContinue |
+        Where-Object {
+            Test-Path -LiteralPath (Join-Path $_.FullName "node_modules\lightningcss\node\index.js")
+        } |
+        Select-Object -First 1
+    $windowsLightningLink = if ($null -ne $lightningcssPackageDirectory) {
+        Join-Path $lightningcssPackageDirectory.FullName "node_modules\lightningcss-win32-x64-msvc"
+    } else {
+        $null
+    }
+
+    if ($null -ne $windowsLightningPackage -and $null -ne $lightningcssPackageDirectory) {
+        $windowsLightningTarget = Join-Path `
+            $windowsLightningPackage.FullName `
+            "node_modules\lightningcss-win32-x64-msvc"
+
+        if ((Test-Path -LiteralPath $windowsLightningTarget) -and
+            -not (Test-Path -LiteralPath $windowsLightningLink)) {
+            Write-Host "Repairing Lightning CSS Windows native-package link..." -ForegroundColor DarkYellow
+            New-Item `
+                -ItemType Junction `
+                -Path $windowsLightningLink `
+                -Target $windowsLightningTarget | Out-Null
+        }
+    }
+
+    if ($null -eq $windowsLightningPackage -or
+        $null -eq $windowsLightningLink -or
+        -not (Test-Path -LiteralPath $windowsLightningLink)) {
+        throw "pnpm installed the Lightning CSS package but did not link it into Lightning CSS's virtual store."
+    }
 }
 
 # The Electron bundle expects both of these dist directories to exist.
