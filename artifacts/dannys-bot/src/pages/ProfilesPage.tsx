@@ -1502,7 +1502,7 @@ export function ProfilesPage() {
                     />
                   </div>
                   <div style={{ width: profColWidths.account }} className="shrink-0 min-w-0 flex items-center gap-1">
-                    <Link href={`/profiles/${profile.id}`} onClick={(e: React.MouseEvent) => { if (e.ctrlKey || e.metaKey) e.preventDefault(); }} className="min-w-0">
+                    <Link href={`/profiles/${profile.id}`} onClick={(e: React.MouseEvent) => { if (e.ctrlKey || e.metaKey) e.preventDefault(); }} className="min-w-0 -ml-2">
                       <span
                         className={`text-xs font-semibold truncate hover:text-primary cursor-pointer flex items-center gap-1 ${isStopped ? "text-muted-foreground" : acctStatus === "valid" ? "text-foreground" : "text-red-600"}`}
                         data-testid={`text-username-${profile.id}`}
