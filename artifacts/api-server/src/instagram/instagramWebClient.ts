@@ -1189,7 +1189,9 @@ export class InstagramWebClient {
         "/api/v1/direct_v2/inbox":                  ["DM inbox loaded",                 "DM inbox failed"],
         "/api/v1/direct_v2/threads/*/items":        ["DM sent",                         "DM send failed"],
         "/api/v1/direct_v2/threads":                ["DM thread action",                "DM thread failed"],
-        "/api/v1/news/inbox":                       ["Activity checked",                "Activity check failed"],
+        "/api/v1/news/inbox":                       ["Notifications inbox loaded",     "Notifications inbox failed"],
+        "/api/v1/news/activities":                  ["Your Activity loaded",            "Your Activity failed"],
+        "/api/v1/feed/saved":                       ["Saved media loaded",              "Saved media failed"],
         "/api/v1/users/*/info":                     ["Profile loaded",                  "Profile load failed"],
         "/api/v1/accounts/account_security_info":   ["Account security info fetched",   "Security info failed"],
         "/api/v1/accounts/current_user":            ["Session verified",                "Session verify failed"],
@@ -3478,15 +3480,27 @@ export class InstagramWebClient {
   async visitNotifications(): Promise<boolean> {
     return this.timed("VisitNotifications", async () => {
       const j = await this.mobileSessionGet(`/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true`);
-      return !!(j?.new_stories || j?.old_stories || j?.counts);
+      // An account with no notifications still successfully visited the inbox.
+      // Treat an explicit Instagram failure as false, but do not require the
+      // response to contain stories/counts.
+      return !!j && j.status !== "fail";
     }, "Visit notifications");
   }
 
   // ── Visit own profile ─────────────────────────────────────────────────────
   // Simulates a user tapping their own profile tab.
   async visitOwnProfile(): Promise<boolean> {
+    const userIdCookie = this.mobileCookieJar.find(c => c.startsWith("ds_user_id="))
+      ?? this.cookieJar.find(c => c.startsWith("ds_user_id="));
+    const userId = userIdCookie?.split("=")[1] ?? "";
+    if (!userId) return false;
+
     return this.timed("VisitOwnProfile", async () => {
-      const j = await this.mobileSessionGet(`/api/v1/accounts/current_user/?edit=true`);
+      // The profile tab loads the same user-info endpoint used for any
+      // profile visit. Do not use current_user/?edit=true here: that endpoint
+      // is treated as a profile-write screen by some sessions and can trigger
+      // a checkpoint on an otherwise valid account.
+      const j = await this.mobileSessionGet(`/api/v1/users/${userId}/info/`);
       return !!(j?.user);
     }, "Visit own profile");
   }
@@ -3592,8 +3606,27 @@ export class InstagramWebClient {
   async visitSettingsAndActivity(): Promise<boolean> {
     return this.timed("VisitSettingsAndActivity", async () => {
       const j = await this.mobileSessionPost(`/api/v1/accounts/account_security_info/`);
-      return !!(j?.status !== "fail");
+      return !!j && j.status !== "fail";
     }, "Visit settings and activity");
+  }
+
+  // ── Open Your Activity from Settings ──────────────────────────────────────
+  // The mobile app requests the activity feed through news/activities/.
+  // This is separate from news/inbox, which is the notifications inbox.
+  async viewActivity(): Promise<boolean> {
+    return this.timed("ViewActivity", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/news/activities/`);
+      return !!j && j.status !== "fail";
+    }, "View Your Activity");
+  }
+
+  // ── Open Saved Media from Settings ─────────────────────────────────────────
+  // The Saved tab is the saved feed, not a normal timeline feed.
+  async viewSavedMedia(): Promise<boolean> {
+    return this.timed("ViewSavedMedia", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/feed/saved/?count=12`);
+      return !!j && j.status !== "fail";
+    }, "View saved media");
   }
 
   // ── Scroll the home timeline feed ────────────────────────────────────────

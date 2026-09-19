@@ -32,3 +32,4 @@
 - [GitHub integration write limits](github-integration-write-limits.md) — raw trees/blobs and Contents PUT work, but ref mutations and workflow-file writes may be blocked by connector permissions.
 - [Windows update data location](windows-update-data-location.md) — packaged Electron state must be isolated under userData, not the replaceable install directory; migrate legacy state once.
 - [Windows same-version update rule](windows-same-version-update.md) — rebuilding without incrementing app.version does not reliably replace or auto-update an installed Electron build.
+- [Human Jitter API actions](human-jitter-api-actions.md) — the API runner must use mobile-session endpoints; embedded-browser clicks are only for the separate EB runner.

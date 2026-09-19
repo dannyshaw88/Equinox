@@ -4679,125 +4679,80 @@ class AutomationEngine {
           return Math.random() * 100 < threshold;
         };
 
-        // Opens the ≡ More hamburger menu and clicks a named item.
-        // Uses the EB page directly — page is in scope via closure.
-        const clickHamburgerItem = async (itemText: string): Promise<boolean> => {
-          await nav("https://www.instagram.com/", "home (jitter-menu)");
-          await sleep(randInt(1500, 2500));
-          const moreClicked = await page.evaluate(() => {
-            const btn =
-              document.querySelector<HTMLElement>('svg[aria-label="More"]')
-                ?.closest<HTMLElement>('[role="link"],a,[role="button"],div[tabindex]')
-              ?? Array.from(document.querySelectorAll<HTMLElement>('span,div'))
-                   .find(el => el.textContent?.trim() === 'More')
-                   ?.closest<HTMLElement>('[role="link"],a,[role="button"],div[tabindex]');
-            if (!btn) return false;
-            btn.scrollIntoView({ block: 'center', behavior: 'instant' });
-            btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-            btn.dispatchEvent(new PointerEvent('pointerup',   { bubbles: true, cancelable: true }));
-            btn.click();
-            return true;
-          }).catch(() => false);
-          if (!moreClicked) return false;
-          await sleep(randInt(700, 1200));
-          const itemClicked = await page.evaluate((text: string) => {
-            // Find the menu item by exact text content.
-            // Do NOT use offsetParent/getBoundingClientRect checks — these return
-            // null/zero in a hidden Electron BrowserWindow even when the element is
-            // fully rendered, which would cause every menu click to silently no-op.
-            // Priority order: prefer [role="menuitem"] containers (the wrapping
-            // div/li), then fall back to any visible span matching the text.
-            const byRole = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
-              .find(el => el.textContent?.trim() === text);
-            const bySpan = Array.from(document.querySelectorAll<HTMLElement>('span,li'))
-              .find(el => el.textContent?.trim() === text);
-            const target = byRole ?? bySpan;
-            if (!target) return false;
-            target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-            target.dispatchEvent(new PointerEvent('pointerup',   { bubbles: true, cancelable: true }));
-            target.click();
-            return true;
-          }, itemText).catch(() => false);
-          await sleep(randInt(1000, 2000));
-          return itemClicked;
+        // These are API actions, not browser clicks. The API Human Session path
+        // has no Puppeteer page or DOM, so the old nav()/page.evaluate() code
+        // failed before reaching Instagram.
+        const runJitterApiAction = async (
+          label: string,
+          chanceMinKey: string,
+          chanceMaxKey: string,
+          actionType: string,
+          run: () => Promise<boolean>,
+        ): Promise<void> => {
+          if (!willRun(chanceMinKey, chanceMaxKey)) {
+            console.log(`[engine] @${profile.username}: ${label} skipped (run chance)`);
+            return;
+          }
+
+          client.setApiCallSource("Human Session Emulation");
+          try {
+            const ok = await run();
+            const detail = ok
+              ? `API: ${label} completed`
+              : `API: ${label} returned no valid response`;
+            console.log(`[engine] @${profile.username}: ${label} — ${ok ? "ok" : "failed"}`);
+            this.logAction(profile.id, tool.id, actionType, "", "", "", ok ? "ok" : "error", detail);
+          } catch (e: any) {
+            if (await checkSessionErr(e, label)) return;
+            const message = e?.message ?? "unknown error";
+            console.warn(`[engine] @${profile.username}: ${label} API error: ${message}`);
+            this.logAction(profile.id, tool.id, actionType, "", "", "", "error", `API: ${label} failed — ${message.slice(0, 300)}`);
+          }
         };
 
-        // ── Notifications — click the heart/bell icon in the left sidebar ─────
-        if (willRun("notificationsRunChanceMin", "notificationsRunChanceMax")) {
-          try {
-            await nav("https://www.instagram.com/", "home (notifications)");
-            await sleep(randInt(1200, 2000));
-            const clicked = await page.evaluate(() => {
-              const btn =
-                document.querySelector<HTMLElement>('svg[aria-label="Notifications"]')
-                  ?.closest<HTMLElement>('[role="link"],a,[role="button"]')
-                ?? document.querySelector<HTMLElement>('a[href*="/accounts/activity"]')
-                ?? Array.from(document.querySelectorAll<HTMLElement>('[role="link"],a'))
-                     .find(el => el.textContent?.trim() === 'Notifications');
-              if (!btn) return false;
-              btn.scrollIntoView({ block: 'center', behavior: 'instant' });
-              btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-              btn.dispatchEvent(new PointerEvent('pointerup',   { bubbles: true, cancelable: true }));
-              btn.click();
-              return true;
-            }).catch(() => false);
-            await sleep(actionDelay());
-            console.log(`[engine] @${profile.username}: 🔔 EB tapped notifications icon (${clicked ? 'ok' : 'btn not found'})`);
-            this.logAction(profile.id, tool.id, "visit_notifications", "", "", "", "ok", "EB: tapped notifications icon");
-            this.logGhostBrowserCall(profile.id, profile.username, "visit_notifications", "EB: tapped notifications icon");
-          } catch (e: any) {
-            console.warn(`[engine] @${profile.username}: notifications EB error: ${e?.message}`);
-          }
-        }
+        await runJitterApiAction(
+          "notifications",
+          "notificationsRunChanceMin",
+          "notificationsRunChanceMax",
+          "visit_notifications",
+          () => client.visitNotifications(),
+        );
+        await sleep(actionDelay());
 
-        // ── Own Profile — navigate to own profile page ─────────────────────────
-        if (willRun("ownProfileRunChanceMin", "ownProfileRunChanceMax")) {
-          try {
-            await nav(`https://www.instagram.com/${profile.username}/`, "own profile (jitter)");
-            await sleep(actionDelay());
-            console.log(`[engine] @${profile.username}: 👤 EB visited own profile`);
-            this.logAction(profile.id, tool.id, "visit_own_profile", "", "", "", "ok", "EB: visited own profile page");
-            this.logGhostBrowserCall(profile.id, profile.username, "visit_own_profile", "EB: visited own profile page");
-          } catch (e: any) {
-            console.warn(`[engine] @${profile.username}: own profile EB error: ${e?.message}`);
-          }
-        }
+        await runJitterApiAction(
+          "own profile",
+          "ownProfileRunChanceMin",
+          "ownProfileRunChanceMax",
+          "visit_own_profile",
+          () => client.visitOwnProfile(),
+        );
+        await sleep(actionDelay());
 
-        // ── Settings — hamburger → Settings ───────────────────────────────────
-        if (willRun("settingsActivityRunChanceMin", "settingsActivityRunChanceMax")) {
-          try {
-            const ok = await clickHamburgerItem("Settings");
-            console.log(`[engine] @${profile.username}: ⚙️ EB opened Settings via menu (${ok ? 'ok' : 'btn not found'})`);
-            this.logAction(profile.id, tool.id, "visit_settings", "", "", "", ok ? "ok" : "skipped", "EB: opened Settings via hamburger menu");
-            this.logGhostBrowserCall(profile.id, profile.username, "visit_settings", "EB: opened Settings via hamburger menu");
-          } catch (e: any) {
-            console.warn(`[engine] @${profile.username}: settings EB error: ${e?.message}`);
-          }
-        }
+        await runJitterApiAction(
+          "settings",
+          "settingsActivityRunChanceMin",
+          "settingsActivityRunChanceMax",
+          "visit_settings",
+          () => client.visitSettingsAndActivity(),
+        );
+        await sleep(actionDelay());
 
-        // ── View Activity — hamburger → Your activity ──────────────────────────
-        if (willRun("viewActivityRunChanceMin", "viewActivityRunChanceMax")) {
-          try {
-            const ok = await clickHamburgerItem("Your activity");
-            console.log(`[engine] @${profile.username}: 📊 EB opened Your Activity via menu (${ok ? 'ok' : 'btn not found'})`);
-            this.logAction(profile.id, tool.id, "view_activity", "", "", "", ok ? "ok" : "skipped", "EB: opened Your Activity via hamburger menu");
-            this.logGhostBrowserCall(profile.id, profile.username, "view_activity", "EB: opened Your Activity via hamburger menu");
-          } catch (e: any) {
-            console.warn(`[engine] @${profile.username}: activity EB error: ${e?.message}`);
-          }
-        }
+        await runJitterApiAction(
+          "Your Activity",
+          "viewActivityRunChanceMin",
+          "viewActivityRunChanceMax",
+          "view_activity",
+          () => client.viewActivity(),
+        );
+        await sleep(actionDelay());
 
-        // ── View Saved — hamburger → Saved ─────────────────────────────────────
-        if (willRun("viewSavedRunChanceMin", "viewSavedRunChanceMax")) {
-          try {
-            const ok = await clickHamburgerItem("Saved");
-            console.log(`[engine] @${profile.username}: 🔖 EB opened Saved via menu (${ok ? 'ok' : 'btn not found'})`);
-            this.logAction(profile.id, tool.id, "view_saved", "", "", "", ok ? "ok" : "skipped", "EB: opened Saved via hamburger menu");
-            this.logGhostBrowserCall(profile.id, profile.username, "view_saved", "EB: opened Saved via hamburger menu");
-          } catch (e: any) {
-            console.warn(`[engine] @${profile.username}: saved EB error: ${e?.message}`);
-          }
-        }
+        await runJitterApiAction(
+          "Saved Media",
+          "viewSavedRunChanceMin",
+          "viewSavedRunChanceMax",
+          "view_saved",
+          () => client.viewSavedMedia(),
+        );
       },
     );
 
