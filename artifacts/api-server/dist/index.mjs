@@ -166489,7 +166489,7 @@ ${err?.stack ?? ""}`);
     const winMax = toMs(Number(limits.everySecondsMax ?? 20));
     const rMin = Math.max(1, Number(limits.requestsMin ?? 1));
     const rMax = Math.max(rMin, Number(limits.requestsMax ?? 1));
-    const actionDelay2 = () => randInt2(
+    const actionDelay = () => randInt2(
       Math.max(1e3, Math.round(winMin / rMax)),
       Math.max(2e3, Math.round(winMax / rMin))
     );
@@ -166519,9 +166519,9 @@ ${err?.stack ?? ""}`);
         if (s.humanSessionEnabled === true && s.emulationGroupEnabled !== false && !_jitterSkipped) {
           try {
             await nav("https://www.instagram.com/", "home (jitter)");
-            await sleep(actionDelay2());
+            await sleep(actionDelay());
             await nav(`https://www.instagram.com/${profile.username}/`, "own profile (jitter)");
-            await sleep(actionDelay2());
+            await sleep(actionDelay());
             this.logAction(profile.id, tool.id, "eb_browse", "", "", "", "ok", "EB: Human Jitter");
             this.logGhostBrowserCall(profile.id, profile.username, "human_session_audit", "EB: Human Jitter");
           } catch (e) {
@@ -166541,7 +166541,7 @@ ${err?.stack ?? ""}`);
             feedCount = randInt2(Number(s.viewTimelineFeedMin ?? 3), Number(s.viewTimelineFeedMax ?? 8));
             if (page.url() !== "https://www.instagram.com/" && !page.url().startsWith("https://www.instagram.com/?")) {
               await nav("https://www.instagram.com/", "home feed");
-              await sleep(actionDelay2());
+              await sleep(actionDelay());
             }
             await page.evaluate(() => {
               try {
@@ -166614,7 +166614,7 @@ ${err?.stack ?? ""}`);
             for (let i2 = 0; i2 < feedCount && !state.stop.stopped; i2++) {
               await page.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
               });
-              await sleep(actionDelay2());
+              await sleep(actionDelay());
               if (ecPctMax > 0 && Math.random() * 100 < ecPct) {
                 const clicked = await page.evaluate(() => {
                   const articles = Array.from(document.querySelectorAll("article:not([data-eb-caption-done])"));
@@ -166712,7 +166712,7 @@ ${err?.stack ?? ""}`);
           console.log(`[engine] @${profile.username}: \u{1F3AC} [EB] View Reels running (${reelCount} reels, like target ${reelLikeCount})`);
           try {
             await nav("https://www.instagram.com/reels/", "reels feed");
-            await sleep(actionDelay2());
+            await sleep(actionDelay());
             const videoFound = await waitFor("video", 15e3);
             if (!videoFound) {
               const _reelDebug = await page.evaluate(() => {
@@ -166757,7 +166757,7 @@ ${err?.stack ?? ""}`);
                     reelLiked++;
                     await storage.incrementStat(profile.id, "like").catch(() => {
                     });
-                    await sleep(actionDelay2());
+                    await sleep(actionDelay());
                   }
                 }
                 await page.evaluate(() => {
@@ -166795,7 +166795,7 @@ ${err?.stack ?? ""}`);
           if (!state.stop.stopped) {
             await nav("https://www.instagram.com/", "home (after reels)").catch(() => {
             });
-            await sleep(actionDelay2());
+            await sleep(actionDelay());
           }
         }
       });
@@ -166828,7 +166828,7 @@ ${err?.stack ?? ""}`);
               try {
                 if (i2 === 0) {
                   await nav("https://www.instagram.com/", `home (stories ${i2 + 1}/${storyCount})`);
-                  await sleep(actionDelay2());
+                  await sleep(actionDelay());
                   await page.evaluate(() => {
                     try {
                       Object.defineProperty(document, "visibilityState", { get: () => "visible", configurable: true });
@@ -166952,7 +166952,7 @@ ${err?.stack ?? ""}`);
           try {
             const dmCount = randInt2(Number(s.checkDmMin ?? 1), Number(s.checkDmMax ?? 5));
             await nav("https://www.instagram.com/direct/inbox/", "DM inbox");
-            await sleep(actionDelay2());
+            await sleep(actionDelay());
             const hasThreads = await waitFor('a[href*="/direct/t/"]', 8e3);
             if (!hasThreads) {
               this.logAction(profile.id, tool.id, "check_dm", "", "", "", "skipped", "EB: DM inbox empty");
@@ -166972,10 +166972,10 @@ ${err?.stack ?? ""}`);
                     return true;
                   }, i2).catch(() => false);
                   if (!clicked) break;
-                  await sleep(actionDelay2());
+                  await sleep(actionDelay());
                   opened++;
                   await nav("https://www.instagram.com/direct/inbox/", "DM inbox");
-                  await sleep(actionDelay2());
+                  await sleep(actionDelay());
                   const stillHas = await waitFor('a[href*="/direct/t/"]', 5e3);
                   if (!stillHas) break;
                 } catch {
@@ -166998,7 +166998,7 @@ ${err?.stack ?? ""}`);
             try {
               if (!page.url().startsWith("https://www.instagram.com/")) {
                 await nav("https://www.instagram.com/", "home (likes)");
-                await sleep(actionDelay2());
+                await sleep(actionDelay());
               }
               await page.evaluate(() => {
                 try {
@@ -167034,7 +167034,7 @@ ${err?.stack ?? ""}`);
                 }).catch(() => false);
                 if (clickedOne) {
                   liked++;
-                  await sleep(actionDelay2());
+                  await sleep(actionDelay());
                 }
               }
               for (let i2 = 0; i2 < liked; i2++) await storage.incrementStat(profile.id, "like").catch(() => {
@@ -167054,7 +167054,7 @@ ${err?.stack ?? ""}`);
       ebEnqueue("follow", "followOrderMin", "followOrderMax", async () => {
         const _followTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "follow");
         if (_followTool?.enabled === true) {
-          await this.runBrowserFollowSession(profile, _followTool, page, actionDelay2, state).catch((e) => {
+          await this.runBrowserFollowSession(profile, _followTool, page, actionDelay, state).catch((e) => {
             console.warn(`[engine] @${profile.username}: [EB-only] follow session error: ${e?.message}`);
           });
         }
@@ -167062,7 +167062,7 @@ ${err?.stack ?? ""}`);
       ebEnqueue("unfollow", "unfollowOrderMin", "unfollowOrderMax", async () => {
         const _unfollowTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "unfollow");
         if (_unfollowTool?.enabled === true) {
-          await this.runBrowserUnfollowSession(profile, _unfollowTool, page, actionDelay2, state).catch((e) => {
+          await this.runBrowserUnfollowSession(profile, _unfollowTool, page, actionDelay, state).catch((e) => {
             console.warn(`[engine] @${profile.username}: [EB-only] unfollow session error: ${e?.message}`);
           });
         }
@@ -167070,7 +167070,7 @@ ${err?.stack ?? ""}`);
       ebEnqueue("contact", "contactOrderMin", "contactOrderMax", async () => {
         const _contactTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "contact");
         if (_contactTool?.enabled === true) {
-          await this.runBrowserContactSession(profile, _contactTool, page, actionDelay2, state).catch((e) => {
+          await this.runBrowserContactSession(profile, _contactTool, page, actionDelay, state).catch((e) => {
             console.warn(`[engine] @${profile.username}: [EB-only] contact session error: ${e?.message}`);
           });
         }
@@ -167222,12 +167222,12 @@ ${err?.stack ?? ""}`);
           const profClickMin = Math.max(0, Number(s.exploreProfileClickMin ?? 1));
           const profClickMax = Math.max(profClickMin, Number(s.exploreProfileClickMax ?? 3));
           await nav("https://www.instagram.com/explore/", "explore page");
-          await sleep(actionDelay2());
+          await sleep(actionDelay());
           const scrolls = randInt2(scrollMin, scrollMax);
           for (let i2 = 0; i2 < scrolls && !state.stop.stopped; i2++) {
             await page.evaluate(() => window.scrollBy(0, 400 + Math.random() * 300)).catch(() => {
             });
-            await sleep(actionDelay2());
+            await sleep(actionDelay());
           }
           const availablePostCount = await page.evaluate(
             () => document.querySelectorAll('a[href^="/p/"], a[href^="/reel/"]').length
@@ -167284,7 +167284,7 @@ ${err?.stack ?? ""}`);
                     await sleep(randInt2(400, 800));
                   }
                   await nav("https://www.instagram.com/explore/", "explore page (after profile)");
-                  await sleep(actionDelay2());
+                  await sleep(actionDelay());
                 }
               }
               await page.keyboard.press("Escape").catch(() => {
@@ -167328,7 +167328,7 @@ ${err?.stack ?? ""}`);
           try {
             if (!page.url().startsWith("https://www.instagram.com/")) {
               await nav("https://www.instagram.com/", "home (save)");
-              await sleep(actionDelay2());
+              await sleep(actionDelay());
             }
             await waitFor('svg[aria-label="Save"]', 8e3);
             let saved = 0;
@@ -167345,7 +167345,7 @@ ${err?.stack ?? ""}`);
               }).catch(() => false);
               if (clickedOne) {
                 saved++;
-                await sleep(actionDelay2());
+                await sleep(actionDelay());
               }
             }
             this.logAction(profile.id, tool.id, "save_timeline_post", "", "", "", saved > 0 ? "ok" : "skipped", `EB saved ${saved} post(s) via browser`);
@@ -167366,7 +167366,7 @@ ${err?.stack ?? ""}`);
           try {
             if (!page.url().startsWith("https://www.instagram.com/")) {
               await nav("https://www.instagram.com/", "home (share)");
-              await sleep(actionDelay2());
+              await sleep(actionDelay());
             }
             await waitFor('svg[aria-label="Share Post"]', 8e3);
             let shared = 0;
@@ -167386,7 +167386,7 @@ ${err?.stack ?? ""}`);
                 await page.keyboard.press("Escape").catch(() => {
                 });
                 shared++;
-                await sleep(actionDelay2());
+                await sleep(actionDelay());
               }
             }
             this.logAction(profile.id, tool.id, "share_timeline_post", "", "", "", shared > 0 ? "ok" : "skipped", `EB opened share dialog for ${shared} post(s) via browser`);
@@ -167409,7 +167409,7 @@ ${err?.stack ?? ""}`);
     }
   }
   // ── Browser-assisted follow session ────────────────────────────────────────
-  async runBrowserFollowSession(profile, followTool, page, actionDelay2, state) {
+  async runBrowserFollowSession(profile, followTool, page, actionDelay, state) {
     const fs6 = followTool.settings;
     const globalSettings2 = await storage.getGlobalSettings();
     const hikerEnabled = globalSettings2.hikerApiEnabled === "true";
@@ -167789,7 +167789,7 @@ ${err?.stack ?? ""}`);
             this.logGhostBrowserCall(profile.id, profile.username, "follow", `Follow button did not render for @${candidate.username}${privacyNote}`);
           }
         }
-        await sleep(actionDelay2());
+        await sleep(actionDelay());
       } catch (e) {
         console.warn(`[engine] @${profile.username}: [EB-only] follow @${candidate.username} error: ${e?.message}`);
         this.logGhostBrowserCall(profile.id, profile.username, "follow", e?.message ?? "error", true);
@@ -167798,7 +167798,7 @@ ${err?.stack ?? ""}`);
     console.log(`[engine] @${profile.username}: [EB-only] follow session done \u2014 ${followed}/${candidates.length} followed`);
   }
   // ── Browser-assisted unfollow session ─────────────────────────────────────
-  async runBrowserUnfollowSession(profile, unfollowTool, page, actionDelay2, state) {
+  async runBrowserUnfollowSession(profile, unfollowTool, page, actionDelay, state) {
     const us = unfollowTool.settings;
     const processCount = randInt2(Number(us.processMin ?? 3), Number(us.processMax ?? 8));
     const maxPerDay = randInt2(Number(us.maxPerDayMin ?? 0), Number(us.maxPerDayMax ?? 0));
@@ -167843,7 +167843,7 @@ ${err?.stack ?? ""}`);
         } else {
           console.log(`[engine] @${profile.username}: [EB-only] unfollow \u2014 no Following button on @${fu.instagramUsername}`);
         }
-        await sleep(actionDelay2());
+        await sleep(actionDelay());
       } catch (e) {
         console.warn(`[engine] @${profile.username}: [EB-only] unfollow @${fu.instagramUsername} error: ${e?.message}`);
       }
@@ -167854,7 +167854,7 @@ ${err?.stack ?? ""}`);
   // Mirrors runContactUsersSession but drives the embedded browser instead of
   // the mobile API — navigates to the recipient's DM thread, types the queued
   // message text, and sends via the on-screen Send button/Enter key.
-  async runBrowserContactSession(profile, contactTool, page, actionDelay2, state) {
+  async runBrowserContactSession(profile, contactTool, page, actionDelay, state) {
     const cs = contactTool.settings;
     const pending = await storage.getContactPendingMessages(profile.id, "pending");
     if (!pending.length) {
@@ -167969,6 +167969,16 @@ ${err?.stack ?? ""}`);
       );
       return;
     }
+    const limits = profile.apiLimits ?? {};
+    const toMs = (v3) => v3 < 1e3 ? v3 * 1e3 : v3;
+    const winMin = toMs(Number(limits.everySecondsMin ?? 8));
+    const winMax = toMs(Number(limits.everySecondsMax ?? 20));
+    const rMin = Math.max(1, Number(limits.requestsMin ?? 1));
+    const rMax = Math.max(rMin, Number(limits.requestsMax ?? 1));
+    const actionDelay = () => randInt2(
+      Math.max(1e3, Math.round(winMin / rMax)),
+      Math.max(2e3, Math.round(winMax / rMin))
+    );
     let timelineFeedEmpty = false;
     let sessionError = null;
     const checkSessionErr = async (e, actionLabel) => {
