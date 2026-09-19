@@ -1114,7 +1114,7 @@ export class InstagramWebClient {
     }
   }
 
-  // timed() is a pure execution wrapper — it no longer logs to api_calls.
+  // timed() is a pure execution wrapper and does not log to api_calls.
   // All HTTP call logging happens exclusively at the transport layer:
   //   • mobileSessionGet / mobileSessionPost / webGet / webPost / ebGet → _logTransport()
   //   • IgApiClient (ig.*) → hooked in _newAutomationIgClient() → _logTransport()
@@ -1134,17 +1134,6 @@ export class InstagramWebClient {
       throw e;
     } finally {
       this._inTimedCall = false;
-      const durationMs = Date.now() - _t0;
-      if (this.logCallFn) {
-        const isError = _threw || this._lastTimedCallIsError;
-        const doLog = (isError) ? true : (!shouldLog || shouldLog(_result));
-        if (doLog) {
-          const msg = typeof message === "function"
-            ? (_threw ? opName : message(_result))
-            : (message ?? opName);
-          this.logCallFn(opName, durationMs, msg, isError);
-        }
-      }
     }
   }
 
