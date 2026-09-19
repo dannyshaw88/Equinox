@@ -173216,7 +173216,11 @@ ${stamp}` : stamp;
         const ipPort = ip && port2 ? `${ip}:${port2}` : ip;
         const isError2 = !!call.isError;
         const rawMsg = call.message ?? "";
-        const msgCell = isError2 && rawMsg !== "OK" ? `ERROR: ${rawMsg}` : rawMsg;
+        const applicationFailure = rawMsg.match(
+          /^HTTP 200\s+[—-]\s+status=(?:fail|error)\s+[—-]\s*(.+)$/s
+        );
+        const normalizedMsg = applicationFailure?.[1]?.trim() || rawMsg;
+        const msgCell = applicationFailure ? normalizedMsg : isError2 && normalizedMsg !== "OK" ? `ERROR: ${normalizedMsg}` : normalizedMsg;
         return [
           `Instagram_${call.profileId}`,
           date5,

@@ -3179,7 +3179,16 @@ export async function registerInstagramRoutes(
         // non-fatal 4xx probes, so no ERROR prefix is added even though isError=true.
         // Real failures get "ERROR: " prepended so the cell is unambiguous.
         const rawMsg = call.message ?? "";
-        const msgCell = (isError && rawMsg !== "OK") ? `ERROR: ${rawMsg}` : rawMsg;
+        // For an application-level failure with HTTP 200, export only Instagram's
+        // message. The HTTP/status wrapper is transport diagnostic noise in this
+        // column, and the row's error state already conveys that it failed.
+        const applicationFailure = rawMsg.match(
+          /^HTTP 200\s+[—-]\s+status=(?:fail|error)\s+[—-]\s*(.+)$/s,
+        );
+        const normalizedMsg = applicationFailure?.[1]?.trim() || rawMsg;
+        const msgCell = applicationFailure
+          ? normalizedMsg
+          : (isError && normalizedMsg !== "OK") ? `ERROR: ${normalizedMsg}` : normalizedMsg;
 
         return [
           `Instagram_${call.profileId}`,
