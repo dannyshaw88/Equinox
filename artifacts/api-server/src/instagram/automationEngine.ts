@@ -4752,15 +4752,6 @@ class AutomationEngine {
         await sleep(actionDelay());
 
         await runJitterApiAction(
-          "Your Activity",
-          "viewActivityRunChanceMin",
-          "viewActivityRunChanceMax",
-          "view_activity",
-          () => client.viewActivity(),
-        );
-        await sleep(actionDelay());
-
-        await runJitterApiAction(
           "Saved Media",
           "viewSavedRunChanceMin",
           "viewSavedRunChanceMax",

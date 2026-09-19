@@ -37,6 +37,13 @@ interface HumanSessionPanelProps {
   overrideProfiles?: Profile[];
 }
 
+function withoutRemovedActivitySettings(settings: Record<string, any>): Record<string, any> {
+  const cleaned = { ...settings };
+  delete cleaned.viewActivityRunChanceMin;
+  delete cleaned.viewActivityRunChanceMax;
+  return cleaned;
+}
+
 export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCopyOpenChange, followTool, unfollowTool, contactTool, overrideProfiles }: HumanSessionPanelProps) {
   const updateToolMutation = useUpdateTool();
   const embeddedUpdateTool = useUpdateTool();
@@ -108,7 +115,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "hs_notif",        label: "Notifications run chance %",       settingKeys: ["notificationsRunChanceMin","notificationsRunChanceMax"] },
         { key: "hs_ownprofile",   label: "Own Profile run chance %",         settingKeys: ["ownProfileRunChanceMin","ownProfileRunChanceMax"] },
         { key: "hs_settings",     label: "Settings run chance %",            settingKeys: ["settingsActivityRunChanceMin","settingsActivityRunChanceMax"] },
-        { key: "hs_activity",     label: "View Activity run chance %",       settingKeys: ["viewActivityRunChanceMin","viewActivityRunChanceMax"] },
         { key: "hs_saved",        label: "View Saved run chance %",          settingKeys: ["viewSavedRunChanceMin","viewSavedRunChanceMax"] },
       ]},
       { key: "checkStories", label: "Check Timeline Stories", description: "Watch stories while active", subOptions: [
@@ -497,8 +503,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       ownProfileRunChanceMax: 100,
       settingsActivityRunChanceMin: 50,
       settingsActivityRunChanceMax: 100,
-      viewActivityRunChanceMin: 50,
-      viewActivityRunChanceMax: 100,
       viewSavedRunChanceMin: 50,
       viewSavedRunChanceMax: 100,
       checkTimelineStoriesEnabled: true,
@@ -637,7 +641,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       webBrowsingTimeOnLinksMin: 1,
       webBrowsingTimeOnLinksMax: 2,
     };
-    return { ...def, ...(tool.settings as Record<string, any> || {}) };
+    return { ...def, ...withoutRemovedActivitySettings(tool.settings as Record<string, any> || {}) };
   });
 
   const isMounted = useRef(false);
@@ -655,7 +659,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       notificationsRunChanceMin: 100, notificationsRunChanceMax: 100,
       ownProfileRunChanceMin: 100, ownProfileRunChanceMax: 100,
       settingsActivityRunChanceMin: 50, settingsActivityRunChanceMax: 100,
-      viewActivityRunChanceMin: 50, viewActivityRunChanceMax: 100,
       viewSavedRunChanceMin: 50, viewSavedRunChanceMax: 100,
       checkTimelineStoriesEnabled: true, checkTimelineStoriesMin: 3, checkTimelineStoriesMax: 8,
       checkTimelineStoriesSlideMin: 2, checkTimelineStoriesSlideMax: 5,
@@ -719,14 +722,19 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       webBrowsingTimeOnSiteMin: 1, webBrowsingTimeOnSiteMax: 3,
       webBrowsingTimeOnLinksMin: 1, webBrowsingTimeOnLinksMax: 2,
     };
-    setSettings(prev => ({ ...def, ...(tool.settings as Record<string, any> || {}), ...prev }));
+    const loadedSettings = withoutRemovedActivitySettings(tool.settings as Record<string, any> || {});
+    setSettings(prev => ({ ...def, ...loadedSettings, ...prev }));
   }, [tool.id]);
 
   useEffect(() => {
     if (!isMounted.current) { isMounted.current = true; return; }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      updateToolMutation.mutate({ id: tool.id, profileId: tool.profileId, settings });
+      updateToolMutation.mutate({
+        id: tool.id,
+        profileId: tool.profileId,
+        settings: withoutRemovedActivitySettings(settings),
+      });
     }, 600);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [settings]);
@@ -1245,13 +1253,12 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   </div>
                 </div>
               </div>
-              {/* Sub-row — all 5 jitter action chances on one row */}
+              {/* Sub-row — all 4 jitter action chances on one row */}
               <div className={`flex items-center gap-2 flex-wrap transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                 {([
                   { minKey: "notificationsRunChanceMin",    maxKey: "notificationsRunChanceMax",    label: "Notifs",    Icon: Bell,      color: "text-orange-500" },
                   { minKey: "ownProfileRunChanceMin",       maxKey: "ownProfileRunChanceMax",       label: "Profile",   Icon: User,      color: "text-indigo-500" },
                   { minKey: "settingsActivityRunChanceMin", maxKey: "settingsActivityRunChanceMax", label: "Settings",  Icon: Settings,  color: "text-gray-500"   },
-                  { minKey: "viewActivityRunChanceMin",     maxKey: "viewActivityRunChanceMax",     label: "Activity",  Icon: Zap,       color: "text-yellow-500" },
                   { minKey: "viewSavedRunChanceMin",        maxKey: "viewSavedRunChanceMax",        label: "Saved",     Icon: Bookmark,  color: "text-pink-500"   },
                 ] as { minKey: string; maxKey: string; label: string; Icon: React.ElementType; color: string }[]).map(({ minKey, maxKey, label, Icon, color }, idx, arr) => (
                   <div key={minKey} className="flex items-center gap-1 shrink-0">

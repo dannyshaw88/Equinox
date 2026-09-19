@@ -1190,7 +1190,6 @@ export class InstagramWebClient {
         "/api/v1/direct_v2/threads/*/items":        ["DM sent",                         "DM send failed"],
         "/api/v1/direct_v2/threads":                ["DM thread action",                "DM thread failed"],
         "/api/v1/news/inbox":                       ["Notifications inbox loaded",     "Notifications inbox failed"],
-        "/api/v1/news/activities":                  ["Your Activity loaded",            "Your Activity failed"],
         "/api/v1/feed/saved":                       ["Saved media loaded",              "Saved media failed"],
         "/api/v1/users/*/info":                     ["Profile loaded",                  "Profile load failed"],
         "/api/v1/accounts/account_security_info":   ["Account security info fetched",   "Security info failed"],
@@ -2034,7 +2033,7 @@ export class InstagramWebClient {
         throw softGateErr;
       }
       // Extract the message Instagram sent. Do not turn an arbitrary 4xx/5xx
-      // into "login_required": endpoints such as news/activities can fail
+      // into "login_required": individual endpoints can fail
       // because Instagram rejects that specific request while the session is
       // still valid. Only an explicit auth response (or HTTP 401) may cause
       // the engine to mark the account logged_out.
@@ -3622,16 +3621,6 @@ export class InstagramWebClient {
       const j = await this.mobileSessionPost(`/api/v1/accounts/account_security_info/`);
       return !!j && j.status !== "fail";
     }, "Visit settings and activity");
-  }
-
-  // ── Open Your Activity from Settings ──────────────────────────────────────
-  // The mobile app requests the activity feed through news/activities/.
-  // This is separate from news/inbox, which is the notifications inbox.
-  async viewActivity(): Promise<boolean> {
-    return this.timed("ViewActivity", async () => {
-      const j = await this.mobileSessionGet(`/api/v1/news/activities/`);
-      return !!j && j.status !== "fail";
-    }, "View Your Activity");
   }
 
   // ── Open Saved Media from Settings ─────────────────────────────────────────

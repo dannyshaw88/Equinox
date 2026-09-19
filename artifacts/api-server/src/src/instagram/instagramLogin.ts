@@ -152,7 +152,6 @@ function extractOperationName(rawUrl: string): string {
     "feed/user":                               "GetUserFeed",
     // Notifications
     "news/inbox":                              "ExecuteNotificationsBadge",
-    "news/activities":                         "GetActivityFeed",
     // Direct messages
     "direct_v2/inbox":                         "GetInbox",
     "direct_v2/pending_inbox":                 "GetPendingInbox",
