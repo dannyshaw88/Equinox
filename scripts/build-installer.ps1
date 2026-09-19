@@ -5,6 +5,32 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repoRoot
 
+$rootPackageJson = Join-Path $repoRoot "package.json"
+$electronPackageJson = Join-Path $repoRoot "artifacts\electron\package.json"
+if (-not (Test-Path -LiteralPath $rootPackageJson -PathType Leaf)) {
+    throw "Root package.json was not found at $rootPackageJson."
+}
+if (-not (Test-Path -LiteralPath $electronPackageJson -PathType Leaf)) {
+    throw "Electron package.json was not found at $electronPackageJson."
+}
+
+$rootPackage = Get-Content -LiteralPath $rootPackageJson -Raw | ConvertFrom-Json
+$electronPackage = Get-Content -LiteralPath $electronPackageJson -Raw | ConvertFrom-Json
+$expectedVersion = [string]$electronPackage.version
+$rootVersion = [string]$rootPackage.version
+if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
+    throw "The Electron package has no version in $electronPackageJson."
+}
+if ($rootVersion -ne $expectedVersion) {
+    throw "Version mismatch: root package.json is $rootVersion but Electron is $expectedVersion."
+}
+
+try {
+    $sourceCommit = (& git rev-parse --short HEAD).Trim()
+} catch {
+    $sourceCommit = "unknown"
+}
+
 function Invoke-PnpmCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -19,7 +45,7 @@ function Invoke-PnpmCommand {
     }
 }
 
-Write-Host "Building Equinox installer..." -ForegroundColor Green
+Write-Host "Building Equinox installer v$expectedVersion from commit $sourceCommit..." -ForegroundColor Green
 
 # Remove stale pnpm virtual-store links from the root and workspace packages.
 # A previous install can retain an old virtual lockfile that omits Rollup's
@@ -176,17 +202,23 @@ Invoke-PnpmCommand -Arguments @(
 )
 
 $releaseDirectory = Join-Path $repoRoot "artifacts\electron\release"
-$installer = Get-ChildItem -LiteralPath $releaseDirectory -Filter "*.exe" -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -notlike "*uninstaller*" } |
-    Select-Object -First 1
+$expectedInstallerName = "equinox-setup-$expectedVersion.exe"
+$expectedInstallerPath = Join-Path $releaseDirectory $expectedInstallerName
+$installer = Get-ChildItem -LiteralPath $expectedInstallerPath -File -ErrorAction SilentlyContinue
 
 if ($null -eq $installer) {
-    throw "Installer build finished, but no .exe was found in $releaseDirectory."
+    $availableInstallers = Get-ChildItem -LiteralPath $releaseDirectory -Filter "*.exe" -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike "*uninstaller*" } |
+        Select-Object -ExpandProperty Name
+    $availableText = if ($availableInstallers) { $availableInstallers -join ", " } else { "(none)" }
+    throw "Installer build finished without the expected $expectedInstallerName. Available installers: $availableText"
 }
 
 Write-Host ""
 Write-Host "Installer created:" -ForegroundColor Green
 Write-Host $installer.FullName
+Write-Host "Installer version: $expectedVersion" -ForegroundColor Green
+Write-Host "Source commit: $sourceCommit" -ForegroundColor Green
 Write-Host "Opening the installer directory..." -ForegroundColor Green
 
 Start-Process -FilePath "explorer.exe" -ArgumentList $releaseDirectory
