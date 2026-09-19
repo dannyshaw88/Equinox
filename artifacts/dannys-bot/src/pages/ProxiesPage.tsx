@@ -1093,6 +1093,15 @@ export function ProxiesPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0 flex-wrap">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={keepValid}
+                    onChange={e => { setKeepValid(e.target.checked); localStorage.setItem("proxies:keepAccountsValid", String(e.target.checked)); }}
+                    className="w-3.5 h-3.5 accent-sky-500"
+                  />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Keep accounts valid</span>
+                </label>
                 <div className="flex items-center gap-2">
                   <Label className="text-sm whitespace-nowrap">Group</Label>
                   <select
@@ -1123,15 +1132,6 @@ export function ProxiesPage() {
                     {splitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                     {splitting ? "Splitting…" : "Split Now"}
                   </Button>
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={keepValid}
-                      onChange={e => { setKeepValid(e.target.checked); localStorage.setItem("proxies:keepAccountsValid", String(e.target.checked)); }}
-                      className="w-3.5 h-3.5 accent-sky-500"
-                    />
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Keep accounts valid</span>
-                  </label>
                 </div>
               </div>
             </div>
