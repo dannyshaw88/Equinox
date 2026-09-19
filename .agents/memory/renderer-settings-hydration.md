@@ -7,4 +7,4 @@ The renderer's valid localStorage value is the most recent page-local user choic
 
 **Why:** Hydrating Electron settings unconditionally can overwrite a newly saved renderer value when navigating away and back, making UI preferences appear not to persist.
 
-**How to apply:** For hooks that persist to both localStorage and Electron IPC, check and preserve a valid localStorage value before calling the asynchronous Electron fallback; cancel the fallback update if the component unmounts.
+**How to apply:** For hooks that persist to both localStorage and Electron IPC, keep the latest renderer value in a module-level cache as well as localStorage, check that cache before the asynchronous Electron fallback, and invalidate stale fallback responses after a write or unmount.

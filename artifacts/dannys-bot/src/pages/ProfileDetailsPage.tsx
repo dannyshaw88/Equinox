@@ -167,7 +167,7 @@ function parseActiveTimerSlots(start: string | null | undefined, end: string | n
   return [{ start: start || "09:00", end: end || "22:00" }];
 }
 
-function GroupCombobox({ value, groups, onChange }: { value: string; groups: string[]; onChange: (v: string) => void }) {
+function GroupCombobox({ value, groups, onChange, className }: { value: string; groups: string[]; onChange: (v: string) => void; className?: string }) {
   const [open, setOpen] = useState(false);
   const [filterText, setFilterText] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -188,7 +188,7 @@ function GroupCombobox({ value, groups, onChange }: { value: string; groups: str
   }, [open]);
 
   return (
-    <div className="max-w-[20%] relative" ref={ref}>
+    <div className={className ?? "max-w-[20%] relative"} ref={ref}>
       <Input
         className="h-8 text-xs font-bold pl-0 pr-6 border-0 shadow-none focus-visible:ring-0"
         placeholder="No group"
@@ -262,7 +262,7 @@ export function ProfileDetailsPage() {
   const [pendingUa, setPendingUa] = useState<UaEntry | null>(null);
   const [uaChangeConfirmOpen, setUaChangeConfirmOpen] = useState(false);
   const [showFingerprintPreview, setShowFingerprintPreview] = useState(false);
-  const [showAccountDetails, setShowAccountDetails] = useState(true);
+  const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [showProfileSync, setShowProfileSync] = useState(true);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedProfileIdRef = useRef<number | null>(null);
@@ -845,11 +845,11 @@ export function ProfileDetailsPage() {
                       <DropdownMenuTrigger asChild>
                         <button
                           title={profile.statusMessage || undefined}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer hover:opacity-80 transition-opacity ${meta.pill}`}
+                          className={`inline-flex h-5 w-[72px] min-w-[72px] max-w-[72px] items-center gap-1 rounded-full border px-2 text-[10px] font-semibold cursor-pointer hover:opacity-80 transition-opacity overflow-hidden ${meta.pill}`}
                         >
-                          <Icon className="w-3 h-3" />
-                          {meta.label}
-                          <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                          <Icon className="w-2.5 h-2.5 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-left">{meta.label}</span>
+                          <ChevronDown className="w-2.5 h-2.5 shrink-0 opacity-60" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-52 p-1">
@@ -883,7 +883,7 @@ export function ProfileDetailsPage() {
                 <DropdownMenu onOpenChange={open => { if (!open) setProfileSearch(""); }}>
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent transition-colors">
-                      <Instagram className="w-4 h-4 text-primary shrink-0" />
+                      <Instagram className="w-4 h-4 text-[#1AD2F2] shrink-0" />
                       <span className="text-2xl font-bold tracking-tight text-foreground">
                         {profile.accountLabel || profile.username}
                       </span>
@@ -957,7 +957,6 @@ export function ProfileDetailsPage() {
               {([
                 { value: "settings",      label: "ACCOUNT SETTINGS",  icon: Settings    },
                 { value: "human-session", label: "HUMAN SESSION TOOL", icon: Fingerprint },
-                { value: "api-checks",    label: "CHECKS",             icon: Shield      },
               ] as { value: string; label: string; icon: React.ElementType }[]).map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
@@ -965,8 +964,8 @@ export function ProfileDetailsPage() {
                   className={[
                     "flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold transition-all border-b-2 whitespace-nowrap shrink-0",
                     activeTab === value
-                      ? "text-primary border-primary"
-                      : "text-[#1D4ED8] border-transparent hover:border-border",
+                      ? "text-[#1AD2F2] border-[#1AD2F2]"
+                      : "text-[#1AD2F2] border-transparent hover:border-border",
                   ].join(" ")}
                 >
                   <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -977,7 +976,7 @@ export function ProfileDetailsPage() {
               <div className="flex items-center border-l border-border/50">
                 <button
                   onClick={() => openWindow(profile.id, profile.username, profile.userAgentEmbedded || "")}
-                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1D4ED8] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1AD2F2] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
                 >
                   <Monitor className="w-3.5 h-3.5 shrink-0" />
                   BROWSER
@@ -985,14 +984,14 @@ export function ProfileDetailsPage() {
                 <Link
                   href="/"
                   onClick={() => sessionStorage.setItem("dashboard:profileId", String(profile.id))}
-                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1D4ED8] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1AD2F2] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
                 >
                   <BarChart2 className="w-3.5 h-3.5 shrink-0" />
                   DASH
                 </Link>
                 <Link
                   href={`/stats?profileId=${profileId}&tab=metrics`}
-                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1D4ED8] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1AD2F2] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
                 >
                   <Activity className="w-3.5 h-3.5 shrink-0" />
                   METRICS
@@ -1002,15 +1001,27 @@ export function ProfileDetailsPage() {
                   className={[
                     "flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold transition-all border-b-2 whitespace-nowrap shrink-0",
                     activeTab === "session-log"
-                      ? "text-primary border-primary"
-                      : "text-[#1D4ED8] border-transparent hover:border-border",
+                      ? "text-[#1AD2F2] border-[#1AD2F2]"
+                      : "text-[#1AD2F2] border-transparent hover:border-border",
                   ].join(" ")}
                 >
                   <Activity className="w-3.5 h-3.5 shrink-0" />
                   SESSION LOG
                 </button>
                 <button
-                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1D4ED8] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
+                  onClick={() => navigate(`/profiles/${profileId}?tab=api-checks`)}
+                  className={[
+                    "flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold transition-all border-b-2 whitespace-nowrap shrink-0",
+                    activeTab === "api-checks"
+                      ? "text-[#1AD2F2] border-[#1AD2F2]"
+                      : "text-[#1AD2F2] border-transparent hover:border-border",
+                  ].join(" ")}
+                >
+                  <Shield className="w-3.5 h-3.5 shrink-0" />
+                  CHECKS
+                </button>
+                <button
+                  className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold text-[#1AD2F2] border-b-2 border-transparent hover:border-border whitespace-nowrap shrink-0 transition-all"
                   onClick={() => {
                     if (activeTab === "human-session" && getTool('human_sessions')) {
                       setHumanCopyOpen(true);
@@ -1040,41 +1051,30 @@ export function ProfileDetailsPage() {
           <div className="flex gap-6 items-start">
           <div className="flex-1 min-w-0">
 
-          {/* Group — top row */}
-          <div>
-            <div className="flex items-center gap-3">
+          {/* Account name, group, and active status */}
+          <div className="flex items-end gap-3 pb-2 flex-wrap">
+            <div className="space-y-2 w-[260px]">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Account Name
+              </Label>
+              <Input
+                placeholder="e.g. @Account1"
+                value={formData.accountLabel}
+                onChange={e => updateField({ accountLabel: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2 w-[180px]">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Group
+              </Label>
               <GroupCombobox
+                className="relative w-full"
                 value={formData.tags || ""}
                 groups={Array.from(new Set((allProfiles ?? []).map(p => (p.tags ?? "").trim()).filter(Boolean))).sort()}
                 onChange={val => updateField({ tags: val })}
               />
             </div>
-          </div>
-
-          {/* Account Label */}
-          <div className="space-y-2 pb-2">
-            <div className="flex items-center gap-3">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Account Name
-              </Label>
-              {profile?.creatorMode && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center gap-2 h-8 text-xs text-sky-600 border-sky-400/50 hover:text-sky-700 hover:border-sky-500/70 hover:bg-sky-500/5"
-                  disabled={moveToAccountsMutation.isPending}
-                  onClick={() => moveToAccountsMutation.mutate(profileId, {
-                    onSuccess: () => {
-                      toast({ title: "Moved to Accounts", description: "This account is now ready for automation." });
-                      window.location.href = "/profiles";
-                    }
-                  })}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  {moveToAccountsMutation.isPending ? "Moving…" : "Move to Accounts"}
-                </Button>
-              )}
-              <div className="flex items-center gap-1.5 ml-1">
+            <div className="flex items-center gap-1.5 h-8">
                 <Switch
                   checked={!!profile && profile.accountStatus !== "stopped"}
                   disabled={updateAccountStatusMutation.isPending}
@@ -1090,21 +1090,28 @@ export function ProfileDetailsPage() {
                 <span className="text-[10px] text-muted-foreground select-none">
                   {profile?.accountStatus === "stopped" ? "Stopped" : "Active"}
                 </span>
-              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="max-w-[260px] flex-1">
-                <Input
-                  placeholder="e.g. @Account1"
-                  value={formData.accountLabel}
-                  onChange={e => updateField({ accountLabel: e.target.value })}
-                />
-              </div>
-            </div>
+            {profile?.creatorMode && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2 h-8 text-xs text-sky-600 border-sky-400/50 hover:text-sky-700 hover:border-sky-500/70 hover:bg-sky-500/5"
+                disabled={moveToAccountsMutation.isPending}
+                onClick={() => moveToAccountsMutation.mutate(profileId, {
+                  onSuccess: () => {
+                    toast({ title: "Moved to Accounts", description: "This account is now ready for automation." });
+                    window.location.href = "/profiles";
+                  }
+                })}
+              >
+                <Users className="w-3.5 h-3.5" />
+                {moveToAccountsMutation.isPending ? "Moving…" : "Move to Accounts"}
+              </Button>
+            )}
           </div>
 
           <div>
-            <Card className="border-none shadow-none !bg-transparent">
+            <Card className="border-none shadow-none !bg-transparent mt-4">
               <CardHeader className="px-0 pt-0 pb-2 border-b border-border">
                 <CardTitle className="flex items-center gap-2"><User className="w-5 h-5 text-primary" /> Instagram Login Information</CardTitle>
               </CardHeader>
@@ -1241,7 +1248,7 @@ export function ProfileDetailsPage() {
 
                     {/* Proxy Settings */}
                     <div className="pt-3 border-t border-border mt-3">
-                      <div className="flex flex-col gap-0">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4 items-start">
                         <div className="w-full space-y-3">
                           <h4 className="text-sm font-bold flex items-center gap-2"><Globe className="w-4 h-4 text-primary" /> Proxy Settings</h4>
                           {(() => {
@@ -1353,14 +1360,33 @@ export function ProfileDetailsPage() {
                             );
                           })()}
                         </div>
-                        <div className="w-full space-y-3 pt-4 mt-3 border-t border-border">
-                          {/* Row 1: Title + Test Timing */}
+                        <div className="w-full space-y-3">
+                          {/* Row 1: Title */}
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="text-sm font-bold flex items-center gap-2 shrink-0"><Zap className="w-4 h-4 text-yellow-500" /> API Limits &amp; Control</h4>
+                          </div>
+                          {/* Request count and interval limits */}
+                          <div className="flex flex-wrap gap-x-2 gap-y-1 items-start">
+                            <div className="flex flex-col items-center space-y-1">
+                              <NumField min={0} className="h-7 text-xs w-[52px]" value={formData.apiLimits.requestsMin ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, requestsMin: v} })} />
+                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min</Label>
+                            </div>
+                            <div className="flex flex-col items-center space-y-1">
+                              <NumField min={0} className="h-7 text-xs w-[52px]" value={formData.apiLimits.requestsMax ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, requestsMax: Math.max(v, formData.apiLimits.requestsMin ?? 0)} })} />
+                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max</Label>
+                            </div>
+                            <div className="flex flex-col items-center space-y-1">
+                              <NumField min={0} className="h-7 text-xs w-[80px]" value={formData.apiLimits.everySecondsMin ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, everySecondsMin: v} })} />
+                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min (ms)</Label>
+                            </div>
+                            <div className="flex flex-col items-center space-y-1">
+                              <NumField min={0} className="h-7 text-xs w-[80px]" value={formData.apiLimits.everySecondsMax ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, everySecondsMax: Math.max(v, formData.apiLimits.everySecondsMin ?? 0)} })} />
+                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max (ms)</Label>
+                            </div>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-6 text-xs px-2 whitespace-nowrap shrink-0"
+                              className="h-7 mt-0 text-xs px-2 whitespace-nowrap shrink-0"
                               onClick={() => {
                                 const minCalls = Math.max(1, formData.apiLimits.requestsMin || 1);
                                 const maxCalls = Math.max(minCalls, formData.apiLimits.requestsMax || 1);
@@ -1378,26 +1404,7 @@ export function ProfileDetailsPage() {
                             >
                               Test Timing
                             </Button>
-                            {timingInfo && <span className="text-[10px] text-green-600 font-semibold whitespace-nowrap">{timingInfo}</span>}
-                          </div>
-                          {/* Request count and interval limits */}
-                          <div className="flex flex-wrap gap-x-2 gap-y-1 items-center">
-                            <div className="flex flex-col items-center space-y-1">
-                              <NumField min={0} className="h-7 text-xs w-[52px]" value={formData.apiLimits.requestsMin ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, requestsMin: v} })} />
-                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min</Label>
-                            </div>
-                            <div className="flex flex-col items-center space-y-1">
-                              <NumField min={0} className="h-7 text-xs w-[52px]" value={formData.apiLimits.requestsMax ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, requestsMax: Math.max(v, formData.apiLimits.requestsMin ?? 0)} })} />
-                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max</Label>
-                            </div>
-                            <div className="flex flex-col items-center space-y-1">
-                              <NumField min={0} className="h-7 text-xs w-[80px]" value={formData.apiLimits.everySecondsMin ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, everySecondsMin: v} })} />
-                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Min (ms)</Label>
-                            </div>
-                            <div className="flex flex-col items-center space-y-1">
-                              <NumField min={0} className="h-7 text-xs w-[80px]" value={formData.apiLimits.everySecondsMax ?? 0} onChange={v => updateField({ apiLimits: {...formData.apiLimits, everySecondsMax: Math.max(v, formData.apiLimits.everySecondsMin ?? 0)} })} />
-                              <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block text-center">Max (ms)</Label>
-                            </div>
+                            {timingInfo && <span className="self-center text-[10px] text-green-600 font-semibold whitespace-nowrap">{timingInfo}</span>}
                           </div>
                         </div>
                       </div>
@@ -1418,186 +1425,6 @@ export function ProfileDetailsPage() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-
-                  {/* ── Device Fingerprint ── */}
-                  <div className="pt-4 border-t border-border mt-4 space-y-4">
-                    <h4 className="text-sm font-bold flex items-center gap-2"><Shield className="w-4 h-4 text-primary" /> Device Fingerprint</h4>
-
-                    {/* Computed identity chips — derived from the embedded UA seed */}
-                    {formData.userAgentEmbedded && (() => {
-                      const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
-                      const battColor = fp.batteryPct > 25 ? "text-green-600" : fp.batteryPct > 5 ? "text-amber-600" : "text-red-600";
-                      const battBar   = fp.batteryPct > 25 ? "bg-green-400"  : fp.batteryPct > 5 ? "bg-amber-400"  : "bg-red-400";
-                      const Chip = ({ icon: Icon, label, value, iconCls }: { icon: React.ElementType; label: string; value: string; iconCls?: string }) => (
-                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
-                          <Icon className={`w-3 h-3 shrink-0 ${iconCls ?? "text-slate-500"}`} />
-                          <span className="text-slate-400 font-medium">{label}</span>
-                          <span className="font-semibold text-slate-700">{value}</span>
-                        </div>
-                      );
-                      return (
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap gap-1.5">
-                            <Chip icon={Smartphone}  label="Device"  value={fp.device}                                              iconCls="text-indigo-500" />
-                            <Chip icon={Monitor}     label="Screen"  value={`${fp.sw}×${fp.sh} @${fp.dpr}x`}                       iconCls="text-slate-500"  />
-                            <Chip icon={Cpu}         label="CPU"     value={`${fp.cores} cores`}                                    iconCls="text-orange-500" />
-                            <Chip icon={Server}      label="RAM"     value={`${fp.mem} GB`}                                         iconCls="text-purple-500" />
-                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
-                              {fp.charging
-                                ? <BatteryCharging className="w-3 h-3 shrink-0 text-green-500" />
-                                : <Battery className={`w-3 h-3 shrink-0 ${battColor}`} />}
-                              <span className="text-slate-400 font-medium">Battery</span>
-                              <div className="w-12 h-1 rounded-full bg-slate-200 overflow-hidden mx-0.5">
-                                <div className={`h-full rounded-full ${battBar}`} style={{ width: `${fp.batteryPct}%` }} />
-                              </div>
-                              <span className={`font-semibold ${battColor}`}>{fp.batteryPct}%{fp.charging ? " ⚡" : ""}</span>
-                            </div>
-                            <Chip icon={Wifi}        label={fp.connType} value={`${fp.downlink} Mbps`}                              iconCls="text-blue-500"   />
-                            <Chip icon={MapPin}      label="TZ"      value={fp.timezone}                                             iconCls="text-teal-500"   />
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">API User Agent</label>
-                      <UaPickerDropdown
-                        value={formData.userAgentApi ?? ""}
-                        onSelect={handleUaDeviceSelect}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
-                        Embedded Browser Agent
-                        <span className="ml-2 text-[9px] font-normal text-muted-foreground/60 normal-case tracking-normal">(auto-matched when picking a device)</span>
-                      </label>
-                      <input
-                        className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        style={{ width: `${Math.max(22, (formData.userAgentEmbedded || "Browser-like User Agent...").length + 6)}ch` }}
-                        value={formData.userAgentEmbedded}
-                        onChange={e => updateField({ userAgentEmbedded: e.target.value })}
-                        placeholder="Browser-like User Agent..."
-                      />
-                    </div>
-
-                    {/* ── Browser Fingerprint Preview ── */}
-                    {formData.userAgentEmbedded && (
-                      <div className="mt-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowFingerprintPreview(v => !v)}
-                          className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary transition-colors select-none"
-                        >
-                          <Fingerprint className="w-3.5 h-3.5 text-primary" />
-                          Browser Fingerprint Preview
-                          <span className="text-[10px] text-slate-400 font-normal normal-case ml-1">— what the Leak Tool measures</span>
-                          <span className="ml-auto text-[10px]">{showFingerprintPreview ? "▲" : "▼"}</span>
-                        </button>
-                      </div>
-                    )}
-                    {formData.userAgentEmbedded && showFingerprintPreview && (() => {
-                      const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
-                      const isMob = formData.userAgentEmbedded.includes("Mobile") && formData.userAgentEmbedded.includes("Android");
-
-                      const fmtTime = (secs: number, isCharging: boolean) => {
-                        if (isCharging && secs === 0) return "Full";
-                        if (!isCharging && secs >= 86400) return "∞";
-                        const h = Math.floor(secs / 3600);
-                        const m = Math.floor((secs % 3600) / 60);
-                        return h > 0 ? `${h}h ${m}m` : `${m}m`;
-                      };
-
-                      const Row = ({ label, value, muted }: { label: string; value: string; muted?: boolean }) => (
-                        <div className="flex items-center justify-between py-[3px]">
-                          <span className="text-[11px] text-slate-400">{label}</span>
-                          <span className={`text-[11px] font-semibold ${muted ? "text-slate-400" : "text-slate-700"}`}>{value}</span>
-                        </div>
-                      );
-
-                      const Pass = ({ label }: { label: string }) => (
-                        <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded px-2 py-1">
-                          <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" />
-                          <span className="text-[11px] font-semibold text-green-700">{label}</span>
-                        </div>
-                      );
-
-                      const battColor = fp.batteryPct > 25 ? "text-green-600" : fp.batteryPct > 5 ? "text-amber-600" : "text-red-600";
-
-                      return (
-                        <div className="border border-slate-200 rounded-lg overflow-hidden mt-2">
-                          <div className="grid grid-cols-2 divide-x divide-slate-100">
-                            {/* Screen & Hardware */}
-                            <div className="px-3 py-2 space-y-0">
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Monitor className="w-3 h-3" /> Screen &amp; Hardware</p>
-                              <Row label="Touch Points" value={isMob ? "10" : "0"} />
-                              <Row label="Platform" value={isMob ? "Linux armv8l" : "Win32"} />
-                              <Row label="Color Depth" value="24 bit" />
-                              <Row label="Orientation" value={isMob ? "Portrait (0°)" : "Landscape (0°)"} />
-                              <Row label="Available" value={`${fp.sw}×${fp.sh - (isMob ? 30 : 40)}`} />
-                            </div>
-                            {/* Battery */}
-                            <div className="px-3 py-2 space-y-0">
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Battery className="w-3 h-3" /> Battery API</p>
-                              <Row label="Level" value={`${fp.batteryPct}%${fp.charging ? " ⚡" : ""}`} />
-                              <Row label="Charging" value={fp.charging ? "Yes" : "No"} />
-                              <Row
-                                label={fp.charging ? "Time to Full" : "Time Remaining"}
-                                value={fmtTime(fp.chargeOrDischargeTime, fp.charging)}
-                              />
-                              <Row label={fp.charging ? "Discharging Time" : "Charging Time"} value="∞" muted />
-                            </div>
-                            {/* Network */}
-                            <div className="px-3 py-2 space-y-0">
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Wifi className="w-3 h-3" /> Network Info</p>
-                              <Row label="Type" value={fp.connType} />
-                              <Row label="Effective Type" value="4G" />
-                              <Row label="Downlink" value={`${fp.downlink} Mbps`} />
-                              <Row label="RTT" value={`${fp.rtt} ms`} />
-                              <Row label="Save Data" value="No" />
-                            </div>
-                            {/* Protections */}
-                            <div className="px-3 py-2">
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Stealth Protections</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                <Pass label="WebRTC Blocked" />
-                                <Pass label="Canvas Protected" />
-                                <Pass label="Audio Protected" />
-                                <Pass label="webdriver Hidden" />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* ── UA device-change confirmation dialog ── */}
-                    <AlertDialog open={uaChangeConfirmOpen} onOpenChange={setUaChangeConfirmOpen}>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Change Device?</AlertDialogTitle>
-                          <AlertDialogDescription className="space-y-2">
-                            <span className="block">
-                              Switching to <strong>{pendingUa ? (() => { const p = pendingUa.api.split("; "); return `${p[3] ?? ""} ${p[4] ?? ""}`; })() : ""}</strong> will:
-                            </span>
-                            <ul className="list-disc pl-5 space-y-1 text-sm">
-                              <li>Reset all Device IDs (UUID, Phone ID, Advertising ID)</li>
-                              <li>Log you out of the current embedded browser session</li>
-                              <li>Clear all stored cookies for this account</li>
-                            </ul>
-                            <span className="block pt-1">
-                              The account will be set to <strong>Pending</strong> and will need to be re-verified before automation resumes.
-                            </span>
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel onClick={() => setPendingUa(null)}>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleUaChangeConfirm}>
-                            Yes, Change Device
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
 
                   {/* ── Active Timer ── */}
                   <div className="space-y-4 pt-4 border-t border-border mt-4">
@@ -1937,6 +1764,185 @@ export function ProfileDetailsPage() {
             </div>
           </div>
           )}
+
+           {/* ── Device Fingerprint — kept at the bottom of Account Settings ── */}
+           <div className="pt-4 border-t border-border mt-4 space-y-4">
+             <h4 className="text-sm font-bold flex items-center gap-2"><Shield className="w-4 h-4 text-primary" /> Device Fingerprint</h4>
+
+             {/* Computed identity chips — derived from the embedded UA seed */}
+             {formData.userAgentEmbedded && (() => {
+               const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
+               const battColor = fp.batteryPct > 25 ? "text-green-600" : fp.batteryPct > 5 ? "text-amber-600" : "text-red-600";
+               const battBar   = fp.batteryPct > 25 ? "bg-green-400"  : fp.batteryPct > 5 ? "bg-amber-400"  : "bg-red-400";
+               const Chip = ({ icon: Icon, label, value, iconCls }: { icon: React.ElementType; label: string; value: string; iconCls?: string }) => (
+                 <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
+                   <Icon className={`w-3 h-3 shrink-0 ${iconCls ?? "text-slate-500"}`} />
+                   <span className="text-slate-400 font-medium">{label}</span>
+                   <span className="font-semibold text-slate-700">{value}</span>
+                 </div>
+               );
+               return (
+                 <div className="space-y-2">
+                   <div className="flex flex-wrap gap-1.5">
+                     <Chip icon={Smartphone}  label="Device"  value={fp.device}                                              iconCls="text-indigo-500" />
+                     <Chip icon={Monitor}     label="Screen"  value={`${fp.sw}×${fp.sh} @${fp.dpr}x`}                       iconCls="text-slate-500"  />
+                     <Chip icon={Cpu}         label="CPU"     value={`${fp.cores} cores`}                                    iconCls="text-orange-500" />
+                     <Chip icon={Server}      label="RAM"     value={`${fp.mem} GB`}                                         iconCls="text-purple-500" />
+                     <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-xs">
+                       {fp.charging
+                         ? <BatteryCharging className="w-3 h-3 shrink-0 text-green-500" />
+                         : <Battery className={`w-3 h-3 shrink-0 ${battColor}`} />}
+                       <span className="text-slate-400 font-medium">Battery</span>
+                       <div className="w-12 h-1 rounded-full bg-slate-200 overflow-hidden mx-0.5">
+                         <div className={`h-full rounded-full ${battBar}`} style={{ width: `${fp.batteryPct}%` }} />
+                       </div>
+                       <span className={`font-semibold ${battColor}`}>{fp.batteryPct}%{fp.charging ? " ⚡" : ""}</span>
+                     </div>
+                     <Chip icon={Wifi}        label={fp.connType} value={`${fp.downlink} Mbps`}                              iconCls="text-blue-500"   />
+                     <Chip icon={MapPin}      label="TZ"      value={fp.timezone}                                             iconCls="text-teal-500"   />
+                   </div>
+                 </div>
+               );
+             })()}
+
+             <div className="space-y-2">
+               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">API User Agent</label>
+               <UaPickerDropdown
+                 value={formData.userAgentApi ?? ""}
+                 onSelect={handleUaDeviceSelect}
+               />
+             </div>
+             <div className="space-y-2">
+               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                 Embedded Browser Agent
+                 <span className="ml-2 text-[9px] font-normal text-muted-foreground/60 normal-case tracking-normal">(auto-matched when picking a device)</span>
+               </label>
+               <input
+                 className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                 style={{ width: `${Math.max(22, (formData.userAgentEmbedded || "Browser-like User Agent...").length + 6)}ch` }}
+                 value={formData.userAgentEmbedded}
+                 onChange={e => updateField({ userAgentEmbedded: e.target.value })}
+                 placeholder="Browser-like User Agent..."
+               />
+             </div>
+
+             {/* ── Browser Fingerprint Preview ── */}
+             {formData.userAgentEmbedded && (
+               <div className="mt-2">
+                 <button
+                   type="button"
+                   onClick={() => setShowFingerprintPreview(v => !v)}
+                   className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary transition-colors select-none"
+                 >
+                   <Fingerprint className="w-3.5 h-3.5 text-primary" />
+                   Browser Fingerprint Preview
+                   <span className="text-[10px] text-slate-400 font-normal normal-case ml-1">— what the Leak Tool measures</span>
+                   <span className="ml-auto text-[10px]">{showFingerprintPreview ? "▲" : "▼"}</span>
+                 </button>
+               </div>
+             )}
+             {formData.userAgentEmbedded && showFingerprintPreview && (() => {
+               const fp = computeFingerprint(formData.userAgentEmbedded, formData.userAgentApi);
+               const isMob = formData.userAgentEmbedded.includes("Mobile") && formData.userAgentEmbedded.includes("Android");
+
+               const fmtTime = (secs: number, isCharging: boolean) => {
+                 if (isCharging && secs === 0) return "Full";
+                 if (!isCharging && secs >= 86400) return "∞";
+                 const h = Math.floor(secs / 3600);
+                 const m = Math.floor((secs % 3600) / 60);
+                 return h > 0 ? `${h}h ${m}m` : `${m}m`;
+               };
+
+               const Row = ({ label, value, muted }: { label: string; value: string; muted?: boolean }) => (
+                 <div className="flex items-center justify-between py-[3px]">
+                   <span className="text-[11px] text-slate-400">{label}</span>
+                   <span className={`text-[11px] font-semibold ${muted ? "text-slate-400" : "text-slate-700"}`}>{value}</span>
+                 </div>
+               );
+
+               const Pass = ({ label }: { label: string }) => (
+                 <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded px-2 py-1">
+                   <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" />
+                   <span className="text-[11px] font-semibold text-green-700">{label}</span>
+                 </div>
+               );
+
+               return (
+                 <div className="border border-slate-200 rounded-lg overflow-hidden mt-2">
+                   <div className="grid grid-cols-2 divide-x divide-slate-100">
+                     {/* Screen & Hardware */}
+                     <div className="px-3 py-2 space-y-0">
+                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Monitor className="w-3 h-3" /> Screen &amp; Hardware</p>
+                       <Row label="Touch Points" value={isMob ? "10" : "0"} />
+                       <Row label="Platform" value={isMob ? "Linux armv8l" : "Win32"} />
+                       <Row label="Color Depth" value="24 bit" />
+                       <Row label="Orientation" value={isMob ? "Portrait (0°)" : "Landscape (0°)"} />
+                       <Row label="Available" value={`${fp.sw}×${fp.sh - (isMob ? 30 : 40)}`} />
+                     </div>
+                     {/* Battery */}
+                     <div className="px-3 py-2 space-y-0">
+                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Battery className="w-3 h-3" /> Battery API</p>
+                       <Row label="Level" value={`${fp.batteryPct}%${fp.charging ? " ⚡" : ""}`} />
+                       <Row label="Charging" value={fp.charging ? "Yes" : "No"} />
+                       <Row
+                         label={fp.charging ? "Time to Full" : "Time Remaining"}
+                         value={fmtTime(fp.chargeOrDischargeTime, fp.charging)}
+                       />
+                       <Row label={fp.charging ? "Discharging Time" : "Charging Time"} value="∞" muted />
+                     </div>
+                     {/* Network */}
+                     <div className="px-3 py-2 space-y-0">
+                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Wifi className="w-3 h-3" /> Network Info</p>
+                       <Row label="Type" value={fp.connType} />
+                       <Row label="Effective Type" value="4G" />
+                       <Row label="Downlink" value={`${fp.downlink} Mbps`} />
+                       <Row label="RTT" value={`${fp.rtt} ms`} />
+                       <Row label="Save Data" value="No" />
+                     </div>
+                     {/* Protections */}
+                     <div className="px-3 py-2">
+                       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Stealth Protections</p>
+                       <div className="flex flex-wrap gap-1.5">
+                         <Pass label="WebRTC Blocked" />
+                         <Pass label="Canvas Protected" />
+                         <Pass label="Audio Protected" />
+                         <Pass label="webdriver Hidden" />
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               );
+             })()}
+
+             {/* ── UA device-change confirmation dialog ── */}
+             <AlertDialog open={uaChangeConfirmOpen} onOpenChange={setUaChangeConfirmOpen}>
+               <AlertDialogContent>
+                 <AlertDialogHeader>
+                   <AlertDialogTitle>Change Device?</AlertDialogTitle>
+                   <AlertDialogDescription className="space-y-2">
+                     <span className="block">
+                       Switching to <strong>{pendingUa ? (() => { const p = pendingUa.api.split("; "); return `${p[3] ?? ""} ${p[4] ?? ""}`; })() : ""}</strong> will:
+                     </span>
+                     <ul className="list-disc pl-5 space-y-1 text-sm">
+                       <li>Reset all Device IDs (UUID, Phone ID, Advertising ID)</li>
+                       <li>Log you out of the current embedded browser session</li>
+                       <li>Clear all stored cookies for this account</li>
+                     </ul>
+                     <span className="block pt-1">
+                       The account will be set to <strong>Pending</strong> and will need to be re-verified before automation resumes.
+                     </span>
+                   </AlertDialogDescription>
+                 </AlertDialogHeader>
+                 <AlertDialogFooter>
+                   <AlertDialogCancel onClick={() => setPendingUa(null)}>Cancel</AlertDialogCancel>
+                   <AlertDialogAction onClick={handleUaChangeConfirm}>
+                     Yes, Change Device
+                   </AlertDialogAction>
+                 </AlertDialogFooter>
+               </AlertDialogContent>
+             </AlertDialog>
+           </div>
+
           <div className="border-t border-border mt-3" />
           </div>{/* end flex-1 left column */}
 
