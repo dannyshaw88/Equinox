@@ -2353,11 +2353,10 @@ export async function registerInstagramRoutes(
             useHomeIp:  !!(effectiveProfile as any).useHomeIp,
             userAgent:  ebUA,
             apiUA:      effectiveProfile.userAgentApi ?? undefined,
-            // Opens a small (430×700) corner window so the user can watch without
-            // blocking their screen.  The window is fully visible — NOT minimised —
-            // so Chromium does not throttle it (minimised windows throttle timers
-            // causing the form-fill to type the password into the username field).
-            verifyMode: true,
+            // Use the standard Equinox Browser window so the user sees the same
+            // full browser surface as a manually opened account browser.  Do not
+            // set verifyMode here: that flag selects the special off-screen,
+            // phone-sized verification window.
           }),
         });
         console.log(`[verify:${profileId}] @${profile.username} — /eb/open responded OK, waiting 3 s for window init`);
