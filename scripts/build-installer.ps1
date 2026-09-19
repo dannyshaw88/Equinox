@@ -22,9 +22,9 @@ function Invoke-PnpmCommand {
 Write-Host "Building Equinox installer..." -ForegroundColor Green
 
 # A fresh Windows checkout may have the repository files but no complete
-# workspace dependency links. Install before any package build so missing
-# transitive packages (for example nanoid) do not fail inside the build.
-Invoke-PnpmCommand -Arguments @("install", "--no-frozen-lockfile")
+# workspace dependency links. Force pnpm to repair platform-specific optional
+# packages too; stale installs commonly omit Rollup's Windows native package.
+Invoke-PnpmCommand -Arguments @("install", "--force", "--no-frozen-lockfile")
 
 # The Electron bundle expects both of these dist directories to exist.
 Invoke-PnpmCommand -Arguments @("--filter", "@workspace/api-server", "run", "build")
