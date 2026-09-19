@@ -4593,6 +4593,20 @@ class AutomationEngine {
       return;
     }
 
+    // Keep the pauses between API Human Jitter actions aligned with the
+    // account-level API Limits & Control settings. The browser-only runner has
+    // its own actionDelay helper, but this API path needs one as well.
+    const limits = (profile.apiLimits ?? {}) as any;
+    const toMs = (v: number) => (v < 1000 ? v * 1000 : v);
+    const winMin = toMs(Number(limits.everySecondsMin ?? 8));
+    const winMax = toMs(Number(limits.everySecondsMax ?? 20));
+    const rMin = Math.max(1, Number(limits.requestsMin ?? 1));
+    const rMax = Math.max(rMin, Number(limits.requestsMax ?? 1));
+    const actionDelay = () => randInt(
+      Math.max(1000, Math.round(winMin / rMax)),
+      Math.max(2000, Math.round(winMax / rMin)),
+    );
+
     // View Timeline Feed and View Reels both consume /api/v1/feed/timeline/.
     // Keep the empty result scoped to this Human Session run so the second
     // tool does not repeat a request after the first tool already established
