@@ -296,7 +296,7 @@ function ProxyRow({
                       onChange={e => saveAdapterName(e.target.value)}
                       className="h-7 flex-1 rounded border border-violet-300 dark:border-violet-700 bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400/30 text-foreground"
                     >
-                      <option value="">— select adapter —</option>
+                       <option value="" disabled hidden />
                       {adapters.map(a => (
                         <option key={a.name} value={a.name}>{a.name} {a.ip ? `(${a.ip})` : "(No IP — not connected)"}</option>
                       ))}
