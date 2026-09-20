@@ -144,7 +144,7 @@ const DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 // instead of permanently blocking re-verify after a crash in the background worker.
 const verifyInFlight = new Map<number, number>();
 const VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1000; // covers the maximum persisted API cooldown
-const API_VERIFY_MIN_DELAY_MINUTES = 30;
+const API_VERIFY_MIN_DELAY_MINUTES = 60;
 const API_VERIFY_MAX_DELAY_MINUTES = 99;
 
 function hasScheduledApiVerifyMessage(statusMessage?: string | null): boolean {
@@ -219,7 +219,7 @@ async function resumeStuckVerifyingAccounts(): Promise<void> {
   for (const profile of withCookies) {
     // Legacy rows from the pre-cooldown flow may still be "verifying" with
     // cookies but no deadline. Treat that durable state as the moment EB
-    // completed and create the same 30–99 minute delay once.
+    // completed and create the same 60–99 minute delay once.
     let deadline = profile.apiVerifyAfter;
     if (!deadline || !Number.isFinite(new Date(deadline).getTime())) {
       const scheduled = chooseApiVerifyAfter();

@@ -170759,7 +170759,7 @@ function pickUAForAccount(username) {
 var DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 var verifyInFlight = /* @__PURE__ */ new Map();
 var VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1e3;
-var API_VERIFY_MIN_DELAY_MINUTES = 30;
+var API_VERIFY_MIN_DELAY_MINUTES = 60;
 var API_VERIFY_MAX_DELAY_MINUTES = 99;
 function hasScheduledApiVerifyMessage(statusMessage) {
   return /browser verification succeeded\.\s*mobile api verification is scheduled in \d+ minutes\./i.test(statusMessage ?? "");
