@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.545",
+    date: "2026-09-20",
+    items: [{ category: "Fix", text: "Prevented the Electron app from showing a white screen after updates by forcing the frontend entry page to revalidate." }],
+  },
+  {
     version: "1.1.544",
     date: "2026-09-20",
     items: [{ category: "Fix", text: "Accounts Manager column order now persists when navigating away and returning." }],
