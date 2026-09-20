@@ -1724,7 +1724,7 @@ export function ProfilesPage() {
                     }
                     if (key === "actions") return (
                       <div key={key} style={{ width: profColWidths.actions }} className="shrink-0 flex items-center justify-start gap-3 overflow-hidden" onMouseDown={e => e.stopPropagation()}>
-                        <button onClick={() => openWindow(profile.id, profile.username, profile.userAgentEmbedded ?? "")} title={!hasProxy ? "Assign a proxy before using the browser" : "Open embedded browser"} data-testid={`btn-open-browser-${profile.id}`} disabled={!hasProxy} className={`transition-colors ${!hasProxy ? "text-muted-foreground/40 cursor-not-allowed" : "text-muted-foreground hover:text-primary"}`}><span className="relative inline-flex w-[20px] h-[20px] items-center justify-center"><Globe className="w-[17px] h-[17px]" /><Search className="absolute -right-0.5 -bottom-0.5 w-[9px] h-[9px] bg-background rounded-full" /></span></button>
+                        <button onClick={() => openWindow(profile.id, profile.username, profile.userAgentEmbedded ?? "")} title={!hasProxy ? "Assign a proxy before using the browser" : "Open embedded browser"} data-testid={`btn-open-browser-${profile.id}`} disabled={!hasProxy} className={`inline-flex items-center justify-center w-[16px] h-[16px] p-0 transition-colors ${!hasProxy ? "text-muted-foreground/40 cursor-not-allowed" : "text-muted-foreground hover:text-primary"}`}><span className="relative inline-flex w-[16px] h-[16px] items-center justify-center"><Globe className="w-[16px] h-[16px]" /><Search className="absolute -right-0.5 -bottom-0.5 w-[8px] h-[8px] bg-background rounded-full" /></span></button>
                         <button onClick={() => { window.location.href = `/stats?profileId=${profile.id}&tab=metrics`; }} title="View account metrics" className="text-muted-foreground/40 hover:text-primary transition-colors"><BarChart2 className="w-[16px] h-[16px]" /></button>
                         <button onClick={() => setDeleteConfirm({ ids: [profile.id] })} data-testid={`button-delete-${profile.id}`} title="Delete account" className="text-muted-foreground/40 hover:text-destructive transition-colors"><Trash2 className="w-[16px] h-[16px]" /></button>
                       </div>
@@ -2536,7 +2536,7 @@ export function ProfilesPage() {
                 <Lock className="w-4 h-4 shrink-0 text-muted-foreground" />
                 Flag as Locked Account{selectedProfileIds.length > 0 ? ` (${selectedProfileIds.length})` : ""}
               </button>
-              <button onClick={handleBurntProxy} disabled={selectedProfileIds.length === 0} className="col-span-3 flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-orange-50 text-left disabled:opacity-40 disabled:cursor-not-allowed">
+              <button onClick={handleBurntProxy} disabled={selectedProfileIds.length === 0} className="flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-orange-50 text-left disabled:opacity-40 disabled:cursor-not-allowed">
                 <Flame className="w-4 h-4 shrink-0 text-orange-500" fill="currentColor" />
                 Flag Burnt Proxy{selectedProfileIds.length > 0 ? ` (${selectedProfileIds.length})` : ""}
               </button>
