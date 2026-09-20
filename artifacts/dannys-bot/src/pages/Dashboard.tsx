@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.529",
+    date: "20 Sep 2026",
+    items: [
+      {
+        category: "Fixed",
+        text: "Account Verify now clicks the visible browser toolbar Login button after dismissing the cookie policy banner, instead of running a separate login macro.",
+      },
+    ],
+  },
+  {
     version: "1.1.528",
     date: "20 Sep 2026",
     items: [

@@ -48,7 +48,7 @@ function buildNativeToolbarHtml(isGhost?: boolean): string {
   const navHtml = `<button title="Back" onclick="cmd('back')">&#9664;</button><button title="Forward" onclick="cmd('forward')">&#9654;</button><button title="Reload" onclick="cmd('reload')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button><button title="Instagram Home" onclick="cmd('navigate',{url:'https://www.instagram.com/'})"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button><span class="sep"></span><input id="url" type="text" spellcheck="false"><span class="sep"></span><button id="lbtn" title="Fill login fields and submit" onclick="doLogin()">Login</button><button title="Generate TOTP code" onclick="cmd('totp')">2FA</button><button title="Type phone number" onclick="cmd('phone')">Phone</button><button title="Type email address" onclick="cmd('email-user')">Email</button><button title="Type email password" onclick="cmd('email-pass')">Email Pass</button><button title="Run in-app leak test — checks IP, WebRTC, WebDriver, Canvas, Audio, WebGL and more" onclick="cmd('leak-check')">&#128737; Leak Check</button><span class="sep"></span><span id="timer">0:00</span>`;
 
   const script = `function cmd(c,p){return window.__eq&&window.__eq.command(c,p);}
-function doLogin(){var b=document.getElementById('lbtn');if(!b)return;b.disabled=true;Promise.resolve(cmd('login')).then(function(){b.disabled=false;}).catch(function(){b.disabled=false;});}
+ function doLogin(){var b=document.getElementById('lbtn');if(!b)return Promise.reject(new Error('Login toolbar button not found'));b.disabled=true;var p=Promise.resolve(cmd('login')).then(function(result){b.disabled=false;return result;}).catch(function(err){b.disabled=false;throw err;});window.__eqLoginPromise=p;return p;}
 var u=document.getElementById('url');
 u.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();var v=u.value.trim();if(v&&v.indexOf('http')!==0)v='https://'+v;cmd('navigate',{url:v});}});
 // Select all text on click so the user can immediately type a new URL
@@ -7542,6 +7542,87 @@ export function startEbIpcServer(
         }
         const result = await doAutoLogin(pid, e.win, body.username, body.password, body.twoFAKey ?? "", body.userAgent);
         return send(res, 200, result);
+      }
+
+      // ── POST /eb/click-toolbar-login ──────────────────────────────────────────
+      // Verify must use the same visible Login button the user sees in the native
+      // toolbar. Do not call doAutoLogin here: that is a separate direct form-fill
+      // macro and is intentionally not part of the Verify flow.
+      if (req.method === "POST" && u.pathname === "/eb/click-toolbar-login") {
+        const tv = toolbarViewMap.get(pid);
+        const pageWc = getActiveWc(pid);
+        if (!tv || tv.webContents.isDestroyed() || !pageWc || pageWc.isDestroyed()) {
+          return send(res, 200, { ok: false, message: "Browser toolbar is not ready" });
+        }
+
+        // Wait for the page-level cookie policy banner to be dismissed before
+        // activating the toolbar Login button. The page utility performs the
+        // trusted cookie click; this only waits for its visible disappearance.
+        const cookieBannerPositionJs = `(() => {
+          const labels = new Set([
+            "allow all cookies", "accept all cookies", "allow all", "accept all",
+            "allow essential and optional cookies", "accept cookies", "allow cookies",
+            "alle cookies akzeptieren", "accepter tout", "aceptar todo",
+            "accetta tutto", "tillåt alla", "alle accepteren"
+          ]);
+          const visible = (el) => {
+            if (!el || !el.getBoundingClientRect) return false;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return false;
+            return labels.has((el.innerText || el.textContent || "").trim().toLowerCase());
+          };
+          let button = document.querySelector('[data-cookiebanner="accept_button"]')
+            || document.querySelector('[data-testid="cookie-policy-banner-accept"]');
+          if (button && visible(button)) {
+            const r = button.getBoundingClientRect();
+            return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+          }
+          const container = document.querySelector('[data-cookiebanner]')
+            || document.querySelector('[class*="CookieBanner"],[class*="cookie-banner"],[id*="cookie"]');
+          const candidate = container
+            ? Array.from(container.querySelectorAll("button,[role=button]")).find(visible)
+            : Array.from(document.querySelectorAll("button,[role=button]")).find(visible);
+          if (!candidate) return null;
+          const r = candidate.getBoundingClientRect();
+          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        })()`;
+        const cookieDeadline = Date.now() + 20_000;
+        while (Date.now() < cookieDeadline) {
+          const cookiePos = await pageWc.executeJavaScript(cookieBannerPositionJs).catch(() => null) as
+            { x: number; y: number } | null;
+          if (!cookiePos) break;
+          await humanMouseClick(pageWc, cookiePos.x, cookiePos.y);
+          await new Promise(resolve => setTimeout(resolve, 1_500));
+        }
+
+        // Click the actual visible toolbar button. Its existing onclick handler
+        // invokes the toolbar's active-tab Login command and returns a Promise
+        // that resolves when that button action finishes.
+        const clickResult = await tv.webContents.executeJavaScript(`(() => {
+          const button = document.getElementById("lbtn");
+          if (!button || button.disabled) return { ok: false, message: "Login toolbar button is unavailable" };
+          button.click();
+          return window.__eqLoginPromise || { ok: true, message: "Toolbar Login clicked" };
+        })()`, true).catch((err: any) => ({
+          ok: false,
+          message: `Could not click toolbar Login: ${err?.message ?? "unknown error"}`,
+        }));
+
+        // The toolbar command predates this endpoint and does not return its
+        // session result. Confirm completion from the shared browser partition.
+        const session = electronSession.fromPartition(ebPartition(pid));
+        const sessionDeadline = Date.now() + 180_000;
+        while (Date.now() < sessionDeadline) {
+          const cookies = await session.cookies.get({ name: "sessionid", domain: ".instagram.com" }).catch(() => []);
+          if (cookies.some(c => c.value.length > 5)) {
+            return send(res, 200, { ok: true, message: "Toolbar Login completed" });
+          }
+          await new Promise(resolve => setTimeout(resolve, 1_000));
+        }
+        if (clickResult && typeof clickResult === "object" && "ok" in clickResult && !clickResult.ok) {
+          return send(res, 200, clickResult);
+        }
+        return send(res, 200, { ok: false, message: "Toolbar Login did not produce a session cookie" });
       }
 
       // ── GET /eb/silent-verify-status ───────────────────────────────────────────

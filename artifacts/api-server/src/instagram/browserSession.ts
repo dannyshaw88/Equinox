@@ -6631,6 +6631,25 @@ export async function browserAutoLogin(
   }
 }
 
+/**
+ * Click the real Login button in the native Equinox browser toolbar.
+ * Verify uses this instead of calling the direct doAutoLogin form macro.
+ */
+export async function browserToolbarLogin(
+  profileId: number,
+): Promise<{ ok: boolean; message: string }> {
+  if (!IS_ELECTRON_EB) {
+    return { ok: false, message: "Native browser toolbar is only available in Electron mode" };
+  }
+  try {
+    return await ebIpc("POST", "/eb/click-toolbar-login", { profileId });
+  } catch (err: any) {
+    const msg = `Toolbar Login IPC error: ${err?.message ?? "unknown error"}`;
+    sendStatus(profileId, `❌ ${msg}`);
+    return { ok: false, message: msg };
+  }
+}
+
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // ── Browser-based photo upload via Instagram's own create-post UI ─────────────

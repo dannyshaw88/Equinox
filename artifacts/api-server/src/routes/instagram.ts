@@ -57,6 +57,7 @@ import {
   clearEbSessionCookies,
   navigateEbToLogin,
   browserAutoLogin,
+  browserToolbarLogin,
   sendLoginDone,
   setCheckpointUrl,
   getSessionPageCookies,
@@ -2343,11 +2344,10 @@ export async function registerInstagramRoutes(
             profileId,
             username: profile.username,
             // NOTE: password is intentionally NOT passed here.
-            // Passing password registers openEbWindow's did-navigate auto-fill handler,
-            // which conflicts with doAutoLogin — both fire simultaneously and try to fill
-            // the same login form, causing both to silently fail (garbled input, missed
-            // fields).  doAutoLogin (called from /eb/silent-verify) is the sole owner of
-            // form interaction during the verify flow.
+            // Passing password registers openEbWindow's did-navigate auto-fill handler.
+            // Verify waits for the page-level cookie banner to disappear, then clicks
+            // the visible native toolbar Login button; no background form filler should
+            // start at the same time.
             proxy:      proxyConfig ? { host: proxyConfig.host, port: proxyConfig.port, user: proxyConfig.username, pass: proxyConfig.password } : undefined,
             useHomeIp:  !!(effectiveProfile as any).useHomeIp,
             userAgent:  ebUA,
@@ -2365,18 +2365,12 @@ export async function registerInstagramRoutes(
         console.warn(`[verify:${profileId}] @${profile.username} — /eb/open failed (non-fatal): ${openErr?.message}`);
       }
       try {
-        // Use the same auto-login handler as the browser window's Login button.
-        // This keeps Verify on the current paste-based credential flow instead
-        // of the older silent-verify wrapper.
-        console.log(`[verify:${profileId}] @${profile.username} — calling shared browser auto-login`);
-        loginResult = await browserAutoLogin(
-          profileId,
-          profile.username,
-          profile.password!,
-          profile.twoFASecretKey || "",
-        );
+        // Use the actual visible Login button in the native browser toolbar.
+        // Verify must not call the direct doAutoLogin form-fill macro.
+        console.log(`[verify:${profileId}] @${profile.username} — clicking native toolbar Login`);
+        loginResult = await browserToolbarLogin(profileId);
         _silentCookies = await getSessionPageCookies(profileId);
-        console.log(`[verify:${profileId}] @${profile.username} — shared browser auto-login done: ok=${loginResult.ok} msg="${loginResult.message}" cookies=${_silentCookies.length} (${_silentCookies.map(c => c.name).join(",")})`);
+        console.log(`[verify:${profileId}] @${profile.username} — native toolbar Login done: ok=${loginResult.ok} msg="${loginResult.message}" cookies=${_silentCookies.length} (${_silentCookies.map(c => c.name).join(",")})`);
       } catch (ebErr: any) {
         loginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
       } finally {
@@ -5084,14 +5078,9 @@ export async function registerInstagramRoutes(
 
         if (process.env.EB_IPC_PORT) {
           try {
-            // Keep bulk Verify on the same current browser auto-login handler
-            // used by the Login button rather than the legacy silent wrapper.
-            bulkLoginResult = await browserAutoLogin(
-              profile.id,
-              profile.username,
-              profile.password!,
-              profile.twoFASecretKey || "",
-            );
+            // Bulk Verify also clicks the real visible native toolbar Login
+            // button; it does not call the direct doAutoLogin macro.
+            bulkLoginResult = await browserToolbarLogin(profile.id);
             _bulkSilentCookies = await getSessionPageCookies(profile.id);
           } catch (ebErr: any) {
             bulkLoginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
