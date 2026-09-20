@@ -2337,7 +2337,7 @@ export async function registerInstagramRoutes(
       // Step 1: open the visible EB browser so the user can watch the login flow.
       try {
         console.log(`[verify:${profileId}] @${profile.username} — opening EB window via /eb/open`);
-        await fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/open`, {
+        const openResponse = await fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/open`, {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2352,15 +2352,19 @@ export async function registerInstagramRoutes(
             useHomeIp:  !!(effectiveProfile as any).useHomeIp,
             userAgent:  ebUA,
             apiUA:      effectiveProfile.userAgentApi ?? undefined,
+            // Verify must wait until openEbWindow has created the native toolbar
+            // before it tries to click #lbtn.
+            waitForToolbar: true,
             // Use the standard Equinox Browser window so the user sees the same
             // full browser surface as a manually opened account browser.  Do not
             // set verifyMode here: that flag selects the special off-screen,
             // phone-sized verification window.
           }),
         });
-        console.log(`[verify:${profileId}] @${profile.username} — /eb/open responded OK, waiting 3 s for window init`);
-        // Allow the BrowserWindow and its session to fully initialise before verify runs.
-        await new Promise(r => setTimeout(r, 3000));
+        if (!openResponse.ok) {
+          throw new Error(`/eb/open returned HTTP ${openResponse.status}`);
+        }
+        console.log(`[verify:${profileId}] @${profile.username} — /eb/open completed with native toolbar ready`);
       } catch (openErr: any) {
         console.warn(`[verify:${profileId}] @${profile.username} — /eb/open failed (non-fatal): ${openErr?.message}`);
       }
@@ -5077,13 +5081,44 @@ export async function registerInstagramRoutes(
         let _bulkSilentCookies: Array<{ name: string; value: string }> | null = null;
 
         if (process.env.EB_IPC_PORT) {
+          let bulkEbOpened = false;
           try {
+            const bulkOpenResponse = await fetch(`http://127.0.0.1:${Number(process.env.EB_IPC_PORT)}/eb/open`, {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                profileId: profile.id,
+                username: profile.username,
+                proxy: bulkProxyConfig ? {
+                  host: bulkProxyConfig.host,
+                  port: bulkProxyConfig.port,
+                  user: bulkProxyConfig.username,
+                  pass: bulkProxyConfig.password,
+                } : undefined,
+                useHomeIp: !!(effectiveP as any).useHomeIp,
+                userAgent: bulkEbUA,
+                apiUA: effectiveP.userAgentApi ?? undefined,
+                waitForToolbar: true,
+              }),
+            });
+            if (!bulkOpenResponse.ok) {
+              throw new Error(`/eb/open returned HTTP ${bulkOpenResponse.status}`);
+            }
+            bulkEbOpened = true;
             // Bulk Verify also clicks the real visible native toolbar Login
             // button; it does not call the direct doAutoLogin macro.
             bulkLoginResult = await browserToolbarLogin(profile.id);
             _bulkSilentCookies = await getSessionPageCookies(profile.id);
           } catch (ebErr: any) {
             bulkLoginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
+          } finally {
+            if (bulkEbOpened) {
+              fetch(`http://127.0.0.1:${Number(process.env.EB_IPC_PORT)}/eb/close`, {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ profileId: profile.id }),
+              }).catch(() => {});
+            }
           }
         } else {
           await getOrCreateSession(profile.id, bulkEbUA, bulkProxyConfig, effectiveP.userAgentApi);

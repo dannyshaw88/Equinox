@@ -5871,7 +5871,7 @@ export function startEbIpcServer(
         // cookie loading, event handler registration, initial navigation).
         // The window shows via ready-to-show as soon as Chromium is ready.
         // Errors are logged to the console — they don't block the UI.
-        openEbWindow({
+        const openPromise = openEbWindow({
           profileId: pid,
           username:  body.username  ?? String(pid),
           password:  body.password,
@@ -5884,7 +5884,17 @@ export function startEbIpcServer(
           initialUrl: body.initialUrl ?? undefined,
           verifyMode: body.verifyMode === true,
           silentMode: body.silentMode === true,
-        }).catch(err => console.error(`[eb:open:${pid}] openEbWindow error:`, err?.message ?? err));
+        });
+        if (body.waitForToolbar === true) {
+          try {
+            await openPromise;
+            return send(res, 200, { ok: true, toolbarReady: true });
+          } catch (err: any) {
+            console.error(`[eb:open:${pid}] openEbWindow error:`, err?.message ?? err);
+            return send(res, 500, { ok: false, message: err?.message ?? "Could not open browser" });
+          }
+        }
+        openPromise.catch(err => console.error(`[eb:open:${pid}] openEbWindow error:`, err?.message ?? err));
         return send(res, 200, { ok: true });
       }
 
@@ -7549,10 +7559,25 @@ export function startEbIpcServer(
       // toolbar. Do not call doAutoLogin here: that is a separate direct form-fill
       // macro and is intentionally not part of the Verify flow.
       if (req.method === "POST" && u.pathname === "/eb/click-toolbar-login") {
-        const tv = toolbarViewMap.get(pid);
-        const pageWc = getActiveWc(pid);
-        if (!tv || tv.webContents.isDestroyed() || !pageWc || pageWc.isDestroyed()) {
-          return send(res, 200, { ok: false, message: "Browser toolbar is not ready" });
+        let tv: BrowserView | undefined;
+        let pageWc: Electron.WebContents | null = null;
+        let clickResult: { ok: boolean; message: string } | null = null;
+        let toolbarReady = false;
+        const toolbarDeadline = Date.now() + 20_000;
+        while (Date.now() < toolbarDeadline) {
+          tv = toolbarViewMap.get(pid);
+          pageWc = getActiveWc(pid);
+          if (tv && !tv.webContents.isDestroyed() && pageWc && !pageWc.isDestroyed()) {
+            toolbarReady = await tv.webContents.executeJavaScript(`(() => {
+              const button = document.getElementById("lbtn");
+              return !!button && !button.disabled;
+            })()`, true).catch(() => false);
+            if (toolbarReady) break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+        if (!toolbarReady || !tv || tv.webContents.isDestroyed() || !pageWc || pageWc.isDestroyed()) {
+          return send(res, 200, { ok: false, message: "Browser toolbar did not become ready" });
         }
 
         // Wait for the page-level cookie policy banner to be dismissed before
@@ -7595,18 +7620,20 @@ export function startEbIpcServer(
           await new Promise(resolve => setTimeout(resolve, 1_500));
         }
 
-        // Click the actual visible toolbar button. Its existing onclick handler
-        // invokes the toolbar's active-tab Login command and returns a Promise
-        // that resolves when that button action finishes.
-        const clickResult = await tv.webContents.executeJavaScript(`(() => {
+        // Click the actual visible toolbar button only after the page-level
+        // cookie policy banner has disappeared.
+        clickResult = await tv.webContents.executeJavaScript(`(() => {
           const button = document.getElementById("lbtn");
-          if (!button || button.disabled) return { ok: false, message: "Login toolbar button is unavailable" };
+          if (!button || button.disabled) {
+            return { ok: false, message: "Login toolbar button became unavailable" };
+          }
           button.click();
-          return window.__eqLoginPromise || { ok: true, message: "Toolbar Login clicked" };
+          return { ok: true, message: "Toolbar Login clicked" };
         })()`, true).catch((err: any) => ({
           ok: false,
           message: `Could not click toolbar Login: ${err?.message ?? "unknown error"}`,
         }));
+        if (!clickResult.ok) return send(res, 200, clickResult);
 
         // The toolbar command predates this endpoint and does not return its
         // session result. Confirm completion from the shared browser partition.
@@ -7618,9 +7645,6 @@ export function startEbIpcServer(
             return send(res, 200, { ok: true, message: "Toolbar Login completed" });
           }
           await new Promise(resolve => setTimeout(resolve, 1_000));
-        }
-        if (clickResult && typeof clickResult === "object" && "ok" in clickResult && !clickResult.ok) {
-          return send(res, 200, clickResult);
         }
         return send(res, 200, { ok: false, message: "Toolbar Login did not produce a session cookie" });
       }
