@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.542",
+    date: "2026-09-20",
+    items: [{ category: "UI", text: "Updated the Proxy Manager navigation icon with cyan fill and white indicator dots." }],
+  },
+  {
     version: "1.1.541",
     date: "2026-09-20",
     items: [{ category: "UI", text: "Centered the Actions column title in the Accounts Manager." }],

@@ -4,7 +4,7 @@ import { useSidebarSlot } from "@/contexts/SidebarSlotContext";
 import { useNavigationHistory } from "@/contexts/NavigationHistoryContext";
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Server } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 function FilledDashboardIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
@@ -13,6 +13,19 @@ function FilledDashboardIcon({ className, style }: { className?: string; style?:
       <rect fill="currentColor" x="13" y="2"  width="9"  height="5"  rx="1.8"/>
       <rect fill="currentColor" x="13" y="9"  width="9"  height="13" rx="1.8"/>
       <rect fill="currentColor" x="2"  y="15" width="9"  height="7"  rx="1.8"/>
+    </svg>
+  );
+}
+
+function FilledProxyIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg className={className} style={style} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <rect fill="currentColor" x="2" y="3" width="20" height="7" rx="1.5" />
+      <rect fill="currentColor" x="2" y="14" width="20" height="7" rx="1.5" />
+      <circle fill="white" cx="6" cy="6.5" r="1.25" />
+      <circle fill="white" cx="6" cy="17.5" r="1.25" />
+      <circle fill="white" cx="18" cy="6.5" r="1.25" />
+      <circle fill="white" cx="18" cy="17.5" r="1.25" />
     </svg>
   );
 }
@@ -100,7 +113,7 @@ export function Sidebar() {
     { name: "Dashboard",       shortLabel: "DASHBOARD",      path: "/dashboard",    icon: FilledDashboardIcon   },
     { name: "Accounts",        shortLabel: "ACCOUNTS",       path: "/profiles",     icon: FilledPersonIcon      },
     { name: "Statistics",      shortLabel: "STATISTICS",     path: "/stats",        icon: FilledBarChartIcon    },
-    { name: "Proxy Manager",   shortLabel: "PROXY MANAGER",  path: "/proxies",  icon: Server                },
+    { name: "Proxy Manager",   shortLabel: "PROXY MANAGER",  path: "/proxies",  icon: FilledProxyIcon       },
   ];
 
   return (
