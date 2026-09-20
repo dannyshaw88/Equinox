@@ -698,6 +698,11 @@ export function ProfileDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/profiles"] });
         return;
       }
+      if (res.status === 423) {
+        toast({ title: "🔥 Burnt proxy", description: data.message, variant: "destructive" });
+        queryClient.invalidateQueries({ queryKey: ["/api/profiles"] });
+        return;
+      }
       if (data.ok) {
         // Only record a login event on a successful verify — failed attempts must not
         // count against the IP rate limit window or future verifies would show a false warning.

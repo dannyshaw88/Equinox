@@ -24,7 +24,8 @@ sqlite.exec(`
     rotate_every_max INTEGER,
     last_rotated_at TEXT,
     last_rotation_old_ip TEXT,
-    last_rotation_new_ip TEXT
+    last_rotation_new_ip TEXT,
+    burnt_until TEXT
   );
 
   CREATE TABLE IF NOT EXISTS profiles (
@@ -68,7 +69,8 @@ sqlite.exec(`
     followers_count INTEGER,
     following_count INTEGER,
     posts_count INTEGER,
-    last_synced_at TEXT
+    last_synced_at TEXT,
+    verified_proxy_ids TEXT
   );
 
   CREATE TABLE IF NOT EXISTS tools (
@@ -272,6 +274,17 @@ sqlite.exec(`
     endpoint_snapshot TEXT DEFAULT '[]'
   );
 `);
+
+// Additions for existing databases. SQLite does not support ADD COLUMN IF NOT
+// EXISTS, so inspect the live schema before applying each idempotent migration.
+const proxyColumns = sqlite.prepare("PRAGMA table_info(proxies)").all() as Array<{ name: string }>;
+if (!proxyColumns.some(c => c.name === "burnt_until")) {
+  sqlite.exec("ALTER TABLE proxies ADD COLUMN burnt_until TEXT");
+}
+const profileColumns = sqlite.prepare("PRAGMA table_info(profiles)").all() as Array<{ name: string }>;
+if (!profileColumns.some(c => c.name === "verified_proxy_ids")) {
+  sqlite.exec("ALTER TABLE profiles ADD COLUMN verified_proxy_ids TEXT");
+}
 
 // Seed owner license account if not already present
 {

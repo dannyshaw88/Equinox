@@ -18,6 +18,7 @@ export const proxies = sqliteTable("proxies", {
   lastRotatedAt: text("last_rotated_at"),
   lastRotationOldIp: text("last_rotation_old_ip"),
   lastRotationNewIp: text("last_rotation_new_ip"),
+  burntUntil: text("burnt_until"),
 });
 
 export const ACCOUNT_STATUSES = [
@@ -122,6 +123,7 @@ export const profiles = sqliteTable("profiles", {
   templateId: text("template_id"),
   createdAt: text("created_at"),
   validSince: text("valid_since"),
+  verifiedProxyIds: text("verified_proxy_ids"),
   stagingBootstrapFiresAt: text("staging_bootstrap_fires_at"),
 });
 

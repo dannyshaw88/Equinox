@@ -18,7 +18,7 @@ import {
   ShieldCheck, Ban, ScanFace, Mail, Phone, KeyRound, PowerOff, LogOut, LogIn, Loader2, Globe, Clock, Monitor, Flag,
   Smartphone, FileDown, Filter, X, Settings2,
   AlertTriangle, ShieldAlert, WifiOff, RefreshCw, Lock, LockOpen, UserMinus, Camera, Eye,
-  Tag, FolderOpen, Battery, BatteryCharging, Wifi, ImagePlus, UserCog, Images, BarChart2, Hourglass,
+  Tag, FolderOpen, Battery, BatteryCharging, Wifi, ImagePlus, UserCog, Images, BarChart2, Hourglass, Flame,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -273,6 +273,10 @@ export function ProfilesPage() {
     try {
       const res  = await fetch(`/api/profiles/${id}/verify`, { method: "POST", credentials: "include" });
       const data = await res.json() as { ok: boolean; message: string };
+      if (res.status === 423) {
+        toast({ title: "🔥 Burnt proxy", description: data.message, variant: "destructive" });
+        return;
+      }
       if (data.ok) recordLoginEvent(proxyHostVal, proxyPortVal, id, "api");
       toast({
         title: data.ok ? "Verification started" : "Verification Failed",
@@ -490,6 +494,26 @@ export function ProfilesPage() {
     });
     setActionsOpen(false);
   }, [selectedProfileIds]);
+  const handleBurntProxy = useCallback(async () => {
+    if (!selectedProfileIds.length) return;
+    const proxyIds = [...new Set(selectedProfileIds.map(id => profiles?.find(p => p.id === id)?.proxyId).filter((id): id is number => id != null))];
+    if (!proxyIds.length) {
+      toast({ title: "No assigned proxies", description: "Select accounts assigned to a proxy.", variant: "destructive" });
+      return;
+    }
+    if (!window.confirm(`Mark ${proxyIds.length} proxy${proxyIds.length === 1 ? "" : "ies"} as burnt for 9 hours?\n\nNew accounts will be blocked from verification. Accounts already verified on each proxy will continue to work.`)) return;
+    const until = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString();
+    let updated = 0;
+    for (const id of proxyIds) {
+      try {
+        const r = await fetch(`/api/proxies/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ burntUntil: until }) });
+        if (r.ok) updated++;
+      } catch {}
+    }
+    setActionsOpen(false);
+    await queryClient.invalidateQueries({ queryKey: [api.proxies.list.path] });
+    toast({ title: "🔥 Proxy marked as burnt", description: `${updated} proxy${updated === 1 ? "" : "ies"} blocked for new account verification for 9 hours.` });
+  }, [profiles, selectedProfileIds, toast]);
   const [statusFilter, setStatusFilter] = useState<string>(() => sessionStorage.getItem("profiles:filter") ?? "");
   const [sortField, setSortField] = useState<"account" | "status" | "ip" | "followers" | "following" | "trustscore" | "sync" | "lastApiCall" | "totalCalls" | "aliveFor" | null>(() => {
     const v = localStorage.getItem("profiles:sortField");
@@ -1786,9 +1810,12 @@ export function ProfilesPage() {
                     } else if (profile.proxyHost && profile.proxyPort) {
                       ip = `${profile.proxyHost}:${profile.proxyPort}`;
                     }
+                    const px = profile.proxyId && proxies ? proxies.find(p => p.id === profile.proxyId) : undefined;
+                    const burntMs = px?.burntUntil ? Date.parse(px.burntUntil) - Date.now() : 0;
+                    const burntLabel = burntMs > 0 ? `${Math.ceil(burntMs / 3600000)}h` : "";
                     return (
-                      <div style={{ width: profColWidths.ip }} className="shrink-0 text-left pl-2 ml-auto" title={ip || "No proxy"}>
-                        <span className="text-xs font-semibold text-foreground truncate block">{ip || " "}</span>
+                      <div style={{ width: profColWidths.ip }} className="shrink-0 text-left pl-2 ml-auto" title={burntLabel ? `🔥 Burnt proxy — new verification blocked for ${burntLabel}` : (ip || "No proxy")}>
+                        <span className="text-xs font-semibold text-foreground truncate block">{ip || " "}{burntLabel && <span className="ml-1 text-orange-500">🔥 {burntLabel}</span>}</span>
                       </div>
                     );
                   })()}
@@ -2508,6 +2535,10 @@ export function ProfilesPage() {
               >
                 <Lock className="w-4 h-4 shrink-0 text-muted-foreground" />
                 Flag as Locked Account{selectedProfileIds.length > 0 ? ` (${selectedProfileIds.length})` : ""}
+              </button>
+              <button onClick={handleBurntProxy} disabled={selectedProfileIds.length === 0} className="col-span-3 flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-orange-50 text-left disabled:opacity-40 disabled:cursor-not-allowed">
+                <Flame className="w-4 h-4 shrink-0 text-orange-500" fill="currentColor" />
+                Flag Burnt Proxy{selectedProfileIds.length > 0 ? ` (${selectedProfileIds.length})` : ""}
               </button>
               <div className="col-span-3 mx-4 my-1 border-t border-border" />
               <button onClick={() => { setActionsOpen(false); handleBulkDelete(); }} disabled={selectedProfileIds.length === 0} className="col-span-3 flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-red-50 text-destructive transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed">

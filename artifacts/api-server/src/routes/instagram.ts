@@ -143,6 +143,15 @@ const DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 // Stored as Map<profileId, startTimestamp> so stale locks (> 10 min) auto-clear
 // instead of permanently blocking re-verify after a crash in the background worker.
 const verifyInFlight = new Map<number, number>();
+function verifiedProxyIds(profile: any): number[] {
+  try {
+    const parsed = JSON.parse(profile?.verifiedProxyIds || "[]");
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+  } catch { return []; }
+}
+function isVerifiedOnProxy(profile: any, proxyId: number | null): boolean {
+  return proxyId != null && verifiedProxyIds(profile).includes(proxyId);
+}
 const VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1000; // covers the maximum persisted API cooldown
 const API_VERIFY_MIN_DELAY_MINUTES = 60;
 const API_VERIFY_MAX_DELAY_MINUTES = 99;
@@ -2250,6 +2259,13 @@ export async function registerInstagramRoutes(
 
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
+    if (profile.proxyId) {
+      const assignedProxy = (await storage.getProxies()).find(p => p.id === profile.proxyId);
+      const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
+      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId)) {
+        return fail(423, `No new accounts can be verified on this proxy until ${new Date(burntUntil).toISOString()}.`);
+      }
+    }
     if (
       profile.accountStatus === "verifying_to_api" &&
       profile.apiVerifyAfter &&
@@ -2651,6 +2667,9 @@ export async function registerInstagramRoutes(
         statusMessage: null,
         ...(finalStatus === "valid" ? { credentialsDirty: false } : {}),
         ...(result.igDeviceState ? { igDeviceState: result.igDeviceState } : {}),
+        ...(finalStatus === "valid" && profile.proxyId
+          ? { verifiedProxyIds: JSON.stringify([...new Set([...verifiedProxyIds(profile), profile.proxyId])]) }
+          : {}),
         // Save session cookies captured from the fresh login so follow/DM tools
         // can restore the session on Path 2 without re-logging in.
         ...("igApiCookies" in result && result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}),
@@ -5048,7 +5067,8 @@ export async function registerInstagramRoutes(
     const eligible = targets.filter(p => {
       if (p.proxyId) {
         const linked = allProxies.find(px => px.id === p.proxyId);
-        return !!(linked?.host && linked?.port);
+        const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
+        return !!(linked?.host && linked?.port) && !(burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId));
       }
       return !!(p.proxyHost && p.proxyPort);
     });
@@ -5245,6 +5265,9 @@ export async function registerInstagramRoutes(
           statusMessage: null,
           ...(result.ok ? { credentialsDirty: false } : {}),
           ...(result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}),
+          ...(result.accountStatus === "valid" && profile.proxyId
+            ? { verifiedProxyIds: JSON.stringify([...new Set([...verifiedProxyIds(profile), profile.proxyId])]) }
+            : {}),
         });
         if (!result.ok && result.accountStatus === "captcha" && result.checkpointUrl) {
           setCheckpointUrl(profile.id, result.checkpointUrl);

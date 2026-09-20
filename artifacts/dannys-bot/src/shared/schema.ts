@@ -57,6 +57,7 @@ export type Proxy = {
   lastRotatedAt?: string | null;
   lastRotationOldIp?: string | null;
   lastRotationNewIp?: string | null;
+  burntUntil?: string | null;
   // Enriched fields attached by GET /api/proxies (not persisted columns)
   tunnelPort?: number | null;
   rotating?: boolean;
@@ -112,6 +113,7 @@ export type Profile = {
   isTemplate: boolean | null;
   cookieBakerSettings: Record<string, unknown> | null;
   stagingBootstrapFiresAt: string | null;
+  verifiedProxyIds?: string | null;
 };
 
 export type InsertProfile = Pick<Profile, 'username' | 'password'> & Partial<Omit<Profile, 'id' | 'status' | 'username' | 'password'>>;
