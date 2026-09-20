@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.544",
+    date: "2026-09-20",
+    items: [{ category: "Fix", text: "Accounts Manager column order now persists when navigating away and returning." }],
+  },
+  {
     version: "1.1.543",
     date: "2026-09-20",
     items: [{ category: "UI", text: "Moved Settings directly beneath Proxy Manager in the left navigation." }],

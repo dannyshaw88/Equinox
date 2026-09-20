@@ -342,7 +342,7 @@ export function ProfilesPage() {
     DEFAULT_PROFILES_COL_ORDER,
     (s, d) => {
       // Drop removed columns from older saved layouts before appending new ones.
-      const valid = s.filter(k => Object.prototype.hasOwnProperty.call(d, k));
+      const valid = s.filter(k => d.includes(k));
       const missing = d.filter(k => !valid.includes(k));
       return valid.length !== s.length || missing.length ? [...valid, ...missing] : s;
     },
