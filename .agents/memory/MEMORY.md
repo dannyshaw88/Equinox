@@ -36,3 +36,4 @@
 - [Human Jitter API actions](human-jitter-api-actions.md) — the API runner must use mobile-session endpoints; embedded-browser clicks are only for the separate EB runner.
 - [Canonical Equinox robot asset](canonical-equinox-robot-asset.md) — `bot-logo.png` is the source of truth for web, Electron, desktop, and tray branding.
 - [Instagram Your Activity endpoint](instagram-news-activities-404.md) — one run returned HTML HTTP 404 on the mobile route; do not treat that alone as global retirement or session-health evidence.
+- [Verify EB readiness](verify-eb-readiness.md) — `/eb/open` is normally fire-and-forget; Verify must request awaited toolbar initialization before clicking native `#lbtn`.
