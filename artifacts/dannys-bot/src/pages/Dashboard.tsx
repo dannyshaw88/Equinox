@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.534",
+    date: "2026-09-20",
+    items: [
+      {
+        category: "Fix",
+        text: "The Verifying to API status popup now shows a live countdown to the mobile API attempt.",
+      },
+    ],
+  },
+  {
     version: "1.1.533",
     date: "2026-09-20",
     items: [

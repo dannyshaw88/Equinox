@@ -104,12 +104,48 @@ function ResumingCountdown({ until, onExpired }: { until: string | null | undefi
   return <span className="text-[8px] font-mono tabular-nums">{h > 0 ? `${h}:` : ""}{pad(m)}:{pad(s)}</span>;
 }
 
+function useCountdownSeconds(until: string | null | undefined) {
+  const [secs, setSecs] = useState(() => {
+    if (!until) return 0;
+    return Math.max(0, Math.floor((new Date(until).getTime() - Date.now()) / 1000));
+  });
+
+  useEffect(() => {
+    if (!until) {
+      setSecs(0);
+      return;
+    }
+    const update = () => {
+      setSecs(Math.max(0, Math.floor((new Date(until).getTime() - Date.now()) / 1000)));
+    };
+    update();
+    const id = window.setInterval(update, 1000);
+    return () => window.clearInterval(id);
+  }, [until]);
+
+  return secs;
+}
+
+function formatCountdown(secs: number) {
+  const hours = Math.floor(secs / 3600);
+  const minutes = Math.floor((secs % 3600) / 60);
+  const seconds = secs % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${hours > 0 ? `${hours}:` : ""}${pad(minutes)}:${pad(seconds)}`;
+}
+
 function AccountStatusBadge({ status, statusMessage, resumingUntil, stagingBootstrapFiresAt, apiVerifyAfter, onResumingExpired }: { status: string; statusMessage?: string | null; resumingUntil?: string | null; stagingBootstrapFiresAt?: string | null; apiVerifyAfter?: string | null; onResumingExpired?: () => void }) {
   const isResuming = status === "stopped" && !!resumingUntil && new Date(resumingUntil).getTime() > Date.now();
   const displayStatus = isResuming ? "resuming" : status;
   const meta = STATUS_META[displayStatus as AccountStatus] ?? STATUS_META.pending;
   const Icon = meta.icon;
-  const tooltip = displayStatus === "valid" ? undefined : (statusMessage || undefined);
+  const apiVerifySeconds = useCountdownSeconds(displayStatus === "verifying_to_api" ? apiVerifyAfter : null);
+  const apiVerifyTooltip = displayStatus === "verifying_to_api" && apiVerifyAfter
+    ? apiVerifySeconds > 0
+      ? `API verification starts in ${formatCountdown(apiVerifySeconds)}`
+      : "API verification is due now"
+    : null;
+  const tooltip = displayStatus === "valid" ? undefined : (apiVerifyTooltip || statusMessage || undefined);
   return (
     <span
       title={tooltip}
