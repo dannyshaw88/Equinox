@@ -78,12 +78,12 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
-    version: "1.1.536",
+    version: "1.1.537",
     date: "2026-09-20",
     items: [
       {
         category: "Fix",
-        text: "Verify now waits 60–99 minutes before the mobile API login, with the persisted live countdown shown in the account status.",
+        text: "The Verify countdown remains available on hover without taking up space inside the account status pill.",
       },
     ],
   },

@@ -86,23 +86,29 @@ const STATUS_META: Record<string, { label: string; icon: React.ElementType; pill
   automated_behaviour_detected: { label: "Auto Behav.", icon: ShieldAlert, pill: "bg-orange-50 text-orange-700 border-orange-200", dot: "bg-orange-500" },
 };
 
-function ApiVerifyCountdown({ until }: { until: string | null | undefined }) {
+function useApiVerifySeconds(until: string | null | undefined) {
   const [seconds, setSeconds] = useState(() =>
     until ? Math.max(0, Math.floor((new Date(until).getTime() - Date.now()) / 1000)) : 0
   );
   useEffect(() => {
-    if (!until) return;
-    const timer = window.setInterval(() => {
-      setSeconds(Math.max(0, Math.floor((new Date(until).getTime() - Date.now()) / 1000)));
-    }, 1000);
+    if (!until) {
+      setSeconds(0);
+      return;
+    }
+    const update = () => setSeconds(Math.max(0, Math.floor((new Date(until).getTime() - Date.now()) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
   }, [until]);
-  if (!until || seconds <= 0) return null;
+  return seconds;
+}
+
+function formatApiVerifyCountdown(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
   const pad = (value: number) => String(value).padStart(2, "0");
-  return <span className="font-mono tabular-nums text-[9px]">{hours > 0 ? `${hours}:` : ""}{pad(minutes)}:{pad(secs)}</span>;
+  return `${hours > 0 ? `${hours}:` : ""}${pad(minutes)}:${pad(secs)}`;
 }
 
 // ── Per-account stealth fingerprint decoder ───────────────────────────────────
@@ -255,6 +261,7 @@ export function ProfileDetailsPage() {
   const profileId = Number(params.id);
   
   const { data: profile, isLoading: profileLoading } = useProfile(profileId);
+  const apiVerifySeconds = useApiVerifySeconds(profile?.apiVerifyAfter);
   const { data: tools, isLoading: toolsLoading } = useTools(profileId);
   const { data: proxies } = useProxies();
   const updateProfileMutation = useUpdateProfile();
@@ -865,16 +872,20 @@ export function ProfileDetailsPage() {
                   const acctStatus = (hasScheduledApiVerify ? "verifying_to_api" : serverStatus) as AccountStatus;
                   const meta = STATUS_META[acctStatus] ?? STATUS_META.pending;
                   const Icon = meta.icon;
+                   const apiVerifyTooltip = acctStatus === "verifying_to_api" && profile.apiVerifyAfter
+                     ? apiVerifySeconds > 0
+                       ? `API verification starts in ${formatApiVerifyCountdown(apiVerifySeconds)}`
+                       : "API verification is due now"
+                     : null;
                   return (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
-                          title={profile.statusMessage || undefined}
+                          title={apiVerifyTooltip || profile.statusMessage || undefined}
                           className={`inline-flex h-5 w-auto min-w-[72px] max-w-[190px] items-center gap-1 rounded-full border px-2 text-[10px] font-semibold cursor-pointer hover:opacity-80 transition-opacity overflow-hidden ${meta.pill}`}
                         >
                           <Icon className={`w-2.5 h-2.5 shrink-0${acctStatus === "verifying_to_api" ? " animate-spin" : ""}`} />
                           <span className="min-w-0 flex-1 truncate text-left">{meta.label}</span>
-                          {acctStatus === "verifying_to_api" && <ApiVerifyCountdown until={profile.apiVerifyAfter} />}
                           <ChevronDown className="w-2.5 h-2.5 shrink-0 opacity-60" />
                         </button>
                       </DropdownMenuTrigger>

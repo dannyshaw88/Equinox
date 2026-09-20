@@ -154,7 +154,6 @@ function AccountStatusBadge({ status, statusMessage, resumingUntil, stagingBoots
       <Icon className={`w-2.5 h-2.5${(isResuming || displayStatus === "verifying" || displayStatus === "verifying_to_api") ? " animate-spin" : ""}`} />
       <span className="uppercase">{meta.label}</span>
       {isResuming && <ResumingCountdown until={resumingUntil} onExpired={onResumingExpired} />}
-      {displayStatus === "verifying_to_api" && apiVerifyAfter && <ResumingCountdown until={apiVerifyAfter} />}
       {displayStatus === "staging" && stagingBootstrapFiresAt && <ResumingCountdown until={stagingBootstrapFiresAt} />}
     </span>
   );
