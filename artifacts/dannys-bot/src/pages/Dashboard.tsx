@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.539",
+    date: "2026-09-20",
+    items: [{ category: "UI", text: "Updated the Accounts Manager browse action to use a globe and magnifying glass web-browsing icon." }],
+  },
+  {
     version: "1.1.538",
     date: "2026-09-20",
     items: [
