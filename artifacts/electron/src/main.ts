@@ -1066,6 +1066,14 @@ async function createWindow() {
   app.on("render-process-gone", (_e, contents, details) => {
     appendToMainLog(`RENDER PROCESS GONE: url=${contents.getURL()} reason=${details.reason} exitCode=${details.exitCode}`);
   });
+  win.webContents.on("did-fail-load", (_event, code, description, validatedURL) => {
+    appendToMainLog(`MAIN WINDOW LOAD FAILED: code=${code} description=${description} url=${validatedURL}`);
+  });
+  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      appendToMainLog(`RENDERER CONSOLE ERROR: level=${level} message=${message} source=${sourceId}:${line}`);
+    }
+  });
   app.on("child-process-gone", (_e, details) => {
     appendToMainLog(`CHILD PROCESS GONE: type=${details.type} reason=${details.reason} exitCode=${details.exitCode}`);
   });
@@ -1087,7 +1095,10 @@ async function createWindow() {
 
   try {
     await waitForServer(serverPort);
-    win.loadURL(`http://127.0.0.1:${serverPort}`);
+    // A version query prevents Chromium from reusing an old HTML entry page
+    // after an update, even when the local HTTP cache survived installation.
+    await win.webContents.session.clearCache();
+    win.loadURL(`http://127.0.0.1:${serverPort}/?appVersion=${encodeURIComponent(app.getVersion())}`);
   } catch {
     let logContent = "(no output captured)";
     try { logContent = fs.readFileSync(logPath, "utf8").slice(-1200); } catch {}
