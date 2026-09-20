@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.547",
+    date: "2026-09-20",
+    items: [{ category: "Fix", text: "Included the generated frontend bundle in the published Electron update so the app entry page cannot resolve its JavaScript to HTML." }],
+  },
+  {
     version: "1.1.546",
     date: "2026-09-20",
     items: [{ category: "Fix", text: "Electron now clears its renderer cache and cache-busts the app entry page after updates to prevent a white startup window." }],
