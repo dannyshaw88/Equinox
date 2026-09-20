@@ -5,11 +5,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 interface Props {
   open: boolean;
   proxyDisplay: string;
+  warningText: string;
   onCancel: () => void;
   onContinue: () => void;
 }
 
-export function LoginRateLimitDialog({ open, proxyDisplay, onCancel, onContinue }: Props) {
+export function LoginRateLimitDialog({ open, proxyDisplay, warningText, onCancel, onContinue }: Props) {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onCancel(); }}>
       <DialogContent className="max-w-md">
@@ -19,9 +20,13 @@ export function LoginRateLimitDialog({ open, proxyDisplay, onCancel, onContinue 
             IP Login Rate Limit Warning
           </DialogTitle>
         </DialogHeader>
-        <div className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{proxyDisplay}</span> has verified{" "}
-          <span className="font-semibold text-red-600 dark:text-red-400">3 new accounts in the last 6 hours</span>.
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <div>
+            <span className="font-semibold text-foreground">{proxyDisplay}</span> {warningText}
+          </div>
+          <div className="text-xs">
+            The limit is tracked separately for browser logins and API logins. Continue only if you accept the IP risk.
+          </div>
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onCancel}>Cancel</Button>

@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.538",
+    date: "2026-09-20",
+    items: [
+      {
+        category: "Safety",
+        text: "IP verification protection now tracks browser logins and API logins separately per IP, blocks recent repeats within 60 minutes, and warns when another account on the same IP is already Verifying to API.",
+      },
+    ],
+  },
+  {
     version: "1.1.537",
     date: "2026-09-20",
     items: [

@@ -30,7 +30,7 @@ import { useSelectedProfiles } from "@/contexts/SelectedProfilesContext";
 import { TrustScoreBadge, getTrustScore, getTrustLevels, setTrustScore } from "@/components/TrustScoreBadge";
 import type { AccountStatus } from "@shared/schema";
 import { api } from "@shared/routes";
-import { shouldWarnForNewAccount, recordLoginEvent } from "@/lib/ipLoginTracker";
+import { getLoginRateLimitWarning, recordLoginEvent } from "@/lib/ipLoginTracker";
 import { LoginRateLimitDialog } from "@/components/LoginRateLimitDialog";
 
 // ── Status metadata ──────────────────────────────────────────────────────────
@@ -254,6 +254,7 @@ export function ProfilesPage() {
   // IP login rate limit warning dialog state — stores display info + confirm callback
   const [loginWarnState, setLoginWarnState] = useState<{
     proxyDisplay: string;
+    warningText: string;
     onConfirm: () => void;
   } | null>(null);
 
@@ -296,9 +297,25 @@ export function ProfilesPage() {
     const port: number | null = p
       ? (p.proxyId && proxies ? (proxies.find(x => x.id === p.proxyId)?.port ?? p.proxyPort ?? null) : (p.proxyPort ?? null))
       : null;
-    if (host && shouldWarnForNewAccount(host, port, id)) {
+    const recentWarning = getLoginRateLimitWarning(host, port);
+    const sameIpProfiles = (profiles ?? []).filter(other => {
+      if (other.id === id) return false;
+      const otherProxy = other.proxyId && proxies
+        ? proxies.find(x => x.id === other.proxyId)
+        : null;
+      return (otherProxy?.host ?? other.proxyHost ?? null) === host &&
+        (otherProxy?.port ?? other.proxyPort ?? null) === port;
+    });
+    const hasBrowserVerifiedAccount = sameIpProfiles.some(other => other.accountStatus === "valid");
+    const hasApiVerificationPending = sameIpProfiles.some(other => other.accountStatus === "verifying_to_api");
+    const statusConflict = hasBrowserVerifiedAccount && hasApiVerificationPending;
+    if (host && (recentWarning || statusConflict)) {
+      const warningText = statusConflict
+        ? "already has one account verified in the browser while another account is Verifying to API."
+        : "has had a browser or API login within the last 60 minutes.";
       setLoginWarnState({
         proxyDisplay: port ? `${host}:${port}` : host,
+        warningText,
         onConfirm: () => { setLoginWarnState(null); _executeVerify(id, host, port); },
       });
       return;
@@ -2718,6 +2735,7 @@ export function ProfilesPage() {
         <LoginRateLimitDialog
           open
           proxyDisplay={loginWarnState.proxyDisplay}
+          warningText={loginWarnState.warningText}
           onCancel={() => setLoginWarnState(null)}
           onContinue={loginWarnState.onConfirm}
         />

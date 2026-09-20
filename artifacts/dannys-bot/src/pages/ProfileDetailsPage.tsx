@@ -35,7 +35,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
-import { shouldWarnForNewAccount, recordLoginEvent } from "@/lib/ipLoginTracker";
+import { getLoginRateLimitWarning, recordLoginEvent } from "@/lib/ipLoginTracker";
 import { ApiLeakCheck } from "@/components/ApiLeakCheck";
 import { BrowserCheck } from "@/components/BrowserCheck";
 import { HeaderCheck } from "@/components/HeaderCheck";
@@ -282,7 +282,7 @@ export function ProfileDetailsPage() {
   const [resetDeviceConfirmOpen, setResetDeviceConfirmOpen] = useState(false);
   const [loginWarnState, setLoginWarnState] = useState<{
     proxyDisplay: string;
-    minutesAgo: number;
+    warningText: string;
     bypassProxy: boolean;
     onConfirm: () => void;
   } | null>(null);
@@ -718,12 +718,25 @@ export function ProfileDetailsPage() {
   };
 
   const handleVerify = (bypassProxy = false) => {
-    const host: string | null = profile?.proxyHost ?? null;
-    const port: number | null = profile?.proxyPort ?? null;
-    if (host && !bypassProxy && shouldWarnForNewAccount(host, port, profileId)) {
+    const linkedProxy = profile?.proxyId ? proxies?.find(p => p.id === profile.proxyId) : undefined;
+    const host: string | null = linkedProxy?.host ?? profile?.proxyHost ?? null;
+    const port: number | null = linkedProxy?.port ?? profile?.proxyPort ?? null;
+    const recentWarning = getLoginRateLimitWarning(host, port);
+    const sameIpProfiles = (allProfiles ?? []).filter(other => {
+      if (other.id === profileId) return false;
+      const otherProxy = other.proxyId ? proxies?.find(p => p.id === other.proxyId) : undefined;
+      return (otherProxy?.host ?? other.proxyHost ?? null) === host &&
+        (otherProxy?.port ?? other.proxyPort ?? null) === port;
+    });
+    const hasBrowserVerifiedAccount = sameIpProfiles.some(other => other.accountStatus === "valid");
+    const hasApiVerificationPending = sameIpProfiles.some(other => other.accountStatus === "verifying_to_api");
+    const statusConflict = hasBrowserVerifiedAccount && hasApiVerificationPending;
+    if (host && !bypassProxy && (recentWarning || statusConflict)) {
       setLoginWarnState({
         proxyDisplay: port ? `${host}:${port}` : host,
-        minutesAgo: 0,
+        warningText: statusConflict
+          ? "already has one account verified in the browser while another account is Verifying to API."
+          : "has had a browser or API login within the last 60 minutes.",
         bypassProxy,
         onConfirm: () => { setLoginWarnState(null); _executeVerify(bypassProxy); },
       });
@@ -2050,7 +2063,7 @@ export function ProfileDetailsPage() {
         <LoginRateLimitDialog
           open
           proxyDisplay={loginWarnState.proxyDisplay}
-          minutesAgo={loginWarnState.minutesAgo}
+          warningText={loginWarnState.warningText}
           onCancel={() => setLoginWarnState(null)}
           onContinue={loginWarnState.onConfirm}
         />
