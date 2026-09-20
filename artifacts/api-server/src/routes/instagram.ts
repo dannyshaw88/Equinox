@@ -147,6 +147,10 @@ const VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1000; // covers the maximum persisted A
 const API_VERIFY_MIN_DELAY_MINUTES = 30;
 const API_VERIFY_MAX_DELAY_MINUTES = 99;
 
+function hasScheduledApiVerifyMessage(statusMessage?: string | null): boolean {
+  return /browser verification succeeded\.\s*mobile api verification is scheduled in \d+ minutes\./i.test(statusMessage ?? "");
+}
+
 function chooseApiVerifyAfter(): { at: string; minutes: number } {
   const minutes = API_VERIFY_MIN_DELAY_MINUTES +
     Math.floor(Math.random() * (API_VERIFY_MAX_DELAY_MINUTES - API_VERIFY_MIN_DELAY_MINUTES + 1));
@@ -186,7 +190,13 @@ async function resumeStuckVerifyingAccounts(): Promise<void> {
   }
 
   const stuck = allProfiles.filter(p =>
-    p.accountStatus === "verifying" || p.accountStatus === "verifying_to_api"
+    p.accountStatus === "verifying" ||
+    p.accountStatus === "verifying_to_api" ||
+    // Rows created by the pre-deadline build can be left as "pending" with
+    // only the scheduled message. If they still have session cookies, recover
+    // them into the durable handoff so the countdown and API worker share one
+    // persisted deadline instead of relying on a static tooltip.
+    hasScheduledApiVerifyMessage(p.statusMessage)
   );
   if (stuck.length === 0) return;
 

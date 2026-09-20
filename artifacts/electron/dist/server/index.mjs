@@ -170761,6 +170761,9 @@ var verifyInFlight = /* @__PURE__ */ new Map();
 var VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1e3;
 var API_VERIFY_MIN_DELAY_MINUTES = 30;
 var API_VERIFY_MAX_DELAY_MINUTES = 99;
+function hasScheduledApiVerifyMessage(statusMessage) {
+  return /browser verification succeeded\.\s*mobile api verification is scheduled in \d+ minutes\./i.test(statusMessage ?? "");
+}
 function chooseApiVerifyAfter() {
   const minutes = API_VERIFY_MIN_DELAY_MINUTES + Math.floor(Math.random() * (API_VERIFY_MAX_DELAY_MINUTES - API_VERIFY_MIN_DELAY_MINUTES + 1));
   return {
@@ -170785,7 +170788,11 @@ async function resumeStuckVerifyingAccounts() {
     return;
   }
   const stuck = allProfiles.filter(
-    (p) => p.accountStatus === "verifying" || p.accountStatus === "verifying_to_api"
+    (p) => p.accountStatus === "verifying" || p.accountStatus === "verifying_to_api" || // Rows created by the pre-deadline build can be left as "pending" with
+    // only the scheduled message. If they still have session cookies, recover
+    // them into the durable handoff so the countdown and API worker share one
+    // persisted deadline instead of relying on a static tooltip.
+    hasScheduledApiVerifyMessage(p.statusMessage)
   );
   if (stuck.length === 0) return;
   const withCookies = stuck.filter((p) => p.igApiCookies && p.igApiCookies.includes("sessionid="));
