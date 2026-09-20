@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.531",
+    date: "2026-09-20",
+    items: [
+      {
+        category: "Fix",
+        text: "Verify now keeps the browser open until cookies and the Mobile API verification handoff are durably saved. Accounts and Statistics both show an animated Verifying to API state while the cooldown is active.",
+      },
+    ],
+  },
+  {
     version: "1.1.530",
     date: "20 Sep 2026",
     items: [

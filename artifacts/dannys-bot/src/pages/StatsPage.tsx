@@ -20,7 +20,7 @@ import {
 import {
   User, Heart, MessageCircle, Eye, UserPlus, UserMinus, Mail, Activity,
   Settings2, ChevronDown, ChevronUp, ChevronRight, Fingerprint, Monitor, ImagePlus,
-  BarChart2, Zap, Repeat2, ShieldAlert, PhoneOff, Webhook, Bot, Globe, Lock, Flag,
+  BarChart2, Zap, Repeat2, ShieldAlert, PhoneOff, Webhook, Bot, Globe, Lock, Flag, Loader2,
 } from "lucide-react";
 import { type Profile, type Tool } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
@@ -68,8 +68,10 @@ const STATUS_DISPLAY: Record<string, { label: string; pill: string }> = {
 function StatusPill({ status }: { status?: string | null }) {
   const s = status ?? "pending";
   const d = STATUS_DISPLAY[s] ?? { label: s.replace(/_/g, " "), pill: "bg-slate-50 text-slate-600 border-slate-200" };
+  const isVerifying = s === "verifying" || s === "verifying_to_api";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded-full border whitespace-nowrap ${d.pill}`}>
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full border whitespace-nowrap ${d.pill}`}>
+      {isVerifying && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
       {d.label}
     </span>
   );

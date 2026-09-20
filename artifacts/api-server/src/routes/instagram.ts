@@ -2330,9 +2330,32 @@ export async function registerInstagramRoutes(
     let loginResult: { ok: boolean; message: string };
     let _silentCookies: Array<{ name: string; value: string }> | null = null;
 
+    let closeVerifyBrowser: (() => Promise<void>) | null = null;
     if (process.env.EB_IPC_PORT) {
-      // Electron mode — auto-open the visible EB, run login, harvest cookies, auto-close.
+      // Electron mode — auto-open the visible EB, run login, and harvest cookies.
+      // The browser is closed only after the durable API handoff is written below.
       const _verifyIpcPort = Number(process.env.EB_IPC_PORT);
+      let browserWasOpened = false;
+      closeVerifyBrowser = async () => {
+        if (!browserWasOpened) return;
+        browserWasOpened = false;
+        // Give Instagram's post-2FA navigation a moment to settle. The
+        // session cookie is already captured, but closing immediately after
+        // the toolbar command can make a successful login look interrupted.
+        await new Promise(resolve => setTimeout(resolve, 1_000));
+        try {
+          const closeResponse = await fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/close`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ profileId }),
+          });
+          if (!closeResponse.ok) {
+            console.warn(`[verify:${profileId}] @${profile.username} — /eb/close returned HTTP ${closeResponse.status}`);
+          }
+        } catch (closeErr: any) {
+          console.warn(`[verify:${profileId}] @${profile.username} — /eb/close failed: ${closeErr?.message ?? closeErr}`);
+        }
+      };
 
       // Step 1: open the visible EB browser so the user can watch the login flow.
       try {
@@ -2364,6 +2387,7 @@ export async function registerInstagramRoutes(
         if (!openResponse.ok) {
           throw new Error(`/eb/open returned HTTP ${openResponse.status}`);
         }
+        browserWasOpened = true;
         console.log(`[verify:${profileId}] @${profile.username} — /eb/open completed with native toolbar ready`);
       } catch (openErr: any) {
         console.warn(`[verify:${profileId}] @${profile.username} — /eb/open failed (non-fatal): ${openErr?.message}`);
@@ -2377,14 +2401,6 @@ export async function registerInstagramRoutes(
         console.log(`[verify:${profileId}] @${profile.username} — native toolbar Login done: ok=${loginResult.ok} msg="${loginResult.message}" cookies=${_silentCookies.length} (${_silentCookies.map(c => c.name).join(",")})`);
       } catch (ebErr: any) {
         loginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
-      } finally {
-        // Step: auto-close the EB now that cookies are harvested — the mobile API
-        // confirmation step does not need the browser open.
-        fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/close`, {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ profileId }),
-        }).catch(() => {});
       }
     } else {
       // Puppeteer / dev mode — use the visible EB window.
@@ -2445,6 +2461,7 @@ export async function registerInstagramRoutes(
 
       if (!sessionid) {
         console.warn(`[verify:${profileId}] @${profile.username} — no sessionid in cookies — aborting`);
+        if (closeVerifyBrowser) await closeVerifyBrowser();
         result = {
           ok: false,
           accountStatus: "pending",
@@ -2474,6 +2491,10 @@ export async function registerInstagramRoutes(
           apiVerifyAfter: scheduledApiVerify.at,
           statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
         } as any);
+        // The status/cookie handoff is now durable. Only close the visible
+        // browser after this point so the UI cannot disappear before the
+        // account enters the API-verification state.
+        if (closeVerifyBrowser) await closeVerifyBrowser();
         sendLoginDone(
           profileId,
           true,
@@ -2568,6 +2589,7 @@ export async function registerInstagramRoutes(
         }
       }
     } else {
+      if (closeVerifyBrowser) await closeVerifyBrowser();
       // Classify the failure
       const msg = loginResult.message ?? "";
       let accountStatus = "locked";
@@ -5046,6 +5068,7 @@ export async function registerInstagramRoutes(
       verifyInFlight.delete(profile.id);
       verifyInFlight.set(profile.id, Date.now());
 
+      let closeBulkBrowser: (() => Promise<void>) | null = null;
       try {
         await storage.updateProfile(profile.id, { accountStatus: "verifying", apiVerifyAfter: null, statusMessage: null } as any);
 
@@ -5082,8 +5105,26 @@ export async function registerInstagramRoutes(
 
         if (process.env.EB_IPC_PORT) {
           let bulkEbOpened = false;
+          const bulkIpcPort = Number(process.env.EB_IPC_PORT);
+          closeBulkBrowser = async () => {
+            if (!bulkEbOpened) return;
+            bulkEbOpened = false;
+            await new Promise(resolve => setTimeout(resolve, 1_000));
+            try {
+              const closeResponse = await fetch(`http://127.0.0.1:${bulkIpcPort}/eb/close`, {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ profileId: profile.id }),
+              });
+              if (!closeResponse.ok) {
+                console.warn(`[bulk-verify] @${profile.username} — /eb/close returned HTTP ${closeResponse.status}`);
+              }
+            } catch (closeErr: any) {
+              console.warn(`[bulk-verify] @${profile.username} — /eb/close failed: ${closeErr?.message ?? closeErr}`);
+            }
+          };
           try {
-            const bulkOpenResponse = await fetch(`http://127.0.0.1:${Number(process.env.EB_IPC_PORT)}/eb/open`, {
+            const bulkOpenResponse = await fetch(`http://127.0.0.1:${bulkIpcPort}/eb/open`, {
               method:  "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -5111,14 +5152,6 @@ export async function registerInstagramRoutes(
             _bulkSilentCookies = await getSessionPageCookies(profile.id);
           } catch (ebErr: any) {
             bulkLoginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
-          } finally {
-            if (bulkEbOpened) {
-              fetch(`http://127.0.0.1:${Number(process.env.EB_IPC_PORT)}/eb/close`, {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ profileId: profile.id }),
-              }).catch(() => {});
-            }
           }
         } else {
           await getOrCreateSession(profile.id, bulkEbUA, bulkProxyConfig, effectiveP.userAgentApi);
@@ -5151,6 +5184,7 @@ export async function registerInstagramRoutes(
           const dsUserId  = rawCookies.find(c => c.name === "ds_user_id")?.value;
           const mid       = rawCookies.find(c => c.name === "mid")?.value;
           if (!sessionid) {
+             if (closeBulkBrowser) await closeBulkBrowser();
             result = {
               ok: false,
               accountStatus: "pending",
@@ -5169,6 +5203,7 @@ export async function registerInstagramRoutes(
               apiVerifyAfter: scheduledApiVerify.at,
               statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
             } as any);
+             if (closeBulkBrowser) await closeBulkBrowser();
             console.log(`[bulk-verify] @${profile.username} — browser verified; mobile API scheduled in ${scheduledApiVerify.minutes} minutes`);
             if (!(await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at))) {
               result = {
@@ -5183,6 +5218,7 @@ export async function registerInstagramRoutes(
             }
           }
         } else {
+          if (closeBulkBrowser) await closeBulkBrowser();
           const msg = bulkLoginResult.message ?? "";
           let accountStatus = "locked";
           if (/2fa|two.factor|two_factor/i.test(msg))                              accountStatus = "2fa_verification";
@@ -5216,6 +5252,7 @@ export async function registerInstagramRoutes(
         });
       } catch {
         // Unexpected error — reset to pending so the account isn't stuck in "verifying"
+        if (closeBulkBrowser) await closeBulkBrowser();
         await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null } as any);
       } finally {
         verifyInFlight.delete(profile.id);

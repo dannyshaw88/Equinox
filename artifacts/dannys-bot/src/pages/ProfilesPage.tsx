@@ -1464,7 +1464,10 @@ export function ProfilesPage() {
               // short window between the Verify response and the next profile
               // poll, a stale accountStatus can still say "pending" even though
               // the server has already persisted the API deadline and message.
-              const hasScheduledApiVerify = !!(profile.apiVerifyAfter && profile.statusMessage?.includes("Mobile API verification is scheduled"));
+              // apiVerifyAfter is the durable handoff marker. The message is
+              // useful for older rows, but must not be required because list
+              // responses and status events can arrive in either order.
+              const hasScheduledApiVerify = !!profile.apiVerifyAfter;
               const persistedStatus = hasScheduledApiVerify ? "verifying_to_api" : (profile.accountStatus ?? "pending");
               const acctStatus = (verifyingIds.has(profile.id) ? "verifying" : persistedStatus) as AccountStatus;
               const isStopped  = acctStatus === "stopped";
