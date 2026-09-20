@@ -6516,6 +6516,10 @@ export async function browserAutoLogin(
               }
               sendStatus(profileId, "✓ Session confirmed after consent page — sessionid present.");
             }
+            // Keep the visible browser open after the TOTP submission so
+            // Instagram can finish the logged-in redirect and session UI
+            // before the caller harvests cookies and closes the window.
+            await delay(7000);
             await saveCookies(profileId, s.page);
             s.lastLoginSuccessAt = Date.now();
             if (sessions.get(profileId)?.sessionToken !== mySessionToken) {

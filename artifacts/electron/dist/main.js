@@ -63,7 +63,7 @@ function buildNativeToolbarHtml(isGhost) {
   const ghostNavHtml = `<button title="Back" onclick="cmd('back')">&#9664;</button><button title="Forward" onclick="cmd('forward')">&#9654;</button><button title="Reload" onclick="cmd('reload')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button><button title="Instagram Home" onclick="cmd('navigate',{url:'https://www.instagram.com/'})"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button><span class="sep"></span><input id="url" type="text" spellcheck="false"><span class="sep"></span><button title="Run in-app leak test \u2014 checks IP, WebRTC, WebDriver, Canvas, Audio, WebGL and more" onclick="cmd('leak-check')">&#128737; Leak Check</button><span class="sep"></span><span id="timer">0:00</span>`;
   const navHtml = `<button title="Back" onclick="cmd('back')">&#9664;</button><button title="Forward" onclick="cmd('forward')">&#9654;</button><button title="Reload" onclick="cmd('reload')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button><button title="Instagram Home" onclick="cmd('navigate',{url:'https://www.instagram.com/'})"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button><span class="sep"></span><input id="url" type="text" spellcheck="false"><span class="sep"></span><button id="lbtn" title="Fill login fields and submit" onclick="doLogin()">Login</button><button title="Generate TOTP code" onclick="cmd('totp')">2FA</button><button title="Type phone number" onclick="cmd('phone')">Phone</button><button title="Type email address" onclick="cmd('email-user')">Email</button><button title="Type email password" onclick="cmd('email-pass')">Email Pass</button><button title="Run in-app leak test \u2014 checks IP, WebRTC, WebDriver, Canvas, Audio, WebGL and more" onclick="cmd('leak-check')">&#128737; Leak Check</button><span class="sep"></span><span id="timer">0:00</span>`;
   const script = `function cmd(c,p){return window.__eq&&window.__eq.command(c,p);}
-function doLogin(){var b=document.getElementById('lbtn');if(!b)return;b.disabled=true;Promise.resolve(cmd('login')).then(function(){b.disabled=false;}).catch(function(){b.disabled=false;});}
+ function doLogin(){var b=document.getElementById('lbtn');if(!b)return Promise.reject(new Error('Login toolbar button not found'));b.disabled=true;var p=Promise.resolve(cmd('login')).then(function(result){b.disabled=false;return result;}).catch(function(err){b.disabled=false;throw err;});window.__eqLoginPromise=p;return p;}
 var u=document.getElementById('url');
 u.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();var v=u.value.trim();if(v&&v.indexOf('http')!==0)v='https://'+v;cmd('navigate',{url:v});}});
 // Select all text on click so the user can immediately type a new URL
@@ -2022,12 +2022,10 @@ async function openEbWindow(opts) {
       const _wasHidden = !existing.win.isVisible();
       if (existing.win.isMinimized()) existing.win.restore();
       existing.win.setSkipTaskbar(false);
-      if (!isGhostBrowser && !existing.win.isMaximized()) {
-        const _eb = existing.win.getBounds();
-        const _disp = eScreen.getDisplayNearestPoint({ x: _eb.x, y: _eb.y });
-        existing.win.setBounds(_disp.workArea);
-      }
       if (!existing.win.isVisible()) existing.win.show();
+      if (!isGhostBrowser && !existing.win.isMaximized()) {
+        existing.win.maximize();
+      }
       existing.win.focus();
       const currentUrl = existing.win.webContents.getURL();
       {
@@ -2322,8 +2320,8 @@ async function openEbWindow(opts) {
         win2.show();
       }
     } else {
-      win2.show();
       win2.maximize();
+      win2.show();
     }
   });
   _ebCrashLog(profileId, "STEP-12: BrowserWindow created, registering in ebMap");
@@ -4345,7 +4343,7 @@ function startEbIpcServer(serverPort2, cookiesDir, iconPath) {
       const pid = Number(body.profileId ?? 0);
       if (req.method === "POST" && u.pathname === "/eb/open") {
         const parsedFp = body.ebFingerprint ? typeof body.ebFingerprint === "string" ? JSON.parse(body.ebFingerprint) : body.ebFingerprint : null;
-        openEbWindow({
+        const openPromise = openEbWindow({
           profileId: pid,
           username: body.username ?? String(pid),
           password: body.password,
@@ -4358,7 +4356,17 @@ function startEbIpcServer(serverPort2, cookiesDir, iconPath) {
           initialUrl: body.initialUrl ?? void 0,
           verifyMode: body.verifyMode === true,
           silentMode: body.silentMode === true
-        }).catch((err) => console.error(`[eb:open:${pid}] openEbWindow error:`, err?.message ?? err));
+        });
+        if (body.waitForToolbar === true) {
+          try {
+            await openPromise;
+            return send(res, 200, { ok: true, toolbarReady: true });
+          } catch (err) {
+            console.error(`[eb:open:${pid}] openEbWindow error:`, err?.message ?? err);
+            return send(res, 500, { ok: false, message: err?.message ?? "Could not open browser" });
+          }
+        }
+        openPromise.catch((err) => console.error(`[eb:open:${pid}] openEbWindow error:`, err?.message ?? err));
         return send(res, 200, { ok: true });
       }
       if (req.method === "POST" && u.pathname === "/eb/focus") {
@@ -5725,6 +5733,86 @@ function startEbIpcServer(serverPort2, cookiesDir, iconPath) {
         }
         const result = await doAutoLogin(pid, e.win, body.username, body.password, body.twoFAKey ?? "", body.userAgent);
         return send(res, 200, result);
+      }
+      if (req.method === "POST" && u.pathname === "/eb/click-toolbar-login") {
+        let tv;
+        let pageWc = null;
+        let clickResult = null;
+        let toolbarReady = false;
+        const toolbarDeadline = Date.now() + 2e4;
+        while (Date.now() < toolbarDeadline) {
+          tv = toolbarViewMap.get(pid);
+          pageWc = getActiveWc(pid);
+          if (tv && !tv.webContents.isDestroyed() && pageWc && !pageWc.isDestroyed()) {
+            toolbarReady = await tv.webContents.executeJavaScript(`(() => {
+              const button = document.getElementById("lbtn");
+              return !!button && !button.disabled;
+            })()`, true).catch(() => false);
+            if (toolbarReady) break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        if (!toolbarReady || !tv || tv.webContents.isDestroyed() || !pageWc || pageWc.isDestroyed()) {
+          return send(res, 200, { ok: false, message: "Browser toolbar did not become ready" });
+        }
+        const cookieBannerPositionJs = `(() => {
+          const labels = new Set([
+            "allow all cookies", "accept all cookies", "allow all", "accept all",
+            "allow essential and optional cookies", "accept cookies", "allow cookies",
+            "alle cookies akzeptieren", "accepter tout", "aceptar todo",
+            "accetta tutto", "till\xE5t alla", "alle accepteren"
+          ]);
+          const visible = (el) => {
+            if (!el || !el.getBoundingClientRect) return false;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return false;
+            return labels.has((el.innerText || el.textContent || "").trim().toLowerCase());
+          };
+          let button = document.querySelector('[data-cookiebanner="accept_button"]')
+            || document.querySelector('[data-testid="cookie-policy-banner-accept"]');
+          if (button && visible(button)) {
+            const r = button.getBoundingClientRect();
+            return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+          }
+          const container = document.querySelector('[data-cookiebanner]')
+            || document.querySelector('[class*="CookieBanner"],[class*="cookie-banner"],[id*="cookie"]');
+          const candidate = container
+            ? Array.from(container.querySelectorAll("button,[role=button]")).find(visible)
+            : Array.from(document.querySelectorAll("button,[role=button]")).find(visible);
+          if (!candidate) return null;
+          const r = candidate.getBoundingClientRect();
+          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        })()`;
+        const cookieDeadline = Date.now() + 2e4;
+        while (Date.now() < cookieDeadline) {
+          const cookiePos = await pageWc.executeJavaScript(cookieBannerPositionJs).catch(() => null);
+          if (!cookiePos) break;
+          await humanMouseClick(pageWc, cookiePos.x, cookiePos.y);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+        clickResult = await tv.webContents.executeJavaScript(`(() => {
+          const button = document.getElementById("lbtn");
+          if (!button || button.disabled) {
+            return { ok: false, message: "Login toolbar button became unavailable" };
+          }
+          button.click();
+          return { ok: true, message: "Toolbar Login clicked" };
+        })()`, true).catch((err) => ({
+          ok: false,
+          message: `Could not click toolbar Login: ${err?.message ?? "unknown error"}`
+        }));
+        if (!clickResult.ok) return send(res, 200, clickResult);
+        const session = import_electron.session.fromPartition(ebPartition(pid));
+        const sessionDeadline = Date.now() + 18e4;
+        while (Date.now() < sessionDeadline) {
+          const cookies = await session.cookies.get({ name: "sessionid", domain: ".instagram.com" }).catch(() => []);
+          if (cookies.some((c) => c.value.length > 5)) {
+            await new Promise((resolve) => setTimeout(resolve, 7e3));
+            return send(res, 200, { ok: true, message: "Toolbar Login completed" });
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1e3));
+        }
+        return send(res, 200, { ok: false, message: "Toolbar Login did not produce a session cookie" });
       }
       if (req.method === "GET" && u.pathname === "/eb/silent-verify-status") {
         const statusPid = Number(u.searchParams.get("profileId") ?? "0");

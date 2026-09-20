@@ -146892,6 +146892,7 @@ var proxies = sqliteTable("proxies", {
 });
 var ACCOUNT_STATUSES = [
   "verifying",
+  "verifying_to_api",
   "valid",
   "banned",
   "captcha",
@@ -146956,6 +146957,7 @@ var profiles = sqliteTable("profiles", {
   notes: text("notes"),
   resumingUntil: text("resuming_until"),
   resumingPrevStatus: text("resuming_prev_status"),
+  apiVerifyAfter: text("api_verify_after"),
   phoneNumber: text("phone_number"),
   twoFASecretKey: text("two_fa_secret_key"),
   backupCodes: text("backup_codes"),
@@ -147340,6 +147342,7 @@ sqlite.exec(`
     proxy_password TEXT,
     status TEXT NOT NULL DEFAULT 'idle',
     account_status TEXT NOT NULL DEFAULT 'pending',
+     api_verify_after TEXT,
     status_message TEXT,
     user_agent_api TEXT,
     user_agent_embedded TEXT,
@@ -147640,6 +147643,9 @@ if (!colNames.has("resuming_until")) {
 }
 if (!colNames.has("resuming_prev_status")) {
   sqlite.exec(`ALTER TABLE profiles ADD COLUMN resuming_prev_status TEXT;`);
+}
+if (!colNames.has("api_verify_after")) {
+  sqlite.exec(`ALTER TABLE profiles ADD COLUMN api_verify_after TEXT;`);
 }
 if (!colNames.has("use_home_ip")) {
   sqlite.exec(`ALTER TABLE profiles ADD COLUMN use_home_ip INTEGER DEFAULT 0;`);
@@ -154550,45 +154556,6 @@ async function getSessionPageCookies(profileId) {
     return [];
   }
 }
-async function electronSilentVerify(opts) {
-  if (!IS_ELECTRON_EB) {
-    return { ok: false, message: "electronSilentVerify called outside Electron mode", cookies: [] };
-  }
-  try {
-    const startRes = await ebIpc("POST", "/eb/silent-verify", opts);
-    if (!startRes.pending) {
-      return {
-        ok: startRes.ok ?? false,
-        message: startRes.message ?? "",
-        cookies: Array.isArray(startRes.cookies) ? startRes.cookies : []
-      };
-    }
-    const deadline = Date.now() + 10 * 6e4;
-    const pollStart = Date.now();
-    let pollCount = 0;
-    while (Date.now() < deadline) {
-      await new Promise((r2) => setTimeout(r2, 3e3));
-      pollCount++;
-      const elapsed = ((Date.now() - pollStart) / 1e3).toFixed(0);
-      log(`[electronSilentVerify:${opts.profileId}] poll #${pollCount} at +${elapsed}s`, "browser");
-      const status = await ebIpc("GET", `/eb/silent-verify-status?profileId=${opts.profileId}`);
-      log(`[electronSilentVerify:${opts.profileId}] poll #${pollCount} response: done=${status.done}${status.done ? ` ok=${status.ok}` : ""}${status.error ? ` error=${status.error}` : ""}`, "browser");
-      if (status.done) {
-        log(`[electronSilentVerify:${opts.profileId}] completed after ${pollCount} polls (+${elapsed}s) ok=${status.ok} msg="${status.message}"`, "browser");
-        return {
-          ok: status.ok ?? false,
-          message: status.message ?? "",
-          cookies: Array.isArray(status.cookies) ? status.cookies : []
-        };
-      }
-    }
-    log(`[electronSilentVerify:${opts.profileId}] timed out after 10 minutes (${pollCount} polls)`, "browser");
-    return { ok: false, message: "Silent verify timed out (10 minutes)", cookies: [] };
-  } catch (err) {
-    log(`[electronSilentVerify:${opts.profileId}] IPC error: ${err?.message}`, "browser");
-    return { ok: false, message: err?.message ?? "Silent verify IPC failed", cookies: [] };
-  }
-}
 async function runSilentLeakTest(profileId, accountData) {
   const acctJson = JSON.stringify({
     profileId: null,
@@ -155294,6 +155261,7 @@ async function browserAutoLogin(profileId, username, password, twoFAKey) {
               }
               sendStatus(profileId, "\u2713 Session confirmed after consent page \u2014 sessionid present.");
             }
+            await delay(7e3);
             await saveCookies(profileId, s.page);
             s.lastLoginSuccessAt = Date.now();
             if (sessions.get(profileId)?.sessionToken !== mySessionToken) {
@@ -155380,6 +155348,18 @@ async function browserAutoLogin(profileId, username, password, twoFAKey) {
     return { ok: false, message: msg };
   } finally {
     s.autoLoginInProgress = false;
+  }
+}
+async function browserToolbarLogin(profileId) {
+  if (!IS_ELECTRON_EB) {
+    return { ok: false, message: "Native browser toolbar is only available in Electron mode" };
+  }
+  try {
+    return await ebIpc("POST", "/eb/click-toolbar-login", { profileId });
+  } catch (err) {
+    const msg = `Toolbar Login IPC error: ${err?.message ?? "unknown error"}`;
+    sendStatus(profileId, `\u274C ${msg}`);
+    return { ok: false, message: msg };
   }
 }
 async function _startSignupScreencast() {
@@ -170778,23 +170758,22 @@ function pickUAForAccount(username) {
 }
 var DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 var verifyInFlight = /* @__PURE__ */ new Map();
-var VERIFY_LOCK_TTL_MS = 10 * 60 * 1e3;
-var _silentVerifySlotFree = true;
-var _silentVerifyWaiters = [];
-function acquireSilentVerifySlot() {
-  if (_silentVerifySlotFree) {
-    _silentVerifySlotFree = false;
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => _silentVerifyWaiters.push(resolve));
+var VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1e3;
+var API_VERIFY_MIN_DELAY_MINUTES = 30;
+var API_VERIFY_MAX_DELAY_MINUTES = 99;
+function chooseApiVerifyAfter() {
+  const minutes = API_VERIFY_MIN_DELAY_MINUTES + Math.floor(Math.random() * (API_VERIFY_MAX_DELAY_MINUTES - API_VERIFY_MIN_DELAY_MINUTES + 1));
+  return {
+    minutes,
+    at: new Date(Date.now() + minutes * 60 * 1e3).toISOString()
+  };
 }
-function releaseSilentVerifySlot() {
-  const next = _silentVerifyWaiters.shift();
-  if (next) {
-    next();
-  } else {
-    _silentVerifySlotFree = true;
-  }
+async function waitUntilApiVerifyAfter(profileId, deadline) {
+  const remainingMs = new Date(deadline).getTime() - Date.now();
+  if (!Number.isFinite(remainingMs)) return false;
+  if (remainingMs > 0) await new Promise((resolve) => setTimeout(resolve, remainingMs));
+  const latest = await storage.getProfile(profileId).catch(() => null);
+  return !!latest && latest.accountStatus === "verifying_to_api" && latest.apiVerifyAfter === deadline && !!latest.igApiCookies?.includes("sessionid=");
 }
 async function resumeStuckVerifyingAccounts() {
   await new Promise((resolve) => setTimeout(resolve, 3e3));
@@ -170805,35 +170784,64 @@ async function resumeStuckVerifyingAccounts() {
     console.warn("[startup:resume] Could not load profiles:", err);
     return;
   }
-  const stuck = allProfiles.filter((p) => p.accountStatus === "verifying");
+  const stuck = allProfiles.filter(
+    (p) => p.accountStatus === "verifying" || p.accountStatus === "verifying_to_api"
+  );
   if (stuck.length === 0) return;
   const withCookies = stuck.filter((p) => p.igApiCookies && p.igApiCookies.includes("sessionid="));
   const withoutCookies = stuck.filter((p) => !p.igApiCookies || !p.igApiCookies.includes("sessionid="));
   for (const p of withoutCookies) {
-    await storage.updateProfile(p.id, { accountStatus: "pending" }).catch(() => {
+    await storage.updateProfile(p.id, {
+      accountStatus: "pending",
+      apiVerifyAfter: null,
+      statusMessage: null
+    }).catch(() => {
     });
     console.warn(`[startup:resume] @${p.username} \u2014 no igApiCookies \u2192 reset to pending`);
   }
   if (withCookies.length === 0) return;
-  console.log(`[startup:resume] ${withCookies.length} account(s) resuming mobile API bootstrap`);
-  for (let i2 = 0; i2 < withCookies.length; i2++) {
-    const profile = withCookies[i2];
-    if (i2 > 0) await new Promise((resolve) => setTimeout(resolve, 6e3 + Math.floor(Math.random() * 4e3)));
-    await acquireSilentVerifySlot();
-    try {
-      console.log(`[startup:resume] @${profile.username} \u2014 running verifyInstagramCredentials (Path 2)`);
+  console.log(`[startup:resume] ${withCookies.length} account(s) have a persisted mobile API handoff`);
+  for (const profile of withCookies) {
+    let deadline = profile.apiVerifyAfter;
+    if (!deadline || !Number.isFinite(new Date(deadline).getTime())) {
+      const scheduled = chooseApiVerifyAfter();
+      deadline = scheduled.at;
+      await storage.updateProfile(profile.id, {
+        accountStatus: "verifying_to_api",
+        apiVerifyAfter: deadline,
+        statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduled.minutes} minutes.`
+      }).catch(() => {
+      });
+    } else if (profile.accountStatus !== "verifying_to_api") {
+      await storage.updateProfile(profile.id, { accountStatus: "verifying_to_api" }).catch(() => {
+      });
+    }
+    void (async () => {
+      if (!await waitUntilApiVerifyAfter(profile.id, deadline)) {
+        console.log(`[startup:resume] @${profile.username} \u2014 cooldown was cancelled or cookies are gone`);
+        return;
+      }
+      const current = await storage.getProfile(profile.id).catch(() => null);
+      if (!current || current.accountStatus !== "verifying_to_api") return;
+      console.log(`[startup:resume] @${profile.username} \u2014 cooldown expired; running verifyInstagramCredentials (Path 2)`);
       let apiResult;
       try {
-        apiResult = await verifyInstagramCredentials(profile);
+        apiResult = await verifyInstagramCredentials(current);
       } catch (verifyErr) {
         console.error(`[startup:resume] threw for @${profile.username}:`, verifyErr?.message);
-        await storage.updateProfile(profile.id, { accountStatus: "pending" }).catch(() => {
+        await storage.updateProfile(profile.id, {
+          accountStatus: "pending",
+          apiVerifyAfter: null,
+          statusMessage: null
+        }).catch(() => {
         });
-        continue;
+        return;
       }
       const finalStatus = apiResult.accountStatus ?? (apiResult.ok ? "valid" : "pending");
       await storage.updateProfile(profile.id, {
         accountStatus: finalStatus,
+        apiVerifyAfter: null,
+        statusMessage: null,
         ...finalStatus === "valid" ? { credentialsDirty: false } : {},
         ...apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {},
         ..."igApiCookies" in apiResult && apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}
@@ -170852,9 +170860,15 @@ async function resumeStuckVerifyingAccounts() {
       }).catch(() => {
       });
       console.log(`[startup:resume] @${profile.username} \u2192 ${finalStatus}`);
-    } finally {
-      releaseSilentVerifySlot();
-    }
+    })().catch(async (err) => {
+      console.error(`[startup:resume] unhandled error for @${profile.username}:`, err);
+      await storage.updateProfile(profile.id, {
+        accountStatus: "pending",
+        apiVerifyAfter: null,
+        statusMessage: null
+      }).catch(() => {
+      });
+    });
   }
 }
 var SERVER_START = (/* @__PURE__ */ new Date()).toISOString();
@@ -171391,6 +171405,13 @@ ${stamp}` : stamp;
           delete body.accountStatus;
         }
       }
+      if ("accountStatus" in body && body.accountStatus === "verifying_to_api") {
+        delete body.accountStatus;
+      }
+      if ("accountStatus" in body && current?.accountStatus === "verifying_to_api" && body.accountStatus !== "verifying_to_api") {
+        body.apiVerifyAfter = null;
+        body.statusMessage = null;
+      }
       const PROTECTED_STATUSES = /* @__PURE__ */ new Set(["locked", "captcha", "automated_behaviour_detected", "valid", "stopped"]);
       if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "")) {
         console.warn(`[status-guard] BLOCKED attempt to set profile ${id} \u2192 "pending" via PATCH route (current: ${current.accountStatus})`);
@@ -171460,6 +171481,8 @@ ${stamp}` : stamp;
       igDeviceState: null,
       igApiCookies: null,
       accountStatus: "pending",
+      apiVerifyAfter: null,
+      statusMessage: null,
       credentialsDirty: true,
       ebFingerprint: JSON.stringify(generateEbFingerprint(patchedApiUA, isDesktopUA, ua.embedded))
     });
@@ -172152,7 +172175,9 @@ ${stamp_l}` : stamp_l });
     if (!profile) return res.status(404).json({ ok: false, message: "Profile not found" });
     await storage.updateProfile(profileId, {
       igApiCookies: null,
-      accountStatus: "pending"
+      accountStatus: "pending",
+      apiVerifyAfter: null,
+      statusMessage: null
     });
     await clearEbSessionCookies(profileId).catch(
       (e) => console.warn(`[profiles] clearEbSessionCookies failed for ${profileId}: ${e?.message}`)
@@ -172443,6 +172468,9 @@ ${stamp_l}` : stamp_l });
     };
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
+    if (profile.accountStatus === "verifying_to_api" && profile.apiVerifyAfter && profile.igApiCookies?.includes("sessionid=")) {
+      return fail(429, "Browser verification succeeded. Mobile API verification is already scheduled.");
+    }
     if (!profile.username || !profile.password) {
       return fail(400, "Username and password are required before verifying.");
     }
@@ -172465,7 +172493,11 @@ ${stamp_l}` : stamp_l });
         return fail(400, "No proxy assigned. Assign a proxy to this account before verifying.");
       }
     }
-    await storage.updateProfile(profile.id, { accountStatus: "verifying" });
+    await storage.updateProfile(profile.id, {
+      accountStatus: "verifying",
+      apiVerifyAfter: null,
+      statusMessage: null
+    });
     const proxyConfig = effectiveProfile.useHomeIp ? void 0 : effectiveProfile.proxyHost ? {
       host: effectiveProfile.proxyHost,
       port: effectiveProfile.proxyPort,
@@ -172485,70 +172517,78 @@ ${stamp_l}` : stamp_l });
         let result;
         let loginResult;
         let _silentCookies = null;
+        let closeVerifyBrowser = null;
         if (process.env.EB_IPC_PORT) {
           const _verifyIpcPort = Number(process.env.EB_IPC_PORT);
-          console.log(`[verify:${profileId}] @${profile.username} \u2014 waiting for verify slot`);
-          await acquireSilentVerifySlot();
-          console.log(`[verify:${profileId}] @${profile.username} \u2014 verify slot acquired`);
+          let browserWasOpened = false;
+          closeVerifyBrowser = async () => {
+            if (!browserWasOpened) return;
+            browserWasOpened = false;
+            await new Promise((resolve) => setTimeout(resolve, 1e3));
+            try {
+              const closeResponse = await fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/close`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ profileId })
+              });
+              if (!closeResponse.ok) {
+                console.warn(`[verify:${profileId}] @${profile.username} \u2014 /eb/close returned HTTP ${closeResponse.status}`);
+              }
+            } catch (closeErr) {
+              console.warn(`[verify:${profileId}] @${profile.username} \u2014 /eb/close failed: ${closeErr?.message ?? closeErr}`);
+            }
+          };
           try {
             console.log(`[verify:${profileId}] @${profile.username} \u2014 opening EB window via /eb/open`);
-            await fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/open`, {
+            const openResponse = await fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/open`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 profileId,
                 username: profile.username,
                 // NOTE: password is intentionally NOT passed here.
-                // Passing password registers openEbWindow's did-navigate auto-fill handler,
-                // which conflicts with doAutoLogin — both fire simultaneously and try to fill
-                // the same login form, causing both to silently fail (garbled input, missed
-                // fields).  doAutoLogin (called from /eb/silent-verify) is the sole owner of
-                // form interaction during the verify flow.
+                // Passing password registers openEbWindow's did-navigate auto-fill handler.
+                // Verify waits for the page-level cookie banner to disappear, then clicks
+                // the visible native toolbar Login button; no background form filler should
+                // start at the same time.
                 proxy: proxyConfig ? { host: proxyConfig.host, port: proxyConfig.port, user: proxyConfig.username, pass: proxyConfig.password } : void 0,
                 useHomeIp: !!effectiveProfile.useHomeIp,
                 userAgent: ebUA,
                 apiUA: effectiveProfile.userAgentApi ?? void 0,
-                // Opens a small (430×700) corner window so the user can watch without
-                // blocking their screen.  The window is fully visible — NOT minimised —
-                // so Chromium does not throttle it (minimised windows throttle timers
-                // causing the form-fill to type the password into the username field).
-                verifyMode: true
+                // Verify must wait until openEbWindow has created the native toolbar
+                // before it tries to click #lbtn.
+                waitForToolbar: true
+                // Use the standard Equinox Browser window so the user sees the same
+                // full browser surface as a manually opened account browser.  Do not
+                // set verifyMode here: that flag selects the special off-screen,
+                // phone-sized verification window.
               })
             });
-            console.log(`[verify:${profileId}] @${profile.username} \u2014 /eb/open responded OK, waiting 3 s for window init`);
-            await new Promise((r2) => setTimeout(r2, 3e3));
+            if (!openResponse.ok) {
+              throw new Error(`/eb/open returned HTTP ${openResponse.status}`);
+            }
+            browserWasOpened = true;
+            console.log(`[verify:${profileId}] @${profile.username} \u2014 /eb/open completed with native toolbar ready`);
           } catch (openErr) {
             console.warn(`[verify:${profileId}] @${profile.username} \u2014 /eb/open failed (non-fatal): ${openErr?.message}`);
           }
           try {
-            console.log(`[verify:${profileId}] @${profile.username} \u2014 calling electronSilentVerify`);
-            const silentRes = await electronSilentVerify({
-              profileId,
-              username: profile.username,
-              password: profile.password,
-              twoFAKey: profile.twoFASecretKey || "",
-              proxy: proxyConfig ? { host: proxyConfig.host, port: proxyConfig.port, user: proxyConfig.username, pass: proxyConfig.password } : void 0,
-              userAgent: ebUA
-            });
-            console.log(`[verify:${profileId}] @${profile.username} \u2014 electronSilentVerify done: ok=${silentRes.ok} msg="${silentRes.message}" cookies=${silentRes.cookies.length} (${silentRes.cookies.map((c3) => c3.name).join(",")})`);
-            loginResult = { ok: silentRes.ok, message: silentRes.message };
-            _silentCookies = silentRes.cookies;
+            console.log(`[verify:${profileId}] @${profile.username} \u2014 clicking native toolbar Login`);
+            loginResult = await browserToolbarLogin(profileId);
+            _silentCookies = await getSessionPageCookies(profileId);
+            console.log(`[verify:${profileId}] @${profile.username} \u2014 native toolbar Login done: ok=${loginResult.ok} msg="${loginResult.message}" cookies=${_silentCookies.length} (${_silentCookies.map((c3) => c3.name).join(",")})`);
           } catch (ebErr) {
             loginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
-          } finally {
-            releaseSilentVerifySlot();
-            fetch(`http://127.0.0.1:${_verifyIpcPort}/eb/close`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ profileId })
-            }).catch(() => {
-            });
           }
         } else {
           try {
             await getOrCreateSession(profileId, ebUA, proxyConfig, effectiveProfile.userAgentApi);
           } catch (ebErr) {
-            await storage.updateProfile(profile.id, { accountStatus: "pending" });
+            await storage.updateProfile(profile.id, {
+              accountStatus: "pending",
+              apiVerifyAfter: null,
+              statusMessage: null
+            });
             verifyInFlight.delete(profileId);
             return;
           }
@@ -172581,6 +172621,7 @@ ${stamp_l}` : stamp_l });
           const mid = rawCookies.find((c3) => c3.name === "mid")?.value;
           if (!sessionid) {
             console.warn(`[verify:${profileId}] @${profile.username} \u2014 no sessionid in cookies \u2014 aborting`);
+            if (closeVerifyBrowser) await closeVerifyBrowser();
             result = {
               ok: false,
               accountStatus: "pending",
@@ -172595,7 +172636,19 @@ ${stamp_l}` : stamp_l });
             if (mid) cookieParts.push(`mid=${mid}`);
             if (igDid) cookieParts.push(`ig_did=${igDid}`);
             const freshCookies = cookieParts.join("; ");
-            await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
+            const scheduledApiVerify = chooseApiVerifyAfter();
+            await storage.updateProfile(profile.id, {
+              igApiCookies: freshCookies,
+              accountStatus: "verifying_to_api",
+              apiVerifyAfter: scheduledApiVerify.at,
+              statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+            });
+            if (closeVerifyBrowser) await closeVerifyBrowser();
+            sendLoginDone(
+              profileId,
+              true,
+              `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+            );
             void (async () => {
               try {
                 const _proxyStr = proxyConfig ? `${proxyConfig.host}:${proxyConfig.port}` : null;
@@ -172622,6 +172675,10 @@ ${stamp_l}` : stamp_l });
                 console.warn(`[verify:${profileId}] silent leak test failed (non-fatal): ${leakErr?.message}`);
               }
             })();
+            if (!await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at)) {
+              console.warn(`[verify:${profileId}] @${profile.username} \u2014 API cooldown was cancelled before expiry`);
+              return;
+            }
             const profileWithCookies = { ...effectiveProfile, igApiCookies: freshCookies };
             let apiResult;
             try {
@@ -172634,7 +172691,7 @@ ${stamp_l}` : stamp_l });
                 message: `@${profile.username} \u2014 mobile API check failed unexpectedly: ${verifyErr?.message ?? "unknown error"}. Try verifying again.`
               };
               sendLoginDone(profileId, false, result.message ?? "");
-              await storage.updateProfile(profile.id, { accountStatus: "pending" });
+              await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null });
               verifyInFlight.delete(profileId);
               return;
             }
@@ -172650,6 +172707,7 @@ ${stamp_l}` : stamp_l });
             }
           }
         } else {
+          if (closeVerifyBrowser) await closeVerifyBrowser();
           const msg = loginResult.message ?? "";
           let accountStatus = "locked";
           if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
@@ -172682,6 +172740,8 @@ ${stamp_l}` : stamp_l });
         } else {
           await storage.updateProfile(profile.id, {
             accountStatus: finalStatus,
+            apiVerifyAfter: null,
+            statusMessage: null,
             ...finalStatus === "valid" ? { credentialsDirty: false } : {},
             ...result.igDeviceState ? { igDeviceState: result.igDeviceState } : {},
             // Save session cookies captured from the fresh login so follow/DM tools
@@ -172706,7 +172766,7 @@ ${stamp_l}` : stamp_l });
         }
       } catch (_topVerifyErr) {
         console.error(`[verify:${profileId}] unhandled crash in background verify \u2014 clearing lock:`, _topVerifyErr?.message ?? _topVerifyErr);
-        await storage.updateProfile(profileId, { accountStatus: "pending" }).catch(() => {
+        await storage.updateProfile(profileId, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null }).catch(() => {
         });
       } finally {
         verifyInFlight.delete(profileId);
@@ -174709,12 +174769,16 @@ ${stamp}` : stamp;
     }
     res.json({ ok: true, total: eligible.length, skippedNoProxy });
     const verifyOne = async (profile) => {
+      if (profile.accountStatus === "verifying_to_api" && profile.apiVerifyAfter && profile.igApiCookies?.includes("sessionid=")) {
+        return;
+      }
       const _vaExisting = verifyInFlight.get(profile.id);
       if (_vaExisting && Date.now() - _vaExisting < VERIFY_LOCK_TTL_MS) return;
       verifyInFlight.delete(profile.id);
       verifyInFlight.set(profile.id, Date.now());
+      let closeBulkBrowser = null;
       try {
-        await storage.updateProfile(profile.id, { accountStatus: "verifying" });
+        await storage.updateProfile(profile.id, { accountStatus: "verifying", apiVerifyAfter: null, statusMessage: null });
         let effectiveP = { ...profile };
         if (profile.proxyId) {
           const linked = allProxies.find((px) => px.id === profile.proxyId);
@@ -174742,22 +174806,52 @@ ${stamp}` : stamp;
         let bulkLoginResult;
         let _bulkSilentCookies = null;
         if (process.env.EB_IPC_PORT) {
-          await acquireSilentVerifySlot();
+          let bulkEbOpened = false;
+          const bulkIpcPort = Number(process.env.EB_IPC_PORT);
+          closeBulkBrowser = async () => {
+            if (!bulkEbOpened) return;
+            bulkEbOpened = false;
+            await new Promise((resolve) => setTimeout(resolve, 1e3));
+            try {
+              const closeResponse = await fetch(`http://127.0.0.1:${bulkIpcPort}/eb/close`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ profileId: profile.id })
+              });
+              if (!closeResponse.ok) {
+                console.warn(`[bulk-verify] @${profile.username} \u2014 /eb/close returned HTTP ${closeResponse.status}`);
+              }
+            } catch (closeErr) {
+              console.warn(`[bulk-verify] @${profile.username} \u2014 /eb/close failed: ${closeErr?.message ?? closeErr}`);
+            }
+          };
           try {
-            const silentRes = await electronSilentVerify({
-              profileId: profile.id,
-              username: profile.username,
-              password: profile.password,
-              twoFAKey: profile.twoFASecretKey || "",
-              proxy: bulkProxyConfig ? { host: bulkProxyConfig.host, port: bulkProxyConfig.port, user: bulkProxyConfig.username, pass: bulkProxyConfig.password } : void 0,
-              userAgent: bulkEbUA
+            const bulkOpenResponse = await fetch(`http://127.0.0.1:${bulkIpcPort}/eb/open`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                profileId: profile.id,
+                username: profile.username,
+                proxy: bulkProxyConfig ? {
+                  host: bulkProxyConfig.host,
+                  port: bulkProxyConfig.port,
+                  user: bulkProxyConfig.username,
+                  pass: bulkProxyConfig.password
+                } : void 0,
+                useHomeIp: !!effectiveP.useHomeIp,
+                userAgent: bulkEbUA,
+                apiUA: effectiveP.userAgentApi ?? void 0,
+                waitForToolbar: true
+              })
             });
-            bulkLoginResult = { ok: silentRes.ok, message: silentRes.message };
-            _bulkSilentCookies = silentRes.cookies;
+            if (!bulkOpenResponse.ok) {
+              throw new Error(`/eb/open returned HTTP ${bulkOpenResponse.status}`);
+            }
+            bulkEbOpened = true;
+            bulkLoginResult = await browserToolbarLogin(profile.id);
+            _bulkSilentCookies = await getSessionPageCookies(profile.id);
           } catch (ebErr) {
             bulkLoginResult = { ok: false, message: ebErr?.message ?? "Browser verify failed" };
-          } finally {
-            releaseSilentVerifySlot();
           }
         } else {
           await getOrCreateSession(profile.id, bulkEbUA, bulkProxyConfig, effectiveP.userAgentApi);
@@ -174787,6 +174881,7 @@ ${stamp}` : stamp;
           const dsUserId = rawCookies.find((c3) => c3.name === "ds_user_id")?.value;
           const mid = rawCookies.find((c3) => c3.name === "mid")?.value;
           if (!sessionid) {
+            if (closeBulkBrowser) await closeBulkBrowser();
             result = {
               ok: false,
               accountStatus: "pending",
@@ -174798,12 +174893,29 @@ ${stamp}` : stamp;
             if (dsUserId) cookieParts.push(`ds_user_id=${dsUserId}`);
             if (mid) cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
-            await storage.updateProfile(profile.id, { igApiCookies: freshCookies });
-            const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies };
-            const apiResult = await verifyInstagramCredentials(profileWithCookies);
-            result = { ...apiResult, igApiCookies: freshCookies };
+            const scheduledApiVerify = chooseApiVerifyAfter();
+            await storage.updateProfile(profile.id, {
+              igApiCookies: freshCookies,
+              accountStatus: "verifying_to_api",
+              apiVerifyAfter: scheduledApiVerify.at,
+              statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+            });
+            if (closeBulkBrowser) await closeBulkBrowser();
+            console.log(`[bulk-verify] @${profile.username} \u2014 browser verified; mobile API scheduled in ${scheduledApiVerify.minutes} minutes`);
+            if (!await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at)) {
+              result = {
+                ok: false,
+                accountStatus: "pending",
+                message: `@${profile.username} \u2014 mobile API verification was cancelled before its cooldown expired.`
+              };
+            } else {
+              const profileWithCookies = { ...effectiveP, igApiCookies: freshCookies };
+              const apiResult = await verifyInstagramCredentials(profileWithCookies);
+              result = { ...apiResult, igApiCookies: freshCookies };
+            }
           }
         } else {
+          if (closeBulkBrowser) await closeBulkBrowser();
           const msg = bulkLoginResult.message ?? "";
           let accountStatus = "locked";
           if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
@@ -174815,6 +174927,8 @@ ${stamp}` : stamp;
         }
         await storage.updateProfile(profile.id, {
           accountStatus: result.accountStatus,
+          apiVerifyAfter: null,
+          statusMessage: null,
           ...result.ok ? { credentialsDirty: false } : {},
           ...result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}
         });
@@ -174833,7 +174947,8 @@ ${stamp}` : stamp;
           timestamp: (/* @__PURE__ */ new Date()).toISOString()
         });
       } catch {
-        await storage.updateProfile(profile.id, { accountStatus: "pending" });
+        if (closeBulkBrowser) await closeBulkBrowser();
+        await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null });
       } finally {
         verifyInFlight.delete(profile.id);
       }

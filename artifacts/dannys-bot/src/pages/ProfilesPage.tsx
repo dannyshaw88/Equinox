@@ -1496,15 +1496,18 @@ export function ProfilesPage() {
             <>
           {(() => {
             const renderProfileRow = (profile: typeof filteredProfiles[0], idx: number) => {
-              // The scheduled handoff is the durable source of truth.  During the
-              // short window between the Verify response and the next profile
-              // poll, a stale accountStatus can still say "pending" even though
-              // the server has already persisted the API deadline and message.
-              // apiVerifyAfter is the durable handoff marker. The message is
-              // useful for older rows, but must not be required because list
-              // responses and status events can arrive in either order.
-              const hasScheduledApiVerify = !!profile.apiVerifyAfter;
-              const persistedStatus = hasScheduledApiVerify ? "verifying_to_api" : (profile.accountStatus ?? "pending");
+              // accountStatus is the primary durable source of truth.  Keep the
+              // deadline as a countdown supplement, and recognize the scheduled
+              // message for older rows where the deadline was not returned by a
+              // legacy list response.
+              const serverStatus = profile.accountStatus ?? "pending";
+              const hasScheduledApiVerify = !!profile.apiVerifyAfter ||
+                /browser verification succeeded\.\s*mobile api verification is scheduled/i.test(profile.statusMessage ?? "");
+              const persistedStatus =
+                serverStatus === "verifying_to_api" ||
+                (hasScheduledApiVerify && (serverStatus === "pending" || serverStatus === "verifying"))
+                  ? "verifying_to_api"
+                  : serverStatus;
               const acctStatus = (verifyingIds.has(profile.id) ? "verifying" : persistedStatus) as AccountStatus;
               const isStopped  = acctStatus === "stopped";
               const isEven     = idx % 2 === 1;

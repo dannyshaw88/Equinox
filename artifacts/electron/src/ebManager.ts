@@ -7642,6 +7642,11 @@ export function startEbIpcServer(
         while (Date.now() < sessionDeadline) {
           const cookies = await session.cookies.get({ name: "sessionid", domain: ".instagram.com" }).catch(() => []);
           if (cookies.some(c => c.value.length > 5)) {
+            // A sessionid appears before Instagram has necessarily finished
+            // the post-2FA redirect and logged-in page settlement. Keep the
+            // visible browser open for a short human-observable dwell before
+            // returning to the API server, which may close it immediately.
+            await new Promise(resolve => setTimeout(resolve, 7_000));
             return send(res, 200, { ok: true, message: "Toolbar Login completed" });
           }
           await new Promise(resolve => setTimeout(resolve, 1_000));

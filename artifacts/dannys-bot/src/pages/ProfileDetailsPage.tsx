@@ -857,7 +857,12 @@ export function ProfileDetailsPage() {
               {/* Row 2 — status pill + account picker + trustscore + nav links */}
               <div className="flex items-center gap-1 flex-wrap">
                 {(() => {
-                  const acctStatus = (profile.accountStatus ?? "pending") as AccountStatus;
+                  const serverStatus = profile.accountStatus ?? "pending";
+                  const hasScheduledApiVerify = serverStatus === "verifying_to_api" ||
+                    !!profile.apiVerifyAfter ||
+                    (/browser verification succeeded\.\s*mobile api verification is scheduled/i.test(profile.statusMessage ?? "") &&
+                      (serverStatus === "pending" || serverStatus === "verifying"));
+                  const acctStatus = (hasScheduledApiVerify ? "verifying_to_api" : serverStatus) as AccountStatus;
                   const meta = STATUS_META[acctStatus] ?? STATUS_META.pending;
                   const Icon = meta.icon;
                   return (
@@ -874,13 +879,19 @@ export function ProfileDetailsPage() {
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-52 p-1">
-                        {ACCOUNT_STATUSES.filter(s => s !== "verifying_to_api").map(s => {
+                        {ACCOUNT_STATUSES.map(s => {
                           const m = STATUS_META[s] ?? STATUS_META.pending;
                           const I = m.icon;
                           return (
                             <DropdownMenuItem
                               key={s}
-                              onClick={() => updateAccountStatusMutation.mutate({ id: profileId, accountStatus: s })}
+                              onClick={() => {
+                                if (s !== "verifying_to_api") {
+                                  updateAccountStatusMutation.mutate({ id: profileId, accountStatus: s });
+                                }
+                              }}
+                              disabled={s === "verifying_to_api"}
+                              title={s === "verifying_to_api" ? "Set automatically after browser verification" : undefined}
                               className={`flex items-center gap-2 cursor-pointer px-3 py-2 rounded-md text-sm font-medium ${s === acctStatus ? "bg-accent" : ""}`}
                             >
                               <I className="w-3.5 h-3.5" />
