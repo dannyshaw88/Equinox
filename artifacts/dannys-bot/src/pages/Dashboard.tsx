@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.533",
+    date: "2026-09-20",
+    items: [
+      {
+        category: "UI",
+        text: "Moved the account Verify control beside the Password field so its status change is directly tied to the login credentials.",
+      },
+    ],
+  },
+  {
     version: "1.1.532",
     date: "2026-09-20",
     items: [

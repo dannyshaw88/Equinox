@@ -1140,7 +1140,7 @@ export function ProfileDetailsPage() {
                 <div className="space-y-4">
                   {/* Credentials + verify */}
                   <div className="space-y-3">
-                    <div className="flex items-end gap-3">
+                    <div className="flex items-end gap-3 flex-wrap">
                       <div className="space-y-1.5 flex-1 max-w-[260px]">
                         <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><Instagram className="w-3.5 h-3.5" /> Username</Label>
                         <Input
@@ -1157,6 +1157,39 @@ export function ProfileDetailsPage() {
                           data-testid="input-password"
                         />
                       </div>
+                      {canVerify && (
+                        <div className="w-[200px] shrink-0">
+                          {verifyStatus === "ok" ? (
+                            <div
+                              data-testid="status-logged-in"
+                              className="h-9 flex items-center justify-center gap-2 rounded-md border border-green-500 bg-green-50 text-green-700 font-medium text-sm cursor-default select-none"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              Logged In
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant={verifyStatus === "fail" ? "outline" : "default"}
+                              className={`w-full h-9 gap-2 transition-all ${
+                                verifyStatus === "fail"
+                                  ? "border-destructive text-destructive bg-destructive/5 hover:bg-destructive/10"
+                                  : "bg-sky-400 hover:bg-sky-500 text-white border-0"
+                              }`}
+                              onClick={() => handleVerify(false)}
+                              disabled={verifyStatus === "pending" || profile.accountStatus === "verifying"}
+                              data-testid="button-verify-credentials"
+                            >
+                              {(verifyStatus === "pending" || profile.accountStatus === "verifying") && <Loader2 className="w-4 h-4 animate-spin" />}
+                              {verifyStatus === "fail" && profile.accountStatus !== "verifying" && <XCircle className="w-4 h-4" />}
+                              {verifyStatus === "idle" && profile.accountStatus !== "verifying" && <ShieldCheck className="w-4 h-4" />}
+                              {(verifyStatus === "pending" || profile.accountStatus === "verifying") ? "Verifying…"
+                                : verifyStatus === "fail" ? "Retry Verification"
+                                : "Verify Account"}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><KeyRound className="w-3.5 h-3.5" /> 2FA Secret Key</Label>
@@ -1228,44 +1261,6 @@ export function ProfileDetailsPage() {
                         {totpError && <span className="text-xs text-destructive">{totpError}</span>}
                       </div>
                     </div>
-
-                    {/* Verify Account */}
-                    {canVerify && (
-                      <div className="flex items-center gap-4 flex-wrap">
-                        {/* Verify button */}
-                        <div className="w-[200px] shrink-0">
-                          {verifyStatus === "ok" ? (
-                            <div
-                              data-testid="status-logged-in"
-                              className="h-9 flex items-center justify-center gap-2 rounded-md border border-green-500 bg-green-50 text-green-700 font-medium text-sm cursor-default select-none"
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              Logged In
-                            </div>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant={verifyStatus === "fail" ? "outline" : "default"}
-                              className={`w-full h-9 gap-2 transition-all ${
-                                verifyStatus === "fail"
-                                  ? "border-destructive text-destructive bg-destructive/5 hover:bg-destructive/10"
-                                  : "bg-sky-400 hover:bg-sky-500 text-white border-0"
-                              }`}
-                              onClick={() => handleVerify(false)}
-                              disabled={verifyStatus === "pending" || profile.accountStatus === "verifying"}
-                              data-testid="button-verify-credentials"
-                            >
-                              {(verifyStatus === "pending" || profile.accountStatus === "verifying") && <Loader2 className="w-4 h-4 animate-spin" />}
-                              {verifyStatus === "fail" && profile.accountStatus !== "verifying" && <XCircle className="w-4 h-4" />}
-                              {verifyStatus === "idle" && profile.accountStatus !== "verifying" && <ShieldCheck className="w-4 h-4" />}
-                              {(verifyStatus === "pending" || profile.accountStatus === "verifying") ? "Verifying…"
-                                : verifyStatus === "fail" ? "Retry Verification"
-                                : "Verify Account"}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
 
                     {/* Proxy Settings */}
                     <div className="pt-3 border-t border-border mt-3">
