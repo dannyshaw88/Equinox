@@ -1526,7 +1526,7 @@ export function ProfilesPage() {
                       </span>
                     </Link>
                     {hasProxy && (acctStatus !== "valid" || profile.credentialsDirty) && !isStopped && acctStatus !== "resuming" && (acctStatus !== "verifying" || verifyingIds.has(profile.id)) && acctStatus !== "verifying_to_api" && (
-                      <button onClick={(e) => { e.stopPropagation(); handleVerify(profile.id); }} disabled={verifyingIds.has(profile.id) || acctStatus === "verifying"} data-testid={`button-verify-${profile.id}`} className="text-[9px] font-bold text-blue-600 hover:text-blue-800 disabled:opacity-40 transition-colors shrink-0">
+                       <button onMouseDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleVerify(profile.id); }} disabled={verifyingIds.has(profile.id) || acctStatus === "verifying"} data-testid={`button-verify-${profile.id}`} className="text-[9px] font-bold text-blue-600 hover:text-blue-800 disabled:opacity-40 transition-colors shrink-0">
                         {verifyingIds.has(profile.id) ? "…" : "Verify"}
                       </button>
                     )}

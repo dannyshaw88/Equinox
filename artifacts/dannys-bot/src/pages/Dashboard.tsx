@@ -78,6 +78,16 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.532",
+    date: "2026-09-20",
+    items: [
+      {
+        category: "Fix",
+        text: "Clicking Verify on an account no longer selects that account's checkbox.",
+      },
+    ],
+  },
+  {
     version: "1.1.531",
     date: "2026-09-20",
     items: [
