@@ -22,3 +22,9 @@ If Replit's Git panel reports an unknown Git error after a history reconciliatio
 **Why:** Git history can contain locally missing objects after an automated reconcile, and Git's commit API normalizes dates to UTC even when the original commit hash used a local offset. Rebuilding with the normalized date creates a different SHA.
 
 **How to apply:** Confirm each reconstructed commit and tree SHA against GitHub, then rerun `git fsck --full` and `git rev-list --all`. Dangling objects from failed reconstruction attempts are safe to leave alone unless cleanup is explicitly requested.
+
+GitHub's create-commit API rejects Git's raw timezone suffix (`+0000`); serialize author and committer dates as RFC3339 with a colon (`+00:00`) while preserving the original instant, then verify the returned commit SHA matches local Git.
+
+**Why:** The first exact-history publish attempt was rejected before the ref update solely because the API date parser requires the colonized offset format.
+
+**How to apply:** Convert `±HHMM` to `±HH:MM` for the JSON request, keep the original commit message newline, and compare every returned commit SHA before moving the branch ref.
