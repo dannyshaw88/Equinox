@@ -167149,7 +167149,7 @@ ${err?.stack ?? ""}`);
           const likePctMax = Math.min(100, Math.max(likePctMin, Number(s.exploreLikePctMax ?? 30)));
           const visitProfPctMin = Math.min(100, Math.max(0, Number(s.exploreVisitProfilePctMin ?? 0)));
           const visitProfPctMax = Math.min(100, Math.max(visitProfPctMin, Number(s.exploreVisitProfilePctMax ?? 20)));
-          const profScrollMin = Math.max(1, Number(s.exploreProfileScrollMin ?? 3));
+          const profScrollMin = Math.max(0, Number(s.exploreProfileScrollMin ?? 3));
           const profScrollMax = Math.max(profScrollMin, Number(s.exploreProfileScrollMax ?? 8));
           const profClickMin = Math.max(0, Number(s.exploreProfileClickMin ?? 1));
           const profClickMax = Math.max(profClickMin, Number(s.exploreProfileClickMax ?? 3));
@@ -168899,17 +168899,21 @@ ${err?.stack ?? ""}`);
                   console.warn(`[engine] @${profile.username}: explore visit profile error: ${e?.message}`);
                   continue;
                 }
-                const expProfileScrollMin = Number(s.exploreProfileScrollMin ?? 3);
-                const expProfileScrollMax = Number(s.exploreProfileScrollMax ?? 8);
+                const expProfileScrollMin = Math.max(0, Number(s.exploreProfileScrollMin ?? 3));
+                const expProfileScrollMax = Math.max(expProfileScrollMin, Number(s.exploreProfileScrollMax ?? 8));
                 const profileScrollCount = randInt2(expProfileScrollMin, expProfileScrollMax);
                 let profilePosts = [];
-                try {
-                  profilePosts = useHikerHumanSessionFeed ? await hikerClient.getUserFeedByUserId(item.userId, profileScrollCount) : await c3.viewUserFeed(item.userId, profileScrollCount);
-                  console.log(`[engine] @${profile.username}: \u{1F4CB} scrolled ${profilePosts.length} post(s) on @${item.username}'s profile (from explore)${useHikerHumanSessionFeed ? " [HikerAPI]" : ""}`);
-                  this.logAction(profile.id, tool.id, "view_profile_feed", item.username, "", "profile", "ok", `Scrolled ${profilePosts.length} post(s) on @${item.username}'s profile`);
-                } catch (e) {
-                  if (await checkSessionErr(e, "explore_profile_feed")) return;
-                  console.warn(`[engine] @${profile.username}: explore profile feed error: ${e?.message}`);
+                if (profileScrollCount > 0) {
+                  try {
+                    profilePosts = useHikerHumanSessionFeed ? await hikerClient.getUserFeedByUserId(item.userId, profileScrollCount) : await c3.viewUserFeed(item.userId, profileScrollCount);
+                    console.log(`[engine] @${profile.username}: \u{1F4CB} scrolled ${profilePosts.length} post(s) on @${item.username}'s profile (from explore)${useHikerHumanSessionFeed ? " [HikerAPI]" : ""}`);
+                    this.logAction(profile.id, tool.id, "view_profile_feed", item.username, "", "profile", "ok", `Scrolled ${profilePosts.length} post(s) on @${item.username}'s profile`);
+                  } catch (e) {
+                    if (await checkSessionErr(e, "explore_profile_feed")) return;
+                    console.warn(`[engine] @${profile.username}: explore profile feed error: ${e?.message}`);
+                  }
+                } else {
+                  console.log(`[engine] @${profile.username}: skipped profile feed scroll for @${item.username} (configured count is 0)`);
                 }
                 const expProfileClickMin = Number(s.exploreProfileClickMin ?? 1);
                 const expProfileClickMax = Number(s.exploreProfileClickMax ?? 3);
