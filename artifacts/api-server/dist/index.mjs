@@ -158550,67 +158550,12 @@ var InstagramWebClient = class {
     this._logTransport(path6, "POST", Date.now() - _t0, res.status >= 400 || applicationFailed, responseDetail);
     return { json: res.json, status: res.status, rawBody: res.rawBody };
   }
-  // ── Follow a user by numeric ID ────────────────────────────────────────────
-  // API-only FollowUser action.  This is a direct HTTP request to Instagram's
-  // web action endpoint; it does not open or click the embedded browser.
+  // ── Legacy FollowUser compatibility alias ──────────────────────────────────
+  // Keep the old private method name safe for stale internal callers, but never
+  // send the obsolete www.instagram.com /web/friendships route. All follow
+  // actions must use the signed mobile friendships/create request below.
   async _followViaFollowUserEndpoint(userId) {
-    const webSession = this.cookieJar.find((c3) => c3.startsWith("sessionid="));
-    if (!webSession) {
-      return { ok: false, status: "follow_blocked", reason: "no Instagram API session cookie available for FollowUser" };
-    }
-    const path6 = `/web/friendships/${encodeURIComponent(userId)}/follow/`;
-    console.log(`[webClient] follow ${userId}: API-only FollowUser POST ${path6}`);
-    const res = await this.webPost(path6);
-    const j = res?.json;
-    if (!j) {
-      return { ok: false, status: "follow_blocked", reason: `FollowUser returned no JSON (HTTP ${res?.status ?? "unknown"})` };
-    }
-    console.log(`[webClient] follow ${userId} (FollowUser):`, JSON.stringify(j).slice(0, 400));
-    if (j?.message === "checkpoint_required" || j?.checkpoint_url) {
-      return {
-        ok: false,
-        status: "checkpoint_required",
-        reason: "Instagram requires a security checkpoint",
-        checkpointUrl: j?.checkpoint_url ?? ""
-      };
-    }
-    if (j?.message === "challenge_required" || j?.challenge_url) {
-      return {
-        ok: false,
-        status: "checkpoint_required",
-        reason: "Instagram requires a security challenge",
-        checkpointUrl: j?.challenge_url ?? ""
-      };
-    }
-    if (j?.spam === true) {
-      return { ok: false, status: "follow_blocked", reason: "spam \u2014 Instagram flagged this follow attempt" };
-    }
-    if (j?.feedback_required === true || /feedback_required|ActionBlocked/i.test(String(j?.message ?? ""))) {
-      return { ok: false, status: "follow_blocked", reason: j?.message ?? "feedback_required" };
-    }
-    if (j?.require_login || j?.message === "login_required") {
-      return { ok: false, status: "follow_blocked", reason: "session expired \u2014 re-verify account" };
-    }
-    if (j?.message && /please wait/i.test(String(j.message))) {
-      return { ok: false, status: "follow_blocked", reason: j.message };
-    }
-    if (j?.result === "following") return { ok: true, status: "following" };
-    if (j?.result === "requested") return { ok: true, status: "requested" };
-    if (j?.friendship_status) {
-      return { ok: true, status: j.friendship_status.following ? "following" : "requested" };
-    }
-    if (j?.following !== void 0 || j?.outgoing_request !== void 0) {
-      if (j.following || j.outgoing_request) {
-        return { ok: true, status: j.following ? "following" : "requested" };
-      }
-      return { ok: false, status: "follow_blocked", reason: "Instagram silently declined FollowUser" };
-    }
-    if (j?.status === "ok") return { ok: true, status: "following" };
-    if (j?.status === "fail" || j?.status === "error") {
-      return { ok: false, status: "follow_blocked", reason: `FollowUser API error: ${j?.message ?? "Instagram declined the follow"}` };
-    }
-    console.warn(`[webClient] follow ${userId} FollowUser unexpected response:`, JSON.stringify(j));
-    return { ok: false, status: "follow_blocked", reason: "unexpected FollowUser response: " + JSON.stringify(j).slice(0, 200) };
+    return this._followViaMobileSession(userId);
   }
   // Follow a user via IgApiClient — uses the library's native signed-body request
   // stack (identical pattern to _sendDmViaIgClient) so Instagram sees a proper
@@ -158721,7 +158666,6 @@ var InstagramWebClient = class {
   // WiFi bandwidth values, and X-CSRFToken — identical to how verify/unfollow/DM work.
   // signBody() adds the HMAC-SHA256 signature that Instagram requires on write calls.
   async _followViaMobileSession(userId) {
-    return this._followViaFollowUserEndpoint(userId);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!authorization;
     if (!hasMobileSession) {
@@ -159370,7 +159314,7 @@ var InstagramWebClient = class {
       "FollowedUser",
       async () => {
         this._navChainScreen = "profile";
-        return this._followViaFollowUserEndpoint(userId);
+        return this._followViaMobileSession(userId);
       },
       username ? `Follow @${username}${sourceLabel ? ` via ${sourceLabel}` : ""}` : `Follow user ${userId}`,
       (r2) => r2.ok
