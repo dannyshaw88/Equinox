@@ -157732,7 +157732,7 @@ var InstagramWebClient = class {
         "/api/v1/launcher/sync": ["Launcher sync", "Launcher sync failed"],
         "/api/v1/si/fetch_headers": ["Mobile CSRF bootstrap", "CSRF bootstrap failed"],
         "/api/v1/users/self/banner_dismiss": ["Dismiss banner", "Banner dismiss failed"],
-        "/api/v1/clips/feed": ["Reels feed loaded", "Reels feed failed"],
+        "/api/v1/clips/home": ["Reels feed loaded", "Reels feed failed"],
         "/api/v1/clips/user": ["Clips loaded", "Clips load failed"],
         "/api/v1/clips/clips_viewed": ["Reel impressions sent", "Reel impressions failed"],
         "/api/v1/tags": ["Hashtag feed loaded", "Hashtag feed failed"]
@@ -159569,8 +159569,8 @@ var InstagramWebClient = class {
   // This endpoint requires POST as of 2024 (GET returns 405).
   async runForceEmulation(randomise) {
     const entries = [
-      // ?surface=2 — matches the real app's reels tray fetch (line 2260 uses same param)
-      { method: "GET", path: "/api/v1/feed/reels_tray/?surface=2", opName: "GetReelsTray" },
+      // Reels tab fetch — use the current clips/home endpoint, not the Stories tray.
+      { method: "GET", path: `/api/v1/clips/home/?session_id=${randomUUID()}&tab_type=clips&next_max_id=`, opName: "GetClipsHome" },
       // reels_media removed — requires a list of reel IDs in the query string;
       // a bare GET with no IDs returns "Invalid reel id list" every time.
       { method: "GET", path: "/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true", opName: "NotificationsBadge" },
@@ -159744,17 +159744,16 @@ var InstagramWebClient = class {
     return { viewed, items: viewedItems, reelWatches };
   }
   // ── View Reels (independent tool) — open the dedicated Reels tab ──────────
-  // The genuine Reels page uses POST /api/v1/clips/feed/. Do not use
-  // /api/v1/feed/reels_tray/ here: that is the Stories tray, not the Reels page.
-  // Do not use /feed/timeline/ either: it is the home timeline and can return
-  // regular posts or an empty result on accounts with a working Reels page.
+  // Instagram's current mobile Reels-page feed uses GET /api/v1/clips/home/.
+  // POST /api/v1/clips/feed/ was deprecated and now returns an HTML 404 page.
+  // Do not use /api/v1/feed/reels_tray/ here: that is the Stories tray, not Reels.
   async viewReelsTab(reelCount, reelWatchPercentMin = 50, reelWatchPercentMax = 100) {
-    const j = await this.mobileSessionPost(
-      `/api/v1/clips/feed/`,
-      new URLSearchParams({ reason: "pull_to_refresh", max_id: "" }).toString()
+    const sessionId = randomUUID();
+    const j = await this.mobileSessionGet(
+      `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`
     );
     if (!j) {
-      console.warn(`[webClient] viewReelsTab: clips/feed returned null \u2014 no mobile session or no response`);
+      console.warn(`[webClient] viewReelsTab: clips/home returned null \u2014 no mobile session or no response`);
       return { watched: 0, reelWatches: [] };
     }
     if (j?.message === "login_required" || j?.require_login || j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? "")) {
@@ -159768,7 +159767,7 @@ var InstagramWebClient = class {
       return { watched: 0, reelWatches: [], sessionExpired: true, reason };
     }
     if (j?.status === "fail") {
-      console.warn(`[webClient] viewReelsTab: clips/feed failed \u2014 ${j?.message ?? "unknown"}`);
+      console.warn(`[webClient] viewReelsTab: clips/home failed \u2014 ${j?.message ?? "unknown"}`);
       return { watched: 0, reelWatches: [] };
     }
     const reelWatches = [];
@@ -159818,13 +159817,12 @@ var InstagramWebClient = class {
     const MAX_PAGES = 12;
     let page = 1;
     while (watched < reelCount && nextMaxId && page < MAX_PAGES) {
-      const pageJ = await this.mobileSessionPost(
-        `/api/v1/clips/feed/`,
-        new URLSearchParams({ reason: "pagination", max_id: nextMaxId }).toString()
+      const pageJ = await this.mobileSessionGet(
+        `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=${encodeURIComponent(nextMaxId)}`
       );
       if (!pageJ) break;
       if (pageJ?.status === "fail") {
-        console.warn(`[webClient] viewReelsTab: clips/feed pagination failed \u2014 ${pageJ?.message ?? "unknown"}`);
+        console.warn(`[webClient] viewReelsTab: clips/home pagination failed \u2014 ${pageJ?.message ?? "unknown"}`);
         break;
       }
       const pageRaw = pageJ?.items ?? pageJ?.feed_items ?? [];
@@ -159913,13 +159911,13 @@ var InstagramWebClient = class {
           console.warn(`[webClient] viewTimelineReels: no mobile session \u2014 run Verify Credentials to establish igApiCookies`);
           return -1;
         }
-        let j = await this.mobileSessionPost(
-          `/api/v1/clips/feed/`,
-          new URLSearchParams({ reason: "pull_to_refresh", max_id: "" }).toString()
+        const sessionId = randomUUID();
+        let j = await this.mobileSessionGet(
+          `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`
         );
-        let source = "clips/feed";
+        let source = "clips/home";
         if (!j) {
-          console.warn(`[webClient] viewTimelineReels: clips/feed returned null \u2014 falling back to feed/timeline`);
+          console.warn(`[webClient] viewTimelineReels: clips/home returned null \u2014 falling back to feed/timeline`);
           const body = new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString();
           const tj = await this.mobileSessionPost(`/api/v1/feed/timeline/`, body);
           if (!tj) {
