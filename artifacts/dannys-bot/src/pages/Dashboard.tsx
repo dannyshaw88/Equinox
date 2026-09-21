@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.553",
+    date: "2026-09-21",
+    items: [
+      { category: "Login", text: "Established accounts on their assigned proxy now begin Mobile API verification immediately instead of waiting 60–99 minutes." },
+    ],
+  },
+  {
     version: "1.1.552",
     date: "2026-09-21",
     items: [
