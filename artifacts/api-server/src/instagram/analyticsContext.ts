@@ -18,7 +18,7 @@ const VERIFY_OPS = new Set([
 ]);
 
 const FOLLOW_OPS = new Set([
-  "FollowedUser", "friendships/create", "follow",
+  "FollowedUser", "FollowUser", "follow",
 ]);
 
 const SESSION_OPS = new Set([
@@ -30,7 +30,7 @@ const SESSION_OPS = new Set([
 ]);
 
 const ACTION_OPS = new Set([
-  "FollowedUser", "UnfollowUser", "friendships/create", "friendships/destroy",
+  "FollowedUser", "FollowUser", "UnfollowUser", "friendships/destroy",
   "direct_v2/broadcast", "follow", "unfollow", "dm",
 ]);
 
