@@ -3716,16 +3716,17 @@ export class InstagramWebClient {
   }
 
   // ── View Reels (independent tool) — open the dedicated Reels tab ──────────
-  // Instagram's current mobile Reels-page feed uses GET /api/v1/clips/home/.
-  // POST /api/v1/clips/feed/ was deprecated and now returns an HTML 404 page.
-  // Do not use /api/v1/feed/reels_tray/ here: that is the Stories tray, not Reels.
+  // The Reels page uses POST /api/v1/clips/feed/.
+  // Do not use /api/v1/clips/home/ here: it returns an HTML 404 for this
+  // mobile session/request shape. Do not use /api/v1/feed/reels_tray/ either:
+  // that is the Stories tray, not the Reels page.
   async viewReelsTab(reelCount: number, reelWatchPercentMin: number = 50, reelWatchPercentMax: number = 100): Promise<{ watched: number; reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }>; sessionExpired?: boolean; reason?: string }> {
-    const sessionId = randomUUID();
-    const j = await this.mobileSessionGet(
-      `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`,
+    const j = await this.mobileSessionPost(
+      `/api/v1/clips/feed/`,
+      new URLSearchParams({ reason: "pull_to_refresh", max_id: "" }).toString(),
     );
     if (!j) {
-      console.warn(`[webClient] viewReelsTab: clips/home returned null — no mobile session or no response`);
+      console.warn(`[webClient] viewReelsTab: clips/feed returned null — no mobile session or no response`);
       return { watched: 0, reelWatches: [] };
     }
     if (j?.message === "login_required" || j?.require_login || (j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? ""))) {
@@ -3739,7 +3740,7 @@ export class InstagramWebClient {
       return { watched: 0, reelWatches: [], sessionExpired: true, reason };
     }
     if (j?.status === "fail") {
-      console.warn(`[webClient] viewReelsTab: clips/home failed — ${j?.message ?? "unknown"}`);
+      console.warn(`[webClient] viewReelsTab: clips/feed failed — ${j?.message ?? "unknown"}`);
       return { watched: 0, reelWatches: [] };
     }
 
@@ -3791,12 +3792,13 @@ export class InstagramWebClient {
     const MAX_PAGES = 12;
     let page = 1;
     while (watched < reelCount && nextMaxId && page < MAX_PAGES) {
-      const pageJ = await this.mobileSessionGet(
-        `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=${encodeURIComponent(nextMaxId)}`,
+      const pageJ = await this.mobileSessionPost(
+        `/api/v1/clips/feed/`,
+        new URLSearchParams({ reason: "pagination", max_id: nextMaxId }).toString(),
       );
       if (!pageJ) break;
       if (pageJ?.status === "fail") {
-        console.warn(`[webClient] viewReelsTab: clips/home pagination failed — ${pageJ?.message ?? "unknown"}`);
+        console.warn(`[webClient] viewReelsTab: clips/feed pagination failed — ${pageJ?.message ?? "unknown"}`);
         break;
       }
       const pageRaw: any[] = pageJ?.items ?? pageJ?.feed_items ?? [];
@@ -4373,7 +4375,7 @@ export class InstagramWebClient {
     // Batch all reel seen marks into 1 call upfront — 1 throttle instead of N.
     // Instagram's home feed is now predominantly Reels, so we must mark them seen
     // before liking (same as a real user scrolling past). The dedicated Watch Reels
-    // tool uses /api/v1/clips/home/ (a separate endpoint) — no overlap.
+    // tool uses /api/v1/clips/feed/ (a separate endpoint) — no overlap.
     const reelSeenEntries: string[] = [];
     for (const media of toProcess) {
       const isReel = media?.media_type === 2 || media?.product_type === "clips";
