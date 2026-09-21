@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.551",
+    date: "2026-09-21",
+    items: [{ category: "Safety", text: "Follow Tool now uses one mobile API attempt per user and never retries through a web endpoint or later scrape round." }],
+  },
+  {
     version: "1.1.550",
     date: "2026-09-21",
     items: [{ category: "Safety", text: "Verifying a new account through a burnt proxy now asks for confirmation instead of stopping without a way to continue." }],
