@@ -170759,6 +170759,15 @@ function verifiedProxyIds(profile) {
 function isVerifiedOnProxy(profile, proxyId) {
   return proxyId != null && verifiedProxyIds(profile).includes(proxyId);
 }
+function isEstablishedOnProxy(profile, proxyId) {
+  if (proxyId == null) return false;
+  if (isVerifiedOnProxy(profile, proxyId)) return true;
+  return !!profile?.validSince;
+}
+function verifiedProxyIdsWithCurrent(profile, proxyId) {
+  if (proxyId == null) return void 0;
+  return JSON.stringify([.../* @__PURE__ */ new Set([...verifiedProxyIds(profile), proxyId])]);
+}
 var VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1e3;
 var API_VERIFY_MIN_DELAY_MINUTES = 60;
 var API_VERIFY_MAX_DELAY_MINUTES = 99;
@@ -170812,14 +170821,26 @@ async function resumeStuckVerifyingAccounts() {
   for (const profile of withCookies) {
     let deadline = profile.apiVerifyAfter;
     if (!deadline || !Number.isFinite(new Date(deadline).getTime())) {
-      const scheduled = chooseApiVerifyAfter();
-      deadline = scheduled.at;
-      await storage.updateProfile(profile.id, {
-        accountStatus: "verifying_to_api",
-        apiVerifyAfter: deadline,
-        statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduled.minutes} minutes.`
-      }).catch(() => {
-      });
+      if (isEstablishedOnProxy(profile, profile.proxyId)) {
+        deadline = (/* @__PURE__ */ new Date()).toISOString();
+        await storage.updateProfile(profile.id, {
+          accountStatus: "verifying_to_api",
+          apiVerifyAfter: deadline,
+          statusMessage: "Established account detected. Mobile API verification is starting immediately.",
+          ...verifiedProxyIdsWithCurrent(profile, profile.proxyId) ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {}
+        }).catch(() => {
+        });
+        console.log(`[startup:resume] @${profile.username} \u2014 established proxy account; bypassing legacy API cooldown`);
+      } else {
+        const scheduled = chooseApiVerifyAfter();
+        deadline = scheduled.at;
+        await storage.updateProfile(profile.id, {
+          accountStatus: "verifying_to_api",
+          apiVerifyAfter: deadline,
+          statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduled.minutes} minutes.`
+        }).catch(() => {
+        });
+      }
     } else if (profile.accountStatus !== "verifying_to_api") {
       await storage.updateProfile(profile.id, { accountStatus: "verifying_to_api" }).catch(() => {
       });
@@ -170852,6 +170873,7 @@ async function resumeStuckVerifyingAccounts() {
         statusMessage: null,
         ...finalStatus === "valid" ? { credentialsDirty: false } : {},
         ...apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {},
+        ...finalStatus === "valid" && profile.proxyId ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {},
         ..."igApiCookies" in apiResult && apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}
       }).catch(() => {
       });
@@ -172655,13 +172677,14 @@ ${stamp_l}` : stamp_l });
             if (mid) cookieParts.push(`mid=${mid}`);
             if (igDid) cookieParts.push(`ig_did=${igDid}`);
             const freshCookies = cookieParts.join("; ");
-            const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+            const repeatProxyVerification = isEstablishedOnProxy(profile, profile.proxyId);
             const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
             await storage.updateProfile(profile.id, {
               igApiCookies: freshCookies,
               accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
               apiVerifyAfter: scheduledApiVerify?.at ?? null,
-              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+              ...repeatProxyVerification && profile.proxyId ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {}
             });
             if (closeVerifyBrowser) await closeVerifyBrowser();
             sendLoginDone(
@@ -174929,13 +174952,14 @@ ${stamp}` : stamp;
             if (dsUserId) cookieParts.push(`ds_user_id=${dsUserId}`);
             if (mid) cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
-            const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+            const repeatProxyVerification = isEstablishedOnProxy(profile, profile.proxyId);
             const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
             await storage.updateProfile(profile.id, {
               igApiCookies: freshCookies,
               accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
               apiVerifyAfter: scheduledApiVerify?.at ?? null,
-              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+              ...repeatProxyVerification && profile.proxyId ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {}
             });
             if (closeBulkBrowser) await closeBulkBrowser();
             console.log(`[bulk-verify] @${profile.username} \u2014 browser verified; mobile API ${repeatProxyVerification ? "starting immediately (proxy already verified)" : `scheduled in ${scheduledApiVerify.minutes} minutes`}`);
