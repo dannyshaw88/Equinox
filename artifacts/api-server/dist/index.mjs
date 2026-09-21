@@ -172398,7 +172398,7 @@ ${stamp_l}` : stamp_l });
       const assignedProxy = (await storage.getProxies()).find((p) => p.id === profile.proxyId);
       const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
       const confirmBurntProxy = req.query.confirmBurntProxy === "true" || req.body?.confirmBurntProxy === true;
-      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
+      if (burntUntil > Date.now() && !isEstablishedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
         return fail(409, `This proxy is marked as burnt until ${new Date(burntUntil).toISOString()}.`, {
           code: "burnt_proxy_confirmation_required",
           burntUntil: assignedProxy?.burntUntil
@@ -174700,7 +174700,7 @@ ${stamp}` : stamp;
       if (!p.proxyId) return false;
       const linked = allProxies.find((px) => px.id === p.proxyId);
       const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
-      return burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId);
+      return burntUntil > Date.now() && !isEstablishedOnProxy(p, p.proxyId);
     });
     if (burntTargets.length > 0 && !confirmBurntProxy) {
       return res.status(409).json({
