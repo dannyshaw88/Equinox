@@ -141,6 +141,7 @@ function ProxyRow({
   const { toast } = useToast();
 
   const isAdapter = proxy.proxyType === "adapter";
+  const isBurnt = !!proxy.burntUntil && Date.parse(proxy.burntUntil) > Date.now();
 
   // Show blank when the proxy was just added with the default sentinel values
   const [hostPort, setHostPort] = useState(displayHostPort(proxy));
@@ -342,6 +343,7 @@ function ProxyRow({
                   pingResult ? (
                     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded ${pingResult.alive ? pingResult.latencyMs < 300 ? "bg-emerald-50 text-emerald-600" : pingResult.latencyMs < 800 ? "bg-yellow-50 text-yellow-600" : "bg-orange-50 text-orange-600" : "bg-red-50 text-red-500"}`}>
                       {pingResult.alive ? <><Wifi className="w-3 h-3" />{pingResult.latencyMs}ms</> : <><WifiOff className="w-3 h-3" />{pingResult.error ?? "Dead"}</>}
+                      {isBurnt && <span title={`Burnt until ${new Date(proxy.burntUntil!).toLocaleString()}`} aria-label="Burnt proxy">🔥</span>}
                     </span>
                   ) : currentAdapterIp ? (
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded bg-violet-50 text-violet-600 dark:bg-violet-950/40">
@@ -355,6 +357,7 @@ function ProxyRow({
                 ) : pingResult ? (
                   <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded ${pingResult.alive ? pingResult.latencyMs < 300 ? "bg-emerald-50 text-emerald-600" : pingResult.latencyMs < 800 ? "bg-yellow-50 text-yellow-600" : "bg-orange-50 text-orange-600" : "bg-red-50 text-red-500"}`}>
                     {pingResult.alive ? <><Wifi className="w-3 h-3" />{pingResult.latencyMs}ms</> : <><WifiOff className="w-3 h-3" />Dead</>}
+                    {isBurnt && <span title={`Burnt until ${new Date(proxy.burntUntil!).toLocaleString()}`} aria-label="Burnt proxy">🔥</span>}
                   </span>
                 ) : <span className="text-[11px] text-muted-foreground/40">—</span>}
               </div>
