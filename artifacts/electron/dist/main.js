@@ -8787,6 +8787,14 @@ async function createWindow() {
   import_electron2.app.on("render-process-gone", (_e, contents, details) => {
     appendToMainLog(`RENDER PROCESS GONE: url=${contents.getURL()} reason=${details.reason} exitCode=${details.exitCode}`);
   });
+  win.webContents.on("did-fail-load", (_event, code, description, validatedURL) => {
+    appendToMainLog(`MAIN WINDOW LOAD FAILED: code=${code} description=${description} url=${validatedURL}`);
+  });
+  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      appendToMainLog(`RENDERER CONSOLE ERROR: level=${level} message=${message} source=${sourceId}:${line}`);
+    }
+  });
   import_electron2.app.on("child-process-gone", (_e, details) => {
     appendToMainLog(`CHILD PROCESS GONE: type=${details.type} reason=${details.reason} exitCode=${details.exitCode}`);
   });
@@ -8802,7 +8810,8 @@ async function createWindow() {
   startServer(serverPort, logPath, ebIpcPort);
   try {
     await waitForServer(serverPort);
-    win.loadURL(`http://127.0.0.1:${serverPort}`);
+    await win.webContents.session.clearCache();
+    win.loadURL(`http://127.0.0.1:${serverPort}/?appVersion=${encodeURIComponent(import_electron2.app.getVersion())}`);
   } catch {
     let logContent = "(no output captured)";
     try {
