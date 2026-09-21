@@ -19,6 +19,7 @@ const ACTION_META: Record<string, { label: string; icon: any; color: string }> =
   view_stories:            { label: "Viewed Stories",     icon: BookOpen,     color: "text-blue-600" },
   view_reels:              { label: "Viewed Reels",       icon: PlaySquare,   color: "text-violet-600" },
   view_reel_from_feed:     { label: "Watched Reel",       icon: PlaySquare,   color: "text-indigo-600" },
+  view_reel_from_reels_tab: { label: "Watched Reel from Reels Tab", icon: PlaySquare, color: "text-indigo-600" },
   view_timeline_feed:      { label: "Timeline Feed",      icon: Activity,     color: "text-sky-600" },
   view_reel:               { label: "Opened Reel",        icon: PlaySquare,   color: "text-blue-600" },
   view_post:               { label: "Opened Post",        icon: Image,        color: "text-slate-600" },

@@ -3717,13 +3717,13 @@ export class InstagramWebClient {
   // the home timeline is a different surface and can return regular posts,
   // empty results, or the generic "Sorry, please try again" response even
   // when the account's Reels tab is available.
-  async viewReelsFromFeed(reelCount: number, reelWatchPercentMin: number = 50, reelWatchPercentMax: number = 100): Promise<{ watched: number; feedEmpty?: boolean; reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }>; sessionExpired?: boolean; reason?: string }> {
+  async viewReelsTab(reelCount: number, reelWatchPercentMin: number = 50, reelWatchPercentMax: number = 100): Promise<{ watched: number; reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }>; sessionExpired?: boolean; reason?: string }> {
     const sessionId = randomUUID();
     const j = await this.mobileSessionGet(
       `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`,
     );
     if (!j) {
-      console.warn(`[webClient] viewReelsFromFeed: clips/home returned null — no mobile session or no response`);
+      console.warn(`[webClient] viewReelsTab: clips/home returned null — no mobile session or no response`);
       return { watched: 0, reelWatches: [] };
     }
     if (j?.message === "login_required" || j?.require_login || (j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? ""))) {
@@ -3732,12 +3732,12 @@ export class InstagramWebClient {
         j?.logout_reason ? `logout_reason: ${j.logout_reason}` : null,
         j?.error_title ? `error_title: ${j.error_title}` : null,
       ].filter(Boolean).join(" | ") || "login_required";
-      console.warn(`[webClient] viewReelsFromFeed: session expired — ${reason}`);
+      console.warn(`[webClient] viewReelsTab: session expired — ${reason}`);
       this.mobileSessionReady = false;
       return { watched: 0, reelWatches: [], sessionExpired: true, reason };
     }
     if (j?.status === "fail") {
-      console.warn(`[webClient] viewReelsFromFeed: clips/home failed — ${j?.message ?? "unknown"}`);
+      console.warn(`[webClient] viewReelsTab: clips/home failed — ${j?.message ?? "unknown"}`);
       return { watched: 0, reelWatches: [] };
     }
 
@@ -3794,7 +3794,7 @@ export class InstagramWebClient {
       );
       if (!pageJ) break;
       if (pageJ?.status === "fail") {
-        console.warn(`[webClient] viewReelsFromFeed: clips/home pagination failed — ${pageJ?.message ?? "unknown"}`);
+        console.warn(`[webClient] viewReelsTab: clips/home pagination failed — ${pageJ?.message ?? "unknown"}`);
         break;
       }
       const pageRaw: any[] = pageJ?.items ?? pageJ?.feed_items ?? [];
@@ -3804,7 +3804,7 @@ export class InstagramWebClient {
       page++;
     }
 
-    console.log(`[webClient] viewReelsFromFeed: ${page} page(s) — ${watched} reel(s) watched`);
+    console.log(`[webClient] viewReelsTab: ${page} Reels-tab page(s) — ${watched} reel(s) watched`);
     return { watched, reelWatches };
   }
 

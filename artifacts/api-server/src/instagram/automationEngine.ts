@@ -4607,13 +4607,6 @@ class AutomationEngine {
       Math.max(2000, Math.round(winMax / rMin)),
     );
 
-    // View Timeline Feed and View Reels both consume /api/v1/feed/timeline/.
-    // Keep the empty result scoped to this Human Session run so the second
-    // tool does not repeat a request after the first tool already established
-    // that Instagram returned no timeline posts. A non-empty feed is not
-    // cached here because the two tools may need different pagination/filtering.
-    let timelineFeedEmpty = false;
-
     // Shared account-level error detector for every action in this session.
     // If Instagram returns login_required / checkpoint / banned / etc., we
     // immediately update the DB status, null the client, log it, and signal
@@ -4768,11 +4761,6 @@ class AutomationEngine {
       "viewTimelineFeedOrderMin",   "viewTimelineFeedOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
-        if (timelineFeedEmpty) {
-          console.log(`[engine] @${profile.username}: ⏭ View Timeline Feed skipped — timeline already returned 0 posts this session`);
-          this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "skipped", "Skipped — timeline feed already returned 0 posts earlier this session");
-          return;
-        }
         const feedCount = randInt(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
         // Reel-watching is now its own independent "View Reels" tool (see the
         // separate enqueue("viewReels", ...) block below) with its own
@@ -4805,7 +4793,6 @@ class AutomationEngine {
             return;
           }
           viewed = vtfResult.viewed;
-          if (vtfResult.feedEmpty) timelineFeedEmpty = true;
           console.log(`[engine] @${profile.username}: 📰 viewed ${viewed} timeline post(s)`);
           this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `Viewed ${viewed} timeline post${viewed === 1 ? "" : "s"}`);
 
@@ -4989,19 +4976,14 @@ class AutomationEngine {
 
     // ── View Reels ───────────────────────────────────────────────────────────
     // Independent tool with its own enabled/order/chance settings — decoupled
-    // from View Timeline Feed. Fetches its own timeline page(s) and watches
-    // only the reels found, ignoring regular feed posts.
+    // from View Timeline Feed. Opens the dedicated Reels tab and watches only
+    // the reels returned by that tab. It never depends on Home Feed results.
     enqueue("viewReels",
       s.viewReelsEnabled === true && (s as any).emulationGroupEnabled !== false,
       "viewReelsNotUsedMin", "viewReelsNotUsedMax",
       "viewReelsOrderMin",   "viewReelsOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
-        if (timelineFeedEmpty) {
-          console.log(`[engine] @${profile.username}: ⏭ View Reels skipped — timeline already returned 0 posts this session`);
-          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped — timeline feed already returned 0 posts earlier this session");
-          return;
-        }
         const reelCount = randInt(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {
           console.log(`[engine] @${profile.username}: 🎬 View Reels — reel count rolled 0, skipping`);
@@ -5010,7 +4992,7 @@ class AutomationEngine {
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
         const reelViewPctMax = Number(s.reelWatchPercentMax ?? 100);
         try {
-          const result = await client.viewReelsFromFeed(reelCount, reelViewPctMin, reelViewPctMax);
+          const result = await client.viewReelsTab(reelCount, reelViewPctMin, reelViewPctMax);
           if (result.sessionExpired) {
             const expReason = result.reason ?? "session expired (login_required) — viewReels";
             console.warn(`[engine] @${profile.username}: viewReels — session expired, marking logged_out`);
@@ -5020,14 +5002,13 @@ class AutomationEngine {
             return;
           }
           console.log(`[engine] @${profile.username}: 🎬 watched ${result.watched} reel(s)`);
-          if (result.feedEmpty) timelineFeedEmpty = true;
           if (result.watched > 0) {
             this.logAction(profile.id, tool.id, "view_reels", "", "", "", "ok", `Watched ${result.watched} reel(s)`);
           } else {
-            this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "No reels found in timeline this pass");
+            this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "No reels found on the Reels tab this pass");
           }
           for (const reel of result.reelWatches) {
-            this.logAction(profile.id, tool.id, "view_reel_from_feed", reel.username, reel.shortcode, "post", "ok", `Watched reel at ${reel.pct}% · ${reel.durationSec}s`);
+            this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% · ${reel.durationSec}s`);
           }
         } catch (e: any) {
           if (await checkSessionErr(e, "view_reels")) return;

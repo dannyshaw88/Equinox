@@ -159710,13 +159710,13 @@ var InstagramWebClient = class {
   // the home timeline is a different surface and can return regular posts,
   // empty results, or the generic "Sorry, please try again" response even
   // when the account's Reels tab is available.
-  async viewReelsFromFeed(reelCount, reelWatchPercentMin = 50, reelWatchPercentMax = 100) {
+  async viewReelsTab(reelCount, reelWatchPercentMin = 50, reelWatchPercentMax = 100) {
     const sessionId = randomUUID();
     const j = await this.mobileSessionGet(
       `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`
     );
     if (!j) {
-      console.warn(`[webClient] viewReelsFromFeed: clips/home returned null \u2014 no mobile session or no response`);
+      console.warn(`[webClient] viewReelsTab: clips/home returned null \u2014 no mobile session or no response`);
       return { watched: 0, reelWatches: [] };
     }
     if (j?.message === "login_required" || j?.require_login || j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? "")) {
@@ -159725,12 +159725,12 @@ var InstagramWebClient = class {
         j?.logout_reason ? `logout_reason: ${j.logout_reason}` : null,
         j?.error_title ? `error_title: ${j.error_title}` : null
       ].filter(Boolean).join(" | ") || "login_required";
-      console.warn(`[webClient] viewReelsFromFeed: session expired \u2014 ${reason}`);
+      console.warn(`[webClient] viewReelsTab: session expired \u2014 ${reason}`);
       this.mobileSessionReady = false;
       return { watched: 0, reelWatches: [], sessionExpired: true, reason };
     }
     if (j?.status === "fail") {
-      console.warn(`[webClient] viewReelsFromFeed: clips/home failed \u2014 ${j?.message ?? "unknown"}`);
+      console.warn(`[webClient] viewReelsTab: clips/home failed \u2014 ${j?.message ?? "unknown"}`);
       return { watched: 0, reelWatches: [] };
     }
     const reelWatches = [];
@@ -159785,7 +159785,7 @@ var InstagramWebClient = class {
       );
       if (!pageJ) break;
       if (pageJ?.status === "fail") {
-        console.warn(`[webClient] viewReelsFromFeed: clips/home pagination failed \u2014 ${pageJ?.message ?? "unknown"}`);
+        console.warn(`[webClient] viewReelsTab: clips/home pagination failed \u2014 ${pageJ?.message ?? "unknown"}`);
         break;
       }
       const pageRaw = pageJ?.items ?? pageJ?.feed_items ?? [];
@@ -159794,7 +159794,7 @@ var InstagramWebClient = class {
       nextMaxId = pageJ?.next_max_id ?? null;
       page++;
     }
-    console.log(`[webClient] viewReelsFromFeed: ${page} page(s) \u2014 ${watched} reel(s) watched`);
+    console.log(`[webClient] viewReelsTab: ${page} Reels-tab page(s) \u2014 ${watched} reel(s) watched`);
     return { watched, reelWatches };
   }
   // ── Open / view a single feed post (simulates tapping into it) ───────────
@@ -167910,7 +167910,6 @@ ${err?.stack ?? ""}`);
       Math.max(1e3, Math.round(winMin / rMax)),
       Math.max(2e3, Math.round(winMax / rMin))
     );
-    let timelineFeedEmpty = false;
     let sessionError = null;
     const checkSessionErr = async (e, actionLabel) => {
       const msg = e?.message ?? "";
@@ -168028,11 +168027,6 @@ ${err?.stack ?? ""}`);
       "viewTimelineFeedOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
-        if (timelineFeedEmpty) {
-          console.log(`[engine] @${profile.username}: \u23ED View Timeline Feed skipped \u2014 timeline already returned 0 posts this session`);
-          this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
-          return;
-        }
         const feedCount = randInt2(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
         let viewed = 0;
         let vtfResult = null;
@@ -168061,7 +168055,6 @@ ${err?.stack ?? ""}`);
             return;
           }
           viewed = vtfResult.viewed;
-          if (vtfResult.feedEmpty) timelineFeedEmpty = true;
           console.log(`[engine] @${profile.username}: \u{1F4F0} viewed ${viewed} timeline post(s)`);
           this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `Viewed ${viewed} timeline post${viewed === 1 ? "" : "s"}`);
           if (vtfResult.reelWatches?.length) {
@@ -168222,11 +168215,6 @@ ${err?.stack ?? ""}`);
       "viewReelsOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
-        if (timelineFeedEmpty) {
-          console.log(`[engine] @${profile.username}: \u23ED View Reels skipped \u2014 timeline already returned 0 posts this session`);
-          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
-          return;
-        }
         const reelCount = randInt2(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {
           console.log(`[engine] @${profile.username}: \u{1F3AC} View Reels \u2014 reel count rolled 0, skipping`);
@@ -168235,7 +168223,7 @@ ${err?.stack ?? ""}`);
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
         const reelViewPctMax = Number(s.reelWatchPercentMax ?? 100);
         try {
-          const result = await client.viewReelsFromFeed(reelCount, reelViewPctMin, reelViewPctMax);
+          const result = await client.viewReelsTab(reelCount, reelViewPctMin, reelViewPctMax);
           if (result.sessionExpired) {
             const expReason = result.reason ?? "session expired (login_required) \u2014 viewReels";
             console.warn(`[engine] @${profile.username}: viewReels \u2014 session expired, marking logged_out`);
@@ -168245,14 +168233,13 @@ ${err?.stack ?? ""}`);
             return;
           }
           console.log(`[engine] @${profile.username}: \u{1F3AC} watched ${result.watched} reel(s)`);
-          if (result.feedEmpty) timelineFeedEmpty = true;
           if (result.watched > 0) {
             this.logAction(profile.id, tool.id, "view_reels", "", "", "", "ok", `Watched ${result.watched} reel(s)`);
           } else {
-            this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "No reels found in timeline this pass");
+            this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "No reels found on the Reels tab this pass");
           }
           for (const reel of result.reelWatches) {
-            this.logAction(profile.id, tool.id, "view_reel_from_feed", reel.username, reel.shortcode, "post", "ok", `Watched reel at ${reel.pct}% \xB7 ${reel.durationSec}s`);
+            this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% \xB7 ${reel.durationSec}s`);
           }
         } catch (e) {
           if (await checkSessionErr(e, "view_reels")) return;
