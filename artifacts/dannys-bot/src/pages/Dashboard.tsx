@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.557",
+    date: "2026-09-21",
+    items: [
+      { category: "Fix", text: "Force Emulation no longer emits a Reels API call. The clips home request now runs only when the View Reels tool itself is executed." },
+    ],
+  },
+  {
     version: "1.1.556",
     date: "2026-09-21",
     items: [

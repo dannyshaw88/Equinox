@@ -3533,8 +3533,6 @@ export class InstagramWebClient {
     // returns "400 Invalid experiment" because the library's LOGIN_EXPERIMENTS
     // list is outdated vs our declared app version. Removed to avoid noise.
     const entries: Array<{ path: string; method: "GET" | "POST"; opName: string; body?: string }> = [
-      // Reels tab fetch — use the current clips/home endpoint, not the Stories tray.
-      { method: "GET",  path: `/api/v1/clips/home/?session_id=${randomUUID()}&tab_type=clips&next_max_id=`,                              opName: "GetClipsHome"      },
       // reels_media removed — requires a list of reel IDs in the query string;
       // a bare GET with no IDs returns "Invalid reel id list" every time.
       { method: "GET",  path: "/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true",                                      opName: "NotificationsBadge" },

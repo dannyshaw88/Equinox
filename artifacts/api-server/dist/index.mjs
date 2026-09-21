@@ -159569,8 +159569,6 @@ var InstagramWebClient = class {
   // This endpoint requires POST as of 2024 (GET returns 405).
   async runForceEmulation(randomise) {
     const entries = [
-      // Reels tab fetch — use the current clips/home endpoint, not the Stories tray.
-      { method: "GET", path: `/api/v1/clips/home/?session_id=${randomUUID()}&tab_type=clips&next_max_id=`, opName: "GetClipsHome" },
       // reels_media removed — requires a list of reel IDs in the query string;
       // a bare GET with no IDs returns "Invalid reel id list" every time.
       { method: "GET", path: "/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true", opName: "NotificationsBadge" },
