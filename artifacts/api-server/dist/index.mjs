@@ -164159,6 +164159,9 @@ var AutomationEngine = class _AutomationEngine {
   // Wake signals for HS runners — set to interrupt the idle 10s sleep immediately.
   // Keyed by profileId.  Runner resets wake=false after waking; triggerHumanSession sets wake=true.
   hsWakeSignals = /* @__PURE__ */ new Map();
+  // Accounts restored by Verify must use the normal Human Session delay window
+  // instead of firing immediately when reconcile sees them become valid again.
+  humanSessionDeferredAfterVerify = /* @__PURE__ */ new Set();
   async searchUserViaBrowser(profileId, username, proxy, igApiCookies, fp) {
     const ebIpcPort = process.env.EB_IPC_PORT;
     if (!ebIpcPort) return false;
@@ -164499,7 +164502,12 @@ var AutomationEngine = class _AutomationEngine {
         if (humanSessionTool && profile.accountStatus === "valid") {
           activeHumanSession.add(profile.id);
           if (!this.humanSessionStates.has(profile.id)) {
-            this.launchHumanSession(profile, humanSessionTool, profileRunImmediately);
+            const restoredAfterVerify = this.humanSessionDeferredAfterVerify.delete(profile.id);
+            this.launchHumanSession(
+              profile,
+              humanSessionTool,
+              restoredAfterVerify ? false : profileRunImmediately
+            );
           }
         }
         if (!hasHumanSessionTool) {
@@ -169990,6 +169998,15 @@ ${err?.stack ?? ""}`);
       });
     }
   }
+  // Called after an established account is successfully re-verified from a
+  // captcha/automated-behaviour/other non-valid status. The account is valid
+  // again, but Human Session must wait for its configured delay window rather
+  // than treating recovery as a manual toggle-on.
+  deferHumanSessionAfterVerification(profileId) {
+    this.humanSessionDeferredAfterVerify.add(profileId);
+    this.reconcile().catch(() => {
+    });
+  }
   // Called when an unfollow tool is explicitly enabled from the UI.
   // Immediately kicks off a reconcile so the runner starts without waiting
   // up to 10 seconds for the scheduled interval.
@@ -172394,6 +172411,7 @@ ${stamp_l}` : stamp_l });
     };
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
+    const establishedBeforeVerify = isEstablishedOnProxy(profile, profile.proxyId);
     if (profile.proxyId) {
       const assignedProxy = (await storage.getProxies()).find((p) => p.id === profile.proxyId);
       const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
@@ -172688,6 +172706,9 @@ ${stamp_l}` : stamp_l });
             // can restore the session on Path 2 without re-logging in.
             ..."igApiCookies" in result && result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}
           });
+          if (result.ok && finalStatus === "valid" && establishedBeforeVerify) {
+            automationEngine.deferHumanSessionAfterVerification(profile.id);
+          }
           automationEngine.invalidateWarmedClientCache(profile.id);
         }
         await storage.createSessionAction({
@@ -174732,6 +174753,7 @@ ${stamp}` : stamp;
       verifyInFlight.delete(profile.id);
       verifyInFlight.set(profile.id, Date.now());
       let closeBulkBrowser = null;
+      const establishedBeforeVerify = isEstablishedOnProxy(profile, profile.proxyId);
       try {
         await storage.updateProfile(profile.id, { accountStatus: "verifying", apiVerifyAfter: null, statusMessage: null });
         let effectiveP = { ...profile };
@@ -174890,6 +174912,9 @@ ${stamp}` : stamp;
           ...result.igApiCookies ? { igApiCookies: result.igApiCookies } : {},
           ...result.accountStatus === "valid" && profile.proxyId ? { verifiedProxyIds: JSON.stringify([.../* @__PURE__ */ new Set([...verifiedProxyIds(profile), profile.proxyId])]) } : {}
         });
+        if (result.ok && result.accountStatus === "valid" && establishedBeforeVerify) {
+          automationEngine.deferHumanSessionAfterVerification(profile.id);
+        }
         if (!result.ok && result.accountStatus === "captcha" && result.checkpointUrl) {
           setCheckpointUrl(profile.id, result.checkpointUrl);
         }

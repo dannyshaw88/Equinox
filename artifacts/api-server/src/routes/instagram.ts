@@ -2289,6 +2289,7 @@ export async function registerInstagramRoutes(
 
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
+    const establishedBeforeVerify = isEstablishedOnProxy(profile, profile.proxyId);
     if (profile.proxyId) {
       const assignedProxy = (await storage.getProxies()).find(p => p.id === profile.proxyId);
       const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
@@ -2719,6 +2720,9 @@ export async function registerInstagramRoutes(
         // can restore the session on Path 2 without re-logging in.
         ...("igApiCookies" in result && result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}),
       });
+      if (result.ok && finalStatus === "valid" && establishedBeforeVerify) {
+        automationEngine.deferHumanSessionAfterVerification(profile.id);
+      }
       // Reset the automation engine's warmed IgApiClient cache so the next DM/inbox
       // call gets a fresh cold-start bootstrap with the new session cookies.
       // This prevents the double-FetchConfig: verify runs FetchConfig in Phase 2b,
@@ -5161,6 +5165,7 @@ export async function registerInstagramRoutes(
       verifyInFlight.set(profile.id, Date.now());
 
       let closeBulkBrowser: (() => Promise<void>) | null = null;
+      const establishedBeforeVerify = isEstablishedOnProxy(profile, profile.proxyId);
       try {
         await storage.updateProfile(profile.id, { accountStatus: "verifying", apiVerifyAfter: null, statusMessage: null } as any);
 
@@ -5337,6 +5342,9 @@ export async function registerInstagramRoutes(
             ? { verifiedProxyIds: JSON.stringify([...new Set([...verifiedProxyIds(profile), profile.proxyId])]) }
             : {}),
         });
+        if (result.ok && result.accountStatus === "valid" && establishedBeforeVerify) {
+          automationEngine.deferHumanSessionAfterVerification(profile.id);
+        }
         if (!result.ok && result.accountStatus === "captcha" && result.checkpointUrl) {
           setCheckpointUrl(profile.id, result.checkpointUrl);
         }

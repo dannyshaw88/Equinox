@@ -291,6 +291,9 @@ class AutomationEngine {
   // Wake signals for HS runners — set to interrupt the idle 10s sleep immediately.
   // Keyed by profileId.  Runner resets wake=false after waking; triggerHumanSession sets wake=true.
   private hsWakeSignals        = new Map<number, { wake: boolean }>();
+  // Accounts restored by Verify must use the normal Human Session delay window
+  // instead of firing immediately when reconcile sees them become valid again.
+  private humanSessionDeferredAfterVerify = new Set<number>();
 
   private async searchUserViaBrowser(
     profileId: number,
@@ -681,7 +684,12 @@ class AutomationEngine {
         if (humanSessionTool && profile.accountStatus === "valid") {
           activeHumanSession.add(profile.id);
           if (!this.humanSessionStates.has(profile.id)) {
-            this.launchHumanSession(profile, humanSessionTool, profileRunImmediately);
+            const restoredAfterVerify = this.humanSessionDeferredAfterVerify.delete(profile.id);
+            this.launchHumanSession(
+              profile,
+              humanSessionTool,
+              restoredAfterVerify ? false : profileRunImmediately,
+            );
           }
         }
 
@@ -1147,7 +1155,8 @@ class AutomationEngine {
       nextContactAt: 0,
       nextUnfollowAt: 0,
     };
-    // On startup: schedule first run using configured X-Y timers.
+    // On startup or after verification recovery: schedule first run using
+    // configured X-Y timers.
     // On user toggle-on (runImmediately = true, no stagger): nextHumanSessionAt = 0 → fires right away.
     // On copy-settings cold restart (runImmediately = true, staggerOffsetMins > 0): apply stagger delay.
     // Matches the follow/unfollow pattern: `if (!runImmediately || staggerMs > 0)`.
@@ -7090,6 +7099,15 @@ class AutomationEngine {
       // session fires on the runner's very first tick.
       this.reconcile().catch(() => {});
     }
+  }
+
+  // Called after an established account is successfully re-verified from a
+  // captcha/automated-behaviour/other non-valid status. The account is valid
+  // again, but Human Session must wait for its configured delay window rather
+  // than treating recovery as a manual toggle-on.
+  deferHumanSessionAfterVerification(profileId: number): void {
+    this.humanSessionDeferredAfterVerify.add(profileId);
+    this.reconcile().catch(() => {});
   }
 
   // Called when an unfollow tool is explicitly enabled from the UI.
