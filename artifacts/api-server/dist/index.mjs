@@ -158747,76 +158747,11 @@ var InstagramWebClient = class {
     }
     if (j?.status === "fail") {
       const msg = j?.message || "Instagram declined (status: fail)";
-      if (!this._deviceAuthorization && /something went wrong/i.test(msg)) {
-        console.log(`[webClient] follow ${userId}: mobile API "something went wrong" with no Bearer \u2014 trying web endpoint fallback`);
-        return this._followViaWebEndpoint(userId);
-      }
       return { ok: false, status: "follow_blocked", reason: `api_error: ${msg}` };
     }
     if (j?.status === "ok") return { ok: true, status: "following" };
     console.warn(`[webClient] follow ${userId} unexpected response:`, JSON.stringify(j));
     return { ok: false, status: "follow_blocked", reason: "unexpected response: " + JSON.stringify(j).slice(0, 200) };
-  }
-  // ── Web-endpoint follow fallback ──────────────────────────────────────────
-  // Used when _followViaMobileSession returns "something went wrong" with no Bearer
-  // token. The HMAC-signed Android body (device_id, radio_type, nav_chain) that
-  // _followViaMobileSession sends cannot be de-Androidified without removing the
-  // signature itself — Instagram verifies the HMAC and requires those fields.
-  // The web endpoint at www.instagram.com accepts plain web cookies + CSRF token
-  // and does NOT require a Bearer token or a signed body, so it succeeds for EB
-  // sessions that have never issued a Bearer token.
-  //
-  // Guards: only called when (1) auth is MISSING, (2) mobile returned "something
-  // went wrong", and (3) this.cookieJar contains a valid sessionid (web session).
-  async _followViaWebEndpoint(userId) {
-    const webSession = this.cookieJar.find((c3) => c3.startsWith("sessionid="));
-    if (!webSession) {
-      console.warn(`[webClient] follow ${userId}: _followViaWebEndpoint \u2014 no web session in cookieJar, cannot fall back`);
-      return { ok: false, status: "follow_blocked", reason: "api_error: We're sorry, but something went wrong (no web session for fallback)" };
-    }
-    console.log(`[webClient] follow ${userId}: _followViaWebEndpoint \u2014 web session present, POST www.instagram.com/api/v1/friendships/create/${userId}/`);
-    const res = await this.webPost(`/api/v1/friendships/create/${userId}/`, `user_id=${userId}`);
-    const j = res?.json;
-    if (!j) {
-      console.warn(`[webClient] follow ${userId}: _followViaWebEndpoint no JSON response (status=${res?.status})`);
-      return { ok: false, status: "follow_blocked", reason: `web-endpoint fallback: no JSON response (status=${res?.status})` };
-    }
-    console.log(`[webClient] follow ${userId} (_followViaWebEndpoint):`, JSON.stringify(j).slice(0, 400));
-    if (j?.message === "checkpoint_required" || j?.checkpoint_url) {
-      return { ok: false, status: "checkpoint_required", reason: "Instagram requires a security checkpoint", checkpointUrl: j?.checkpoint_url ?? "" };
-    }
-    if (j?.message === "challenge_required" || j?.challenge_url) {
-      return { ok: false, status: "checkpoint_required", reason: "Instagram requires a security challenge", checkpointUrl: j?.challenge_url ?? "" };
-    }
-    if (j?.spam === true) return { ok: false, status: "follow_blocked", reason: "spam \u2014 Instagram flagged this follow attempt" };
-    if (j?.feedback_required === true || /feedback_required|ActionBlocked/i.test(j?.message ?? "")) {
-      return { ok: false, status: "follow_blocked", reason: j?.message ?? "feedback_required" };
-    }
-    if (j?.require_login || j?.message === "login_required") {
-      return { ok: false, status: "follow_blocked", reason: "web session expired \u2014 re-verify account" };
-    }
-    if (j?.message && /please wait/i.test(String(j.message))) {
-      return { ok: false, status: "follow_blocked", reason: j.message };
-    }
-    if (j?.result === "following") return { ok: true, status: "following" };
-    if (j?.result === "requested") return { ok: true, status: "requested" };
-    if (j?.friendship_status) {
-      const fs6 = j.friendship_status;
-      return { ok: true, status: fs6.following ? "following" : "requested" };
-    }
-    if (j?.following !== void 0 || j?.outgoing_request !== void 0) {
-      if (j.following || j.outgoing_request) return { ok: true, status: j.following ? "following" : "requested" };
-      return { ok: false, status: "follow_blocked", reason: "web-endpoint: Instagram silently declined (following=false, outgoing_request=false)" };
-    }
-    if (j?.status === "ok") {
-      console.warn(`[webClient] follow ${userId} web-endpoint: status=ok but no friendship_status/result/following field \u2014 optimistically treating as success`, JSON.stringify(j).slice(0, 200));
-      return { ok: true, status: "following" };
-    }
-    if (j?.status === "fail") {
-      return { ok: false, status: "follow_blocked", reason: `web-endpoint api_error: ${j?.message ?? "Instagram declined (status: fail)"}` };
-    }
-    console.warn(`[webClient] follow ${userId} web-endpoint unexpected response:`, JSON.stringify(j));
-    return { ok: false, status: "follow_blocked", reason: "web-endpoint unexpected: " + JSON.stringify(j).slice(0, 200) };
   }
   // ── Programmatic consent acceptance ──────────────────────────────────────
   // When Instagram's mobile API returns consent_required, it means the account
@@ -169269,7 +169204,9 @@ ${err?.stack ?? ""}`);
         }
       }
     }
-    let followed = 0, dedupSkipped = 0, filterSkipped = 0, blocked = 0, skipped = 0;
+    let followed = 0, followAttempts = 0, dedupSkipped = 0, filterSkipped = 0, blocked = 0, skipped = 0;
+    const attemptedFollowUserIds = /* @__PURE__ */ new Set();
+    const followAttemptKey = (user) => String(user.pk || `username:${user.username.toLowerCase()}`);
     let hitHardLimit = false;
     const browseTargetProfile = async (label, targetUser) => {
       engineLog("INFO", `@${profile.username}: [${label}] starting profile browse of @${targetUser.username} (pk=${targetUser.pk})`);
@@ -169524,7 +169461,7 @@ ${err?.stack ?? ""}`);
       }
     };
     for (const user of candidates) {
-      if (followed >= processCount) break;
+      if (followAttempts >= processCount) break;
       if (state.stop.stopped) {
         hitHardLimit = true;
         break;
@@ -169632,7 +169569,14 @@ ${err?.stack ?? ""}`);
         hitHardLimit = true;
         break;
       }
+      const attemptKey = followAttemptKey(user);
+      if (attemptedFollowUserIds.has(attemptKey)) {
+        dedupSkipped++;
+        continue;
+      }
       let result;
+      attemptedFollowUserIds.add(attemptKey);
+      followAttempts++;
       try {
         const sourceLabel = source.value ? source.type === "hashtag" ? `#${source.value}` : source.value : void 0;
         result = await client.followUser(user.pk, user.username, sourceLabel);
@@ -169731,7 +169675,7 @@ ${err?.stack ?? ""}`);
       if (!result.ok) {
         const rawReason = result.reason ? `: ${result.reason}` : " (no reason returned by Instagram)";
         console.log(`[engine] @${profile.username}: skip @${user.username} \u2014 follow attempt failed${rawReason}`);
-        this.logAction(profile.id, tool.id, "follow_skipped", user.username, source.value, source.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 skipped, trying next candidate instead`);
+        this.logAction(profile.id, tool.id, "follow_skipped", user.username, source.value, source.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 this user will not be retried in this session`);
         skipped++;
         continue;
       }
@@ -169771,14 +169715,14 @@ ${err?.stack ?? ""}`);
     const seenFollowerPksBySource = /* @__PURE__ */ new Map();
     seenFollowerPksBySource.set(source.id, new Set(candidates.map((c3) => c3.pk)));
     const sourceRoundCount = /* @__PURE__ */ new Map();
-    if (!hitHardLimit && followed < processCount && !state.stop.stopped) {
+    if (!hitHardLimit && followAttempts < processCount && !state.stop.stopped) {
       let extraRound = 0;
-      while (followed < processCount && !hitHardLimit && !state.stop.stopped && extraRound < maxExtraRounds) {
+      while (followAttempts < processCount && !hitHardLimit && !state.stop.stopped && extraRound < maxExtraRounds) {
         extraRound++;
         const availableSources = sameTypeSources.filter((s2) => !exhaustedSourceIds.has(s2.id));
         if (!availableSources.length) break;
         const rescrapeSource = availableSources[(initialSourceIdx + extraRound) % availableSources.length];
-        const needMore = processCount - followed;
+        const needMore = processCount - followAttempts;
         let moreCandidates = [];
         let rawApiCount = -1;
         try {
@@ -169841,7 +169785,7 @@ ${err?.stack ?? ""}`);
         }
         engineLog("INFO", `@${profile.username}: re-scrape round ${extraRound} #${rescrapeSource.value} \u2014 ${moreCandidates.length} new candidates (need ${needMore} more)`);
         for (const user of moreCandidates) {
-          if (followed >= processCount || state.stop.stopped || hitHardLimit) break;
+          if (followAttempts >= processCount || state.stop.stopped || hitHardLimit) break;
           if (maxPerDay > 0 && this.daily(state) >= maxPerDay) {
             hitHardLimit = true;
             break;
@@ -169871,7 +169815,14 @@ ${err?.stack ?? ""}`);
             hitHardLimit = true;
             break;
           }
+          const attemptKey = followAttemptKey(user);
+          if (attemptedFollowUserIds.has(attemptKey)) {
+            dedupSkipped++;
+            continue;
+          }
           let result;
+          attemptedFollowUserIds.add(attemptKey);
+          followAttempts++;
           try {
             const sourceLabel = rescrapeSource.value ? rescrapeSource.type === "hashtag" ? `#${rescrapeSource.value}` : rescrapeSource.value : void 0;
             result = await client.followUser(user.pk, user.username, sourceLabel);
@@ -169951,7 +169902,7 @@ ${err?.stack ?? ""}`);
           if (!result.ok) {
             const rawReason = result.reason ? `: ${result.reason}` : " (no reason returned by Instagram)";
             console.log(`[engine] @${profile.username}: skip @${user.username} \u2014 follow attempt failed${rawReason} \u2014 trying next candidate`);
-            this.logAction(profile.id, tool.id, "follow_skipped", user.username, rescrapeSource.value, rescrapeSource.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 skipped, trying next candidate instead`);
+            this.logAction(profile.id, tool.id, "follow_skipped", user.username, rescrapeSource.value, rescrapeSource.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 this user will not be retried in this session`);
             skipped++;
             continue;
           }
@@ -169970,13 +169921,13 @@ ${err?.stack ?? ""}`);
           console.log(`[engine] @${profile.username}: \u2713 @${user.username} [${followed}/${processCount}] day:${state.dailyCount}`);
           await sleep(randInt2(followMin, followMax));
         }
-        if (!hitHardLimit && followed === 0 && blocked >= processCount) {
+        if (!hitHardLimit && followed === 0 && followAttempts >= processCount && blocked >= processCount) {
           engineLog("WARN", `@${profile.username}: re-scrape aborted after round ${extraRound} \u2014 ${blocked} block(s), 0 follows (session dead or action-blocked)`);
           hitHardLimit = true;
         }
       }
     }
-    console.log(`[engine] @${profile.username}: session done \u2014 followed ${followed}/${processCount}`);
+    console.log(`[engine] @${profile.username}: session done \u2014 attempted ${followAttempts}/${processCount}, followed ${followed}/${processCount}`);
     return { followed, scraped: candidates.length, dedupSkipped, filterSkipped, blocked, skipped };
   }
   // ── Weighted source picker ────────────────────────────────────────────────

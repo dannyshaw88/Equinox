@@ -6126,7 +6126,13 @@ class AutomationEngine {
       }
     }
 
-    let followed = 0, dedupSkipped = 0, filterSkipped = 0, blocked = 0, skipped = 0;
+    let followed = 0, followAttempts = 0, dedupSkipped = 0, filterSkipped = 0, blocked = 0, skipped = 0;
+    // A follow failure must not cause the same target to be submitted again from
+    // another source or a later re-scrape round. This set is shared by both loops
+    // below and is updated immediately before the single API follow call.
+    const attemptedFollowUserIds = new Set<string>();
+    const followAttemptKey = (user: { pk: string; username: string }): string =>
+      String(user.pk || `username:${user.username.toLowerCase()}`);
     let hitHardLimit = false; // true when a real cap/block/stop occurred (not just ran out of candidates)
 
     // Helper: browse the target user's profile — visit, scroll feed, open/like/save posts,
@@ -6403,7 +6409,7 @@ class AutomationEngine {
     };
 
     for (const user of candidates) {
-      if (followed >= processCount) break;
+      if (followAttempts >= processCount) break;
       if (state.stop.stopped) { hitHardLimit = true; break; }
       if (maxPerDay > 0 && this.daily(state) >= maxPerDay) { console.log(`[engine] @${profile.username}: daily cap hit mid-session`); hitHardLimit = true; break; }
       if (maxPerHour > 0 && this.hourly(state) >= maxPerHour) { console.log(`[engine] @${profile.username}: hourly cap hit mid-session`); hitHardLimit = true; await sleep(3_600_000); break; }
@@ -6529,8 +6535,16 @@ class AutomationEngine {
         hitHardLimit = true; break;
       }
 
+      const attemptKey = followAttemptKey(user);
+      if (attemptedFollowUserIds.has(attemptKey)) {
+        dedupSkipped++;
+        continue;
+      }
+
       // Follow
       let result: { ok: boolean; status?: string; reason?: string };
+      attemptedFollowUserIds.add(attemptKey);
+      followAttempts++;
       try {
         const sourceLabel = source.value ? (source.type === "hashtag" ? `#${source.value}` : source.value) : undefined;
         result = await client.followUser(user.pk, user.username, sourceLabel);
@@ -6664,7 +6678,7 @@ class AutomationEngine {
         // don't mislabel it. The raw reason (if any) is included for diagnosis.
         const rawReason = (result as any).reason ? `: ${(result as any).reason}` : " (no reason returned by Instagram)";
         console.log(`[engine] @${profile.username}: skip @${user.username} — follow attempt failed${rawReason}`);
-        this.logAction(profile.id, tool.id, "follow_skipped", user.username, source.value, source.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} — skipped, trying next candidate instead`);
+        this.logAction(profile.id, tool.id, "follow_skipped", user.username, source.value, source.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} — this user will not be retried in this session`);
         skipped++;
         continue;
       }
@@ -6719,16 +6733,16 @@ class AutomationEngine {
     const seenFollowerPksBySource = new Map<string, Set<string>>();
     seenFollowerPksBySource.set(source.id, new Set(candidates.map(c => c.pk)));
     const sourceRoundCount = new Map<string, number>();
-    if (!hitHardLimit && followed < processCount && !state.stop.stopped) {
+    if (!hitHardLimit && followAttempts < processCount && !state.stop.stopped) {
       let extraRound = 0;
-      while (followed < processCount && !hitHardLimit && !state.stop.stopped && extraRound < maxExtraRounds) {
+      while (followAttempts < processCount && !hitHardLimit && !state.stop.stopped && extraRound < maxExtraRounds) {
         extraRound++;
         const availableSources = sameTypeSources.filter(s => !exhaustedSourceIds.has(s.id));
         if (!availableSources.length) break;
         // Rotate: start from the source AFTER the initial one so the first re-scrape
         // round always tries a fresh source (wraps back when only one source exists).
         const rescrapeSource = availableSources[(initialSourceIdx + extraRound) % availableSources.length];
-        const needMore = processCount - followed;
+        const needMore = processCount - followAttempts;
         let moreCandidates: { pk: string; username: string; fullName: string }[] = [];
         // rawApiCount: users returned by the API BEFORE dedup.  Declared here so the
         // exhaustion check below can see it.  Non-hashtag branches leave it -1, which
@@ -6800,7 +6814,7 @@ class AutomationEngine {
         }
         engineLog("INFO", `@${profile.username}: re-scrape round ${extraRound} #${rescrapeSource.value} — ${moreCandidates.length} new candidates (need ${needMore} more)`);
         for (const user of moreCandidates) {
-          if (followed >= processCount || state.stop.stopped || hitHardLimit) break;
+          if (followAttempts >= processCount || state.stop.stopped || hitHardLimit) break;
           if (maxPerDay > 0 && this.daily(state) >= maxPerDay) { hitHardLimit = true; break; }
           if (maxPerHour > 0 && this.hourly(state) >= maxPerHour) { hitHardLimit = true; break; }
           if (await this.alreadyFollowed(profile.id, user.username)) { dedupSkipped++; continue; }
@@ -6811,7 +6825,14 @@ class AutomationEngine {
             filterSkipped++; continue;
           }
           if (this.isActionSuspended(state, "follow")) { hitHardLimit = true; break; }
+          const attemptKey = followAttemptKey(user);
+          if (attemptedFollowUserIds.has(attemptKey)) {
+            dedupSkipped++;
+            continue;
+          }
           let result: { ok: boolean; status?: string; reason?: string };
+          attemptedFollowUserIds.add(attemptKey);
+          followAttempts++;
           try {
             const sourceLabel = rescrapeSource.value ? (rescrapeSource.type === "hashtag" ? `#${rescrapeSource.value}` : rescrapeSource.value) : undefined;
             result = await client.followUser(user.pk, user.username, sourceLabel);
@@ -6897,7 +6918,7 @@ class AutomationEngine {
           if (!result.ok) {
             const rawReason = (result as any).reason ? `: ${(result as any).reason}` : " (no reason returned by Instagram)";
             console.log(`[engine] @${profile.username}: skip @${user.username} — follow attempt failed${rawReason} — trying next candidate`);
-            this.logAction(profile.id, tool.id, "follow_skipped", user.username, rescrapeSource.value, rescrapeSource.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} — skipped, trying next candidate instead`);
+            this.logAction(profile.id, tool.id, "follow_skipped", user.username, rescrapeSource.value, rescrapeSource.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} — this user will not be retried in this session`);
             skipped++;
             continue;
           }
@@ -6918,14 +6939,14 @@ class AutomationEngine {
         // Guard: if we've run out of process slots via blocks alone (0 successful follows),
         // the session/account is dead — stop re-scraping immediately instead of running all
         // 20 rounds and hammering the sources for nothing.
-        if (!hitHardLimit && followed === 0 && blocked >= processCount) {
+        if (!hitHardLimit && followed === 0 && followAttempts >= processCount && blocked >= processCount) {
           engineLog("WARN", `@${profile.username}: re-scrape aborted after round ${extraRound} — ${blocked} block(s), 0 follows (session dead or action-blocked)`);
           hitHardLimit = true;
         }
       }
     }
 
-    console.log(`[engine] @${profile.username}: session done — followed ${followed}/${processCount}`);
+    console.log(`[engine] @${profile.username}: session done — attempted ${followAttempts}/${processCount}, followed ${followed}/${processCount}`);
     return { followed, scraped: candidates.length, dedupSkipped, filterSkipped, blocked, skipped };
   }
 
