@@ -829,9 +829,6 @@ export class InstagramWebClient {
         } else if (igPath.includes("/feed/timeline")) {
           const n: number = (result?.feed_items ?? result?.items ?? []).length;
           successMsg = n > 0 ? `${n} post${n !== 1 ? "s" : ""} in timeline` : "Loading timeline feed";
-        } else if (igPath.includes("/friendships/create")) {
-          const status = result?.friendship_status?.following ? "following" : "requested";
-          successMsg = `Follow ${status}`;
         } else if (igPath.includes("/friendships/destroy")) {
           successMsg = "Unfollowed";
         } else if (igPath.includes("/like") && igPath.includes("/media")) {
@@ -1139,6 +1136,9 @@ export class InstagramWebClient {
 
   private _opNameFromPath(path: string, _method: string): string {
     const base = path.split("?")[0].replace(/\/+$/, "");
+    // Instagram's native web follow action has a semantic operation name that
+    // is more useful than the generic WebFriendshipsFollow path-derived name.
+    if (/^\/web\/friendships\/\d+\/follow$/.test(base)) return "FollowUser";
     const stripped = base.replace(/^\/api\/v\d+\//, "");
     // Filter out pure-numeric IDs AND Instagram-style compound IDs like {mediaId}_{postId}
     const parts = stripped.split("/").filter(p => p && !/^\d+$/.test(p) && !/^\d[\d_]{4,}$/.test(p));
@@ -1179,13 +1179,11 @@ export class InstagramWebClient {
         "/api/v1/media/*/like":                     ["Liked post",                      "Like failed"],
         "/api/v1/media/*/unlike":                   ["Unliked post",                    "Unlike failed"],
         "/api/v1/media/*/comment":                  ["Comment posted",                  "Comment failed"],
-        "/api/v1/friendships/create":               ["Follow sent",                     "Follow failed"],
-        "/api/v1/friendships/create/*":             ["Follow sent",                     "Follow failed"],
         "/api/v1/friendships/destroy":              ["Unfollowed",                      "Unfollow failed"],
         "/api/v1/friendships/destroy/*":            ["Unfollowed",                      "Unfollow failed"],
         "/api/v1/friendships/show":                 ["Friendship status checked",       "Friendship check failed"],
-        "/api/v1/web/friendships/*/follow":         ["Follow sent",                     "Follow failed"],
-        "/api/v1/web/friendships/*/unfollow":       ["Unfollowed",                      "Unfollow failed"],
+        "/web/friendships/*/follow":                 ["Follow sent",                     "Follow failed"],
+        "/web/friendships/*/unfollow":               ["Unfollowed",                      "Unfollow failed"],
         "/api/v1/direct_v2/inbox":                  ["DM inbox loaded",                 "DM inbox failed"],
         "/api/v1/direct_v2/threads/*/items":        ["DM sent",                         "DM send failed"],
         "/api/v1/direct_v2/threads":                ["DM thread action",                "DM thread failed"],
