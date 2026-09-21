@@ -78,6 +78,14 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.552",
+    date: "2026-09-21",
+    items: [
+      { category: "Reliability", text: "View Reels now opens Instagram's dedicated Reels tab instead of filtering the home timeline." },
+      { category: "Settings", text: "Explore profile scrolling can now be disabled by setting Posts to Scroll on Profile to 0–0." },
+    ],
+  },
+  {
     version: "1.1.551",
     date: "2026-09-21",
     items: [{ category: "Safety", text: "Follow Tool now uses one mobile API attempt per user and never retries through a web endpoint or later scrape round." }],
