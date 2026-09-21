@@ -3723,7 +3723,7 @@ class AutomationEngine {
           const likePctMax = Math.min(100, Math.max(likePctMin, Number(s.exploreLikePctMax ?? 30)));
           const visitProfPctMin = Math.min(100, Math.max(0, Number(s.exploreVisitProfilePctMin ?? 0)));
           const visitProfPctMax = Math.min(100, Math.max(visitProfPctMin, Number(s.exploreVisitProfilePctMax ?? 20)));
-          const profScrollMin = Math.max(1, Number(s.exploreProfileScrollMin ?? 3));
+          const profScrollMin = Math.max(0, Number(s.exploreProfileScrollMin ?? 3));
           const profScrollMax = Math.max(profScrollMin, Number(s.exploreProfileScrollMax ?? 8));
           const profClickMin  = Math.max(0, Number(s.exploreProfileClickMin ?? 1));
           const profClickMax  = Math.max(profClickMin, Number(s.exploreProfileClickMax ?? 3));
@@ -5757,19 +5757,23 @@ class AutomationEngine {
                 }
 
                 // Scroll their profile feed
-                const expProfileScrollMin = Number((s as any).exploreProfileScrollMin ?? 3);
-                const expProfileScrollMax = Number((s as any).exploreProfileScrollMax ?? 8);
+                const expProfileScrollMin = Math.max(0, Number((s as any).exploreProfileScrollMin ?? 3));
+                const expProfileScrollMax = Math.max(expProfileScrollMin, Number((s as any).exploreProfileScrollMax ?? 8));
                 const profileScrollCount = randInt(expProfileScrollMin, expProfileScrollMax);
                 let profilePosts: Array<{ mediaId: string; shortcode: string; username: string }> = [];
-                try {
-                  profilePosts = useHikerHumanSessionFeed
-                    ? await hikerClient!.getUserFeedByUserId(item.userId, profileScrollCount)
-                    : await c.viewUserFeed(item.userId, profileScrollCount);
-                  console.log(`[engine] @${profile.username}: 📋 scrolled ${profilePosts.length} post(s) on @${item.username}'s profile (from explore)${useHikerHumanSessionFeed ? " [HikerAPI]" : ""}`);
-                  this.logAction(profile.id, tool.id, "view_profile_feed", item.username, "", "profile", "ok", `Scrolled ${profilePosts.length} post(s) on @${item.username}'s profile`);
-                } catch (e: any) {
-                  if (await checkSessionErr(e, "explore_profile_feed")) return;
-                  console.warn(`[engine] @${profile.username}: explore profile feed error: ${e?.message}`);
+                if (profileScrollCount > 0) {
+                  try {
+                    profilePosts = useHikerHumanSessionFeed
+                      ? await hikerClient!.getUserFeedByUserId(item.userId, profileScrollCount)
+                      : await c.viewUserFeed(item.userId, profileScrollCount);
+                    console.log(`[engine] @${profile.username}: 📋 scrolled ${profilePosts.length} post(s) on @${item.username}'s profile (from explore)${useHikerHumanSessionFeed ? " [HikerAPI]" : ""}`);
+                    this.logAction(profile.id, tool.id, "view_profile_feed", item.username, "", "profile", "ok", `Scrolled ${profilePosts.length} post(s) on @${item.username}'s profile`);
+                  } catch (e: any) {
+                    if (await checkSessionErr(e, "explore_profile_feed")) return;
+                    console.warn(`[engine] @${profile.username}: explore profile feed error: ${e?.message}`);
+                  }
+                } else {
+                  console.log(`[engine] @${profile.username}: skipped profile feed scroll for @${item.username} (configured count is 0)`);
                 }
 
                 // Click posts on their profile
