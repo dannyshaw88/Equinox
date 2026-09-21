@@ -23,9 +23,9 @@ const FOLLOW_OPS = new Set([
 
 const SESSION_OPS = new Set([
   "GetTimeLineFeed", "ViewTimelineFeedSeen", "GetReelsTray", "ViewUserFeed",
-  "GetDirectMessages", "TopicalExplore", "ExecuteNotificationsBadge",
+  "GetDirectMessages", "DiscoverExplore", "ExecuteNotificationsBadge",
   "ViewTimelineStories", "VisitUserProfile", "ViewFeedPost", "LikeMedia",
-  "SaveMedia", "feed/timeline", "discover/topical_explore", "feed/user",
+  "SaveMedia", "feed/timeline", "discover/explore", "feed/user",
   "direct_v2/inbox", "news/inbox", "media/like",
 ]);
 

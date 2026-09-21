@@ -157419,7 +157419,7 @@ var InstagramWebClient = class {
         } else if (igPath.includes("/feed/reels_tray")) {
           const n = (result?.tray ?? []).length;
           successMsg = `${n} stor${n === 1 ? "y" : "ies"} in tray`;
-        } else if (igPath.includes("/discover/topical_explore")) {
+        } else if (igPath.includes("/discover/explore")) {
           successMsg = "Explore feed loaded";
         } else if (igPath.includes("/feed/timeline")) {
           const n = (result?.feed_items ?? result?.items ?? []).length;
@@ -157713,7 +157713,7 @@ var InstagramWebClient = class {
         "/api/v1/feed/reels_tray": ["Stories tray loaded", "Stories tray failed"],
         "/api/v1/feed/user/*": ["User feed loaded", "User feed failed"],
         "/api/v1/feed/tag/*": ["Hashtag feed loaded", "Hashtag feed failed"],
-        "/api/v1/discover/topical_explore": ["Explore feed loaded", "Explore feed failed"],
+        "/api/v1/discover/explore": ["Explore feed loaded", "Explore feed failed"],
         "/api/v1/discover/ayml": ["Suggestions loaded", "Suggestions failed"],
         "/api/v1/media/seen": ["Marking media as seen", "Mark seen failed"],
         "/api/v1/media/*/like": ["Liked post", "Like failed"],
@@ -161951,7 +161951,7 @@ Content-Disposition: form-data; name="${part.name}"`;
   }
   // ── Visit the Explore page and return up to `scrollCount` post items ───────
   // Used by the Human Session engine when the timeline returns 0 posts.
-  // Calls the mobile API topical explore endpoint (equivalent to tapping the
+  // Calls the mobile API Explore endpoint (equivalent to tapping the
   // Search/Explore tab in the app), simulating natural discovery browsing.
   async visitExplorePage(scrollCount) {
     return this.withActionContext("visitExplorePage", async () => this.timed("VisitExplorePage", async () => {
@@ -161959,7 +161959,7 @@ Content-Disposition: form-data; name="${part.name}"`;
       const items = [];
       try {
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/topical_explore/?is_prefetch=false&omit_cover_media=false&use_sectional_payload=true&timezone_offset=0&session_id=${Date.now()}&include_fixed_destinations=false`,
+          "/api/v1/discover/explore/",
           (json2) => {
             const n = (json2?.sectional_items ?? json2?.items ?? []).reduce((acc, s) => acc + (s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []).length, 0);
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
@@ -161979,7 +161979,7 @@ Content-Disposition: form-data; name="${part.name}"`;
           }
         }
       } catch (e) {
-        console.warn(`[webClient] visitExplorePage topical_explore failed: ${e?.message}`);
+        console.warn(`[webClient] visitExplorePage discover/explore failed: ${e?.message}`);
       }
       if (items.length === 0) {
         try {
@@ -163510,7 +163510,7 @@ var SESSION_OPS = /* @__PURE__ */ new Set([
   "LikeMedia",
   "SaveMedia",
   "feed/timeline",
-  "discover/topical_explore",
+  "discover/explore",
   "feed/user",
   "direct_v2/inbox",
   "news/inbox",
