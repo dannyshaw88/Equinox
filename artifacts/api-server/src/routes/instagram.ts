@@ -2252,9 +2252,9 @@ export async function registerInstagramRoutes(
     verifyInFlight.set(profileId, Date.now());
 
     // Helper: release lock + send error (avoids repeating delete on every early return)
-    const fail = (status: number, message: string) => {
+    const fail = (status: number, message: string, extra: Record<string, unknown> = {}) => {
       verifyInFlight.delete(profileId);
-      return res.status(status).json({ ok: false, message });
+      return res.status(status).json({ ok: false, message, ...extra });
     };
 
     const profile = await storage.getProfile(profileId);
@@ -2262,8 +2262,12 @@ export async function registerInstagramRoutes(
     if (profile.proxyId) {
       const assignedProxy = (await storage.getProxies()).find(p => p.id === profile.proxyId);
       const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
-      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId)) {
-        return fail(423, `No new accounts can be verified on this proxy until ${new Date(burntUntil).toISOString()}.`);
+      const confirmBurntProxy = req.query.confirmBurntProxy === "true" || req.body?.confirmBurntProxy === true;
+      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
+        return fail(409, `This proxy is marked as burnt until ${new Date(burntUntil).toISOString()}.`, {
+          code: "burnt_proxy_confirmation_required",
+          burntUntil: assignedProxy?.burntUntil,
+        });
       }
     }
     if (
@@ -5046,7 +5050,7 @@ export async function registerInstagramRoutes(
 
   // ── Bulk Verify All Accounts ──────────────────────────────────────────────
   app.post("/api/profiles/verify-all", async (req, res) => {
-    const { profileIds } = req.body as { profileIds?: number[] };
+    const { profileIds, confirmBurntProxy } = req.body as { profileIds?: number[]; confirmBurntProxy?: boolean };
 
     const allProfiles = await storage.getProfiles();
     const targets = profileIds && profileIds.length > 0
@@ -5069,11 +5073,26 @@ export async function registerInstagramRoutes(
 
     // Block any target without a proxy — never connect via bare server IP
     const allProxies = await storage.getProxies();
+    const burntTargets = targets.filter(p => {
+      if (!p.proxyId) return false;
+      const linked = allProxies.find(px => px.id === p.proxyId);
+      const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
+      return burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId);
+    });
+    if (burntTargets.length > 0 && !confirmBurntProxy) {
+      return res.status(409).json({
+        ok: false,
+        code: "burnt_proxy_confirmation_required",
+        message: `${burntTargets.length} account${burntTargets.length === 1 ? "" : "s"} use a proxy marked as burnt.`,
+        burntProfileIds: burntTargets.map(p => p.id),
+        burntUsernames: burntTargets.map(p => p.username),
+      });
+    }
+
     const eligible = targets.filter(p => {
       if (p.proxyId) {
         const linked = allProxies.find(px => px.id === p.proxyId);
-        const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
-        return !!(linked?.host && linked?.port) && !(burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId));
+        return !!(linked?.host && linked?.port);
       }
       return !!(p.proxyHost && p.proxyPort);
     });

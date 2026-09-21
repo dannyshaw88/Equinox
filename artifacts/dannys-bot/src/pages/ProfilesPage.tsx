@@ -32,6 +32,7 @@ import type { AccountStatus } from "@shared/schema";
 import { api } from "@shared/routes";
 import { getLoginRateLimitWarning, recordLoginEvent } from "@/lib/ipLoginTracker";
 import { LoginRateLimitDialog } from "@/components/LoginRateLimitDialog";
+import { BurntProxyConfirmDialog } from "@/components/BurntProxyConfirmDialog";
 
 // ── Status metadata ──────────────────────────────────────────────────────────
 const STATUS_META: Record<string, {
@@ -257,12 +258,18 @@ export function ProfilesPage() {
     warningText: string;
     onConfirm: () => void;
   } | null>(null);
+  const [burntVerifyState, setBurntVerifyState] = useState<{
+    accountNames: string[];
+    proxyDisplay?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Core verify execution — records a login event only on success, then runs the verify POST.
-  const _executeVerify = useCallback(async (id: number, proxyHostVal: string | null, proxyPortVal: number | null) => {
+  const _executeVerify = useCallback(async (id: number, proxyHostVal: string | null, proxyPortVal: number | null, confirmBurntProxy = false) => {
     if (verifyingInProgress.current.has(id)) return;
     verifyingInProgress.current.add(id);
     setVerifyingIds(prev => { const n = new Set(prev); n.add(id); return n; });
+    const profileForVerify = profiles?.find(pr => pr.id === id);
     await queryClient.cancelQueries({ queryKey: [api.profiles.list.path] });
     const patchVerifying = (old: any) =>
       Array.isArray(old) ? old.map((p: any) => p.id === id ? { ...p, accountStatus: "verifying" } : p) : old;
@@ -271,8 +278,21 @@ export function ProfilesPage() {
     queryClient.setQueryData([api.profiles.get.path, id], (old: any) =>
       old ? { ...old, accountStatus: "verifying" } : old);
     try {
-      const res  = await fetch(`/api/profiles/${id}/verify`, { method: "POST", credentials: "include" });
-      const data = await res.json() as { ok: boolean; message: string };
+      const params = new URLSearchParams();
+      if (confirmBurntProxy) params.set("confirmBurntProxy", "true");
+      const res  = await fetch(`/api/profiles/${id}/verify${params.size ? `?${params}` : ""}`, { method: "POST", credentials: "include" });
+      const data = await res.json() as { ok: boolean; message: string; code?: string };
+      if (res.status === 409 && data.code === "burnt_proxy_confirmation_required") {
+        setBurntVerifyState({
+          accountNames: [profileForVerify?.username ?? `account ${id}`],
+          proxyDisplay: proxyPortVal ? `${proxyHostVal}:${proxyPortVal}` : (proxyHostVal ?? undefined),
+          onConfirm: () => {
+            setBurntVerifyState(null);
+            _executeVerify(id, proxyHostVal, proxyPortVal, true);
+          },
+        });
+        return;
+      }
       if (res.status === 423) {
         toast({ title: "🔥 Burnt proxy", description: data.message, variant: "destructive" });
         return;
@@ -290,7 +310,7 @@ export function ProfilesPage() {
       setVerifyingIds(prev => { const n = new Set(prev); n.delete(id); return n; });
       queryClient.invalidateQueries({ queryKey: [api.profiles.list.path] });
     }
-  }, [toast, queryClient]);
+  }, [toast, queryClient, profiles]);
 
   // Guard wrapper — checks IP login rate limit before executing verify.
   const handleVerify = useCallback((id: number) => {
@@ -1082,19 +1102,25 @@ export function ProfilesPage() {
   }, [selectedProfileIds, profiles, toggleStopped]);
 
   // ── Bulk: Verify All ─────────────────────────────────────────────────────
-  const handleVerifyAll = useCallback(async () => {
-    const ids = selectedProfileIds.length > 0 ? selectedProfileIds : filteredProfiles.map(p => p.id);
-    if (!ids.length) return;
+  const executeVerifyAll = useCallback(async (ids: number[], confirmBurntProxy = false) => {
     setVerifyingAll(true);
     try {
       const res = await fetch("/api/profiles/verify-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ profileIds: ids }),
+        body: JSON.stringify({ profileIds: ids, confirmBurntProxy }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (res.status === 409 && data.code === "burnt_proxy_confirmation_required") {
+        setBurntVerifyState({
+          accountNames: data.burntUsernames?.length ? data.burntUsernames : ["selected accounts"],
+          onConfirm: () => {
+            setBurntVerifyState(null);
+            void executeVerifyAll(ids, true);
+          },
+        });
+      } else if (data.ok) {
         toast({ title: `Verifying ${ids.length} account${ids.length !== 1 ? "s" : ""}`, description: `All ${ids.length} running simultaneously in the background.` });
       } else {
         toast({ title: "Error", description: data.error ?? "Failed to start verification.", variant: "destructive" });
@@ -1104,7 +1130,13 @@ export function ProfilesPage() {
     } finally {
       setVerifyingAll(false);
     }
-  }, [selectedProfileIds, filteredProfiles, toast]);
+  }, [toast]);
+
+  const handleVerifyAll = useCallback(async () => {
+    const ids = selectedProfileIds.length > 0 ? selectedProfileIds : filteredProfiles.map(p => p.id);
+    if (!ids.length) return;
+    await executeVerifyAll(ids);
+  }, [selectedProfileIds, filteredProfiles, executeVerifyAll]);
 
   // ── Per-account: Fix Automated Behaviour Detected ────────────────────────
   const handleFixAbdForProfile = useCallback(async (profileId: number) => {
@@ -2769,6 +2801,15 @@ export function ProfilesPage() {
           warningText={loginWarnState.warningText}
           onCancel={() => setLoginWarnState(null)}
           onContinue={loginWarnState.onConfirm}
+        />
+      )}
+      {burntVerifyState && (
+        <BurntProxyConfirmDialog
+          open
+          accountNames={burntVerifyState.accountNames}
+          proxyDisplay={burntVerifyState.proxyDisplay}
+          onCancel={() => setBurntVerifyState(null)}
+          onContinue={burntVerifyState.onConfirm}
         />
       )}
     </AppLayout>

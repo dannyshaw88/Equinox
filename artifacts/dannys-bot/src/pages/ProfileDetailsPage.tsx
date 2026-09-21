@@ -41,6 +41,7 @@ import { BrowserCheck } from "@/components/BrowserCheck";
 import { HeaderCheck } from "@/components/HeaderCheck";
 import { ChromeVersionCheck } from "@/components/ChromeVersionCheck";
 import { LoginRateLimitDialog } from "@/components/LoginRateLimitDialog";
+import { BurntProxyConfirmDialog } from "@/components/BurntProxyConfirmDialog";
 import type { AccountStatus } from "@shared/schema";
 import { ACCOUNT_STATUSES } from "@shared/schema";
 import { userAgents } from "@shared/userAgents";
@@ -286,6 +287,7 @@ export function ProfileDetailsPage() {
     bypassProxy: boolean;
     onConfirm: () => void;
   } | null>(null);
+  const [burntConfirmOpen, setBurntConfirmOpen] = useState(false);
   const [pendingUa, setPendingUa] = useState<UaEntry | null>(null);
   const [uaChangeConfirmOpen, setUaChangeConfirmOpen] = useState(false);
   const [showFingerprintPreview, setShowFingerprintPreview] = useState(false);
@@ -647,7 +649,7 @@ export function ProfileDetailsPage() {
     if ("username" in patch || "password" in patch) setVerifyStatus("idle");
   };
 
-  const _executeVerify = async (bypassProxy = false) => {
+  const _executeVerify = async (bypassProxy = false, confirmBurntProxy = false) => {
     // Flush any pending autosave BEFORE verify reads from DB.
     // Without this, settings changed within the 800ms debounce window (e.g.
     // toggling syncUseHiker off) are not yet
@@ -689,12 +691,21 @@ export function ProfileDetailsPage() {
     queryClient.setQueryData(["/api/profiles", profileId], (old: any) =>
       old ? { ...old, accountStatus: "verifying" } : old
     );
-    const url = `/api/profiles/${profileId}/verify${bypassProxy ? "?bypassProxy=true" : ""}`;
+    const params = new URLSearchParams();
+    if (bypassProxy) params.set("bypassProxy", "true");
+    if (confirmBurntProxy) params.set("confirmBurntProxy", "true");
+    const url = `/api/profiles/${profileId}/verify${params.size ? `?${params}` : ""}`;
     try {
       const res = await fetch(url, { method: "POST" });
       const data = await res.json();
       if (res.status === 429) {
         toast({ title: "Verification In Progress", description: "Already verifying this account please wait for it to finish." });
+        queryClient.invalidateQueries({ queryKey: ["/api/profiles"] });
+        return;
+      }
+      if (res.status === 409 && data.code === "burnt_proxy_confirmation_required") {
+        setVerifyStatus("idle");
+        setBurntConfirmOpen(true);
         queryClient.invalidateQueries({ queryKey: ["/api/profiles"] });
         return;
       }
@@ -2073,6 +2084,16 @@ export function ProfileDetailsPage() {
           onContinue={loginWarnState.onConfirm}
         />
       )}
+      <BurntProxyConfirmDialog
+        open={burntConfirmOpen}
+        accountNames={profile?.username ? [profile.username] : ["this account"]}
+        proxyDisplay={profile?.proxyHost && profile?.proxyPort ? `${profile.proxyHost}:${profile.proxyPort}` : undefined}
+        onCancel={() => setBurntConfirmOpen(false)}
+        onContinue={() => {
+          setBurntConfirmOpen(false);
+          void _executeVerify(false, true);
+        }}
+      />
     </AppLayout>
   );
 }

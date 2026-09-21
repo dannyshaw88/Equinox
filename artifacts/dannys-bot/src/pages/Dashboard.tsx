@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.550",
+    date: "2026-09-21",
+    items: [{ category: "Safety", text: "Verifying a new account through a burnt proxy now asks for confirmation instead of stopping without a way to continue." }],
+  },
+  {
     version: "1.1.549",
     date: "2026-09-21",
     items: [{ category: "UI", text: "Proxy Manager now shows a burnt indicator after the ping and Wi‑Fi status when a proxy is marked burnt." }],

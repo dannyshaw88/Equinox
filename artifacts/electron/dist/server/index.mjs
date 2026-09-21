@@ -172492,17 +172492,21 @@ ${stamp_l}` : stamp_l });
     }
     verifyInFlight.delete(profileId);
     verifyInFlight.set(profileId, Date.now());
-    const fail = (status, message) => {
+    const fail = (status, message, extra = {}) => {
       verifyInFlight.delete(profileId);
-      return res.status(status).json({ ok: false, message });
+      return res.status(status).json({ ok: false, message, ...extra });
     };
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
     if (profile.proxyId) {
       const assignedProxy = (await storage.getProxies()).find((p) => p.id === profile.proxyId);
       const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
-      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId)) {
-        return fail(423, `No new accounts can be verified on this proxy until ${new Date(burntUntil).toISOString()}.`);
+      const confirmBurntProxy = req.query.confirmBurntProxy === "true" || req.body?.confirmBurntProxy === true;
+      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
+        return fail(409, `This proxy is marked as burnt until ${new Date(burntUntil).toISOString()}.`, {
+          code: "burnt_proxy_confirmation_required",
+          burntUntil: assignedProxy?.burntUntil
+        });
       }
     }
     if (profile.accountStatus === "verifying_to_api" && profile.apiVerifyAfter && profile.igApiCookies?.includes("sessionid=")) {
@@ -174782,7 +174786,7 @@ ${stamp}` : stamp;
     res.json({ ok: true, queued: result.queued });
   });
   app2.post("/api/profiles/verify-all", async (req, res) => {
-    const { profileIds: profileIds2 } = req.body;
+    const { profileIds: profileIds2, confirmBurntProxy } = req.body;
     const allProfiles = await storage.getProfiles();
     const targets = profileIds2 && profileIds2.length > 0 ? allProfiles.filter((p) => profileIds2.includes(p.id)) : allProfiles;
     if (!targets.length) return res.json({ ok: true, verified: 0, total: 0 });
@@ -174795,11 +174799,25 @@ ${stamp}` : stamp;
     const groupDelayMin = verifyDelayMode === "sameProxy" ? sameProxyMin : delayMin;
     const groupDelayMax = verifyDelayMode === "sameProxy" ? sameProxyMax : delayMax;
     const allProxies = await storage.getProxies();
+    const burntTargets = targets.filter((p) => {
+      if (!p.proxyId) return false;
+      const linked = allProxies.find((px) => px.id === p.proxyId);
+      const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
+      return burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId);
+    });
+    if (burntTargets.length > 0 && !confirmBurntProxy) {
+      return res.status(409).json({
+        ok: false,
+        code: "burnt_proxy_confirmation_required",
+        message: `${burntTargets.length} account${burntTargets.length === 1 ? "" : "s"} use a proxy marked as burnt.`,
+        burntProfileIds: burntTargets.map((p) => p.id),
+        burntUsernames: burntTargets.map((p) => p.username)
+      });
+    }
     const eligible = targets.filter((p) => {
       if (p.proxyId) {
         const linked = allProxies.find((px) => px.id === p.proxyId);
-        const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
-        return !!(linked?.host && linked?.port) && !(burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId));
+        return !!(linked?.host && linked?.port);
       }
       return !!(p.proxyHost && p.proxyPort);
     });
