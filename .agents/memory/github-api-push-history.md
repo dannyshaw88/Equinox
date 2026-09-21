@@ -16,3 +16,9 @@ For large tracked text files, do not source commit content from `shellExec` outp
 **Why:** A truncated blob can still create successfully on GitHub, but it produces a different tree and commit and leaves misleading orphaned Git objects.
 
 **How to apply:** Read the complete file with `readFile` within its byte limit, upload it as UTF-8 through the connector, and compare the returned blob and tree SHAs with local Git before updating the branch ref.
+
+If Replit's Git panel reports an unknown Git error after a history reconciliation, run `git fsck --full` and `git rev-list --all` before changing refs. A missing parent/tree object can break the panel even when `main` points at the correct commit. Restore missing commit objects from GitHub using their original timezone offset and trailing message newline, then restore referenced trees by SHA; do not rewrite branch refs just to hide the gap.
+
+**Why:** Git history can contain locally missing objects after an automated reconcile, and Git's commit API normalizes dates to UTC even when the original commit hash used a local offset. Rebuilding with the normalized date creates a different SHA.
+
+**How to apply:** Confirm each reconstructed commit and tree SHA against GitHub, then rerun `git fsck --full` and `git rev-list --all`. Dangling objects from failed reconstruction attempts are safe to leave alone unless cleanup is explicitly requested.
