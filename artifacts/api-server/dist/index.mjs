@@ -150059,6 +150059,7 @@ import * as https3 from "https";
 import * as http2 from "http";
 import * as fs2 from "fs";
 import * as path3 from "path";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID, createCipheriv, createHmac as createHmac2, publicEncrypt, randomBytes as randomBytes3, constants as cryptoConstants } from "crypto";
 init_userAgents();
 var import_instagram_private_api2 = __toESM(require_dist2(), 1);
@@ -157104,6 +157105,9 @@ var InstagramWebClient = class {
   _apiCallSource = "Account";
   _inTimedCall = false;
   _lastTimedCallIsError = false;
+  // Action context is carried through async transport calls so endpoint guards
+  // cannot be bypassed by a nested helper or a future Explore refactor.
+  _actionContext = new AsyncLocalStorage();
   // User-agent to use for web (www.instagram.com) POST requests.
   // Should match the EB browser's UA so that cookies and UA are consistent.
   webUserAgent = WEB_UA;
@@ -157656,6 +157660,18 @@ var InstagramWebClient = class {
   //   • IgApiClient (ig.*) → hooked in _newAutomationIgClient() → _logTransport()
   //   • direct igReq() calls → caller is responsible for calling _logTransport()
   // This guarantees exactly 1 log row per real HTTP request with no duplicates.
+  async withActionContext(action, fn) {
+    return this._actionContext.run(action, fn);
+  }
+  assertActionEndpointAllowed(path6) {
+    const action = this._actionContext.getStore();
+    const endpoint = path6.split("?")[0].replace(/\/+$/, "");
+    if (action === "visitExplorePage" && endpoint === "/api/v1/clips/home") {
+      const message = `[webClient] BLOCKED invalid endpoint ${endpoint} during ${action}; Explore must never request the Reels tab`;
+      console.error(message);
+      throw new Error(message);
+    }
+  }
   async timed(opName, fn, message, shouldLog) {
     const _t0 = Date.now();
     this._inTimedCall = true;
@@ -158413,6 +158429,7 @@ var InstagramWebClient = class {
     }
   }
   async mobileSessionGet(path6, msgFn) {
+    this.assertActionEndpointAllowed(path6);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!authorization;
     if (!hasMobileSession) {
@@ -159847,69 +159864,6 @@ var InstagramWebClient = class {
     }
     return result;
   }
-  // ── Watch reels from the home feed Reels tab ─────────────────────────────
-  // Fetches the reels explore/home feed and marks up to `count` reels as seen,
-  // simulating a user scrolling through the Reels tab.
-  async viewTimelineReels(count = 5) {
-    return this.timed(
-      "ViewTimelineReels",
-      async () => {
-        const sessionPresent = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!this._deviceAuthorization;
-        if (!sessionPresent) {
-          console.warn(`[webClient] viewTimelineReels: no mobile session \u2014 run Verify Credentials to establish igApiCookies`);
-          return -1;
-        }
-        const sessionId = randomUUID();
-        let j = await this.mobileSessionGet(
-          `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`
-        );
-        let source = "clips/home";
-        if (!j) {
-          console.warn(`[webClient] viewTimelineReels: clips/home returned null \u2014 falling back to feed/timeline`);
-          const body = new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString();
-          const tj = await this.mobileSessionPost(`/api/v1/feed/timeline/`, body);
-          if (!tj) {
-            console.warn(`[webClient] viewTimelineReels: feed/timeline also returned null \u2014 session expired/rejected`);
-            return -5;
-          }
-          const allItems = tj?.feed_items ?? tj?.items ?? [];
-          const reelItems = allItems.map((raw) => raw?.media_or_ad ?? raw?.media ?? raw).filter((m2) => m2?.media_type === 2 || m2?.product_type === "clips");
-          j = { items: reelItems, status: "ok" };
-          source = "feed/timeline (reels only)";
-        }
-        const items = j?.items ?? j?.feed_items ?? [];
-        console.log(`[webClient] viewTimelineReels [${source}]: status="${j?.status}" items.length=${items.length}`);
-        if (items.length > 0) {
-          const firstRaw = items[0];
-          console.log(`[webClient] viewTimelineReels: first item keys=[${Object.keys(firstRaw?.media ?? firstRaw ?? {}).join(", ")}]`);
-        }
-        if (!items.length) {
-          console.warn(`[webClient] viewTimelineReels: 0 items \u2014 response (500 chars): ${JSON.stringify(j).slice(0, 500)}`);
-          return 0;
-        }
-        const toView = items.slice(0, count);
-        const seenEntries = [];
-        for (const raw of toView) {
-          const media = raw?.media ?? raw;
-          const mediaId = String(media?.id ?? media?.pk ?? "");
-          if (!mediaId) continue;
-          const takenAt = media.taken_at ?? Math.floor(Date.now() / 1e3);
-          seenEntries.push(`${mediaId}_${takenAt}_${takenAt + 3}`);
-        }
-        if (seenEntries.length) {
-          const seenBody = new URLSearchParams({
-            reels: seenEntries.join(","),
-            live_vods_skipped: "",
-            nuxes_skipped: ""
-          }).toString();
-          await this.mobileSessionPost(`/api/v1/media/seen/`, seenBody);
-        }
-        return toView.length;
-      },
-      (n) => n > 0 ? `Viewed ${n} timeline reel${n === 1 ? "" : "s"}` : "",
-      (n) => n > 0
-    );
-  }
   // ── Watch stories from the timeline tray ─────────────────────────────────
   // Fetches the stories tray at the top of the home feed and marks up to
   // `count` story reels as seen, simulating a user swiping through stories.
@@ -160679,6 +160633,7 @@ var InstagramWebClient = class {
   // a proper mobile-originated session — web cookies return login_required on those.
   // If no igApiCookies session is available, returns null immediately (no fallback).
   async mobileSessionPost(path6, body = "") {
+    this.assertActionEndpointAllowed(path6);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!authorization;
     if (!hasMobileSession) {
@@ -162053,7 +162008,7 @@ Content-Disposition: form-data; name="${part.name}"`;
   // Calls the mobile API topical explore endpoint (equivalent to tapping the
   // Search/Explore tab in the app), simulating natural discovery browsing.
   async visitExplorePage(scrollCount) {
-    return this.timed("VisitExplorePage", async () => {
+    return this.withActionContext("visitExplorePage", async () => this.timed("VisitExplorePage", async () => {
       this._navChainScreen = "explore";
       const items = [];
       try {
@@ -162098,7 +162053,7 @@ Content-Disposition: form-data; name="${part.name}"`;
         }
       }
       return items.slice(0, scrollCount);
-    }, `Visit explore page (scroll ${scrollCount})`);
+    }, `Visit explore page (scroll ${scrollCount})`));
   }
   // ── Follow X users from the Suggested Users page ──────────────────────────
   // Used by the Human Session engine when the timeline returns 0 posts.

@@ -78,6 +78,7 @@ import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
 import * as zlib from "zlib";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID, createCipheriv, createHmac, publicEncrypt, randomBytes, constants as cryptoConstants } from "crypto";
 import { generateSync as totpGenerate } from "otplib";
 import { userAgents as UA_POOL } from "../shared/userAgents";
@@ -433,6 +434,9 @@ export class InstagramWebClient {
   private _apiCallSource = "Account";
   private _inTimedCall = false;
   private _lastTimedCallIsError = false;
+  // Action context is carried through async transport calls so endpoint guards
+  // cannot be bypassed by a nested helper or a future Explore refactor.
+  private readonly _actionContext = new AsyncLocalStorage<string>();
   // User-agent to use for web (www.instagram.com) POST requests.
   // Should match the EB browser's UA so that cookies and UA are consistent.
   private webUserAgent = WEB_UA;
@@ -1106,6 +1110,20 @@ export class InstagramWebClient {
   //   • IgApiClient (ig.*) → hooked in _newAutomationIgClient() → _logTransport()
   //   • direct igReq() calls → caller is responsible for calling _logTransport()
   // This guarantees exactly 1 log row per real HTTP request with no duplicates.
+  private async withActionContext<T>(action: string, fn: () => Promise<T>): Promise<T> {
+    return this._actionContext.run(action, fn);
+  }
+
+  private assertActionEndpointAllowed(path: string): void {
+    const action = this._actionContext.getStore();
+    const endpoint = path.split("?")[0].replace(/\/+$/, "");
+    if (action === "visitExplorePage" && endpoint === "/api/v1/clips/home") {
+      const message = `[webClient] BLOCKED invalid endpoint ${endpoint} during ${action}; Explore must never request the Reels tab`;
+      console.error(message);
+      throw new Error(message);
+    }
+  }
+
   private async timed<T>(opName: string, fn: () => Promise<T>, message?: string | ((result: T) => string), shouldLog?: (result: T) => boolean): Promise<T> {
     const _t0 = Date.now();
     this._inTimedCall = true;
@@ -1973,6 +1991,7 @@ export class InstagramWebClient {
   }
 
   private async mobileSessionGet(path: string, msgFn?: (json: any) => string): Promise<any> {
+    this.assertActionEndpointAllowed(path);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some(c => c.startsWith("sessionid=")) || !!authorization;
     if (!hasMobileSession) {
@@ -3864,87 +3883,6 @@ export class InstagramWebClient {
     return result;
   }
 
-  // ── Watch reels from the home feed Reels tab ─────────────────────────────
-  // Fetches the reels explore/home feed and marks up to `count` reels as seen,
-  // simulating a user scrolling through the Reels tab.
-  async viewTimelineReels(count: number = 5): Promise<number> {
-    // Returns: >=0 reels watched, -1 no mobile session, -5 session rejected by API.
-    return this.timed("ViewTimelineReels", async () => {
-      const sessionPresent =
-        this.mobileCookieJar.some(c => c.startsWith("sessionid=")) ||
-        !!this._deviceAuthorization;
-      if (!sessionPresent) {
-        console.warn(`[webClient] viewTimelineReels: no mobile session — run Verify Credentials to establish igApiCookies`);
-        return -1;
-      }
-
-      // ── Strategy 1: GET /api/v1/clips/home/ ──────────────────────────────────
-      // This is Instagram's current Reels-page feed. Do not use
-      // /api/v1/feed/reels_tray/ here; that endpoint is the Stories tray.
-      const sessionId = randomUUID();
-      let j = await this.mobileSessionGet(
-        `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`,
-      );
-      let source = "clips/home";
-
-      // ── Strategy 2: fallback to feed/timeline filtered for reels ────────────
-      // If clips/home is unavailable for this account (returns null), fall back to
-      // the home timeline feed and pick out the reel items (media_type === 2).
-      // This endpoint works for all accounts and already returns reels in the feed.
-      if (!j) {
-        console.warn(`[webClient] viewTimelineReels: clips/home returned null — falling back to feed/timeline`);
-        const body = new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString();
-        const tj = await this.mobileSessionPost(`/api/v1/feed/timeline/`, body);
-        if (!tj) {
-          console.warn(`[webClient] viewTimelineReels: feed/timeline also returned null — session expired/rejected`);
-          return -5;
-        }
-        // Build a synthetic clips/home-like response using only the reel items
-        const allItems: any[] = tj?.feed_items ?? tj?.items ?? [];
-        const reelItems = allItems
-          .map((raw: any) => raw?.media_or_ad ?? raw?.media ?? raw)
-          .filter((m: any) => m?.media_type === 2 || m?.product_type === "clips");
-        j = { items: reelItems, status: "ok" };
-        source = "feed/timeline (reels only)";
-      }
-
-      // clips/home returns items under "items"; feed_items is an older alias.
-      const items: any[] = j?.items ?? j?.feed_items ?? [];
-      console.log(`[webClient] viewTimelineReels [${source}]: status="${j?.status}" items.length=${items.length}`);
-      if (items.length > 0) {
-        const firstRaw = items[0];
-        console.log(`[webClient] viewTimelineReels: first item keys=[${Object.keys(firstRaw?.media ?? firstRaw ?? {}).join(", ")}]`);
-      }
-      if (!items.length) {
-        console.warn(`[webClient] viewTimelineReels: 0 items — response (500 chars): ${JSON.stringify(j).slice(0, 500)}`);
-        return 0;
-      }
-
-      const toView = items.slice(0, count);
-      const seenEntries: string[] = [];
-
-      for (const raw of toView) {
-        const media = raw?.media ?? raw;
-        const mediaId = String(media?.id ?? media?.pk ?? "");
-        if (!mediaId) continue;
-        const takenAt = media.taken_at ?? Math.floor(Date.now() / 1000);
-        seenEntries.push(`${mediaId}_${takenAt}_${takenAt + 3}`);
-      }
-
-      if (seenEntries.length) {
-        const seenBody = new URLSearchParams({
-          reels: seenEntries.join(","),
-          live_vods_skipped: "",
-          nuxes_skipped: "",
-        }).toString();
-        await this.mobileSessionPost(`/api/v1/media/seen/`, seenBody);
-      }
-
-      return toView.length;
-    }, (n) => n > 0 ? `Viewed ${n} timeline reel${n === 1 ? "" : "s"}` : "",
-       (n) => n > 0);
-  }
-
   // ── Watch stories from the timeline tray ─────────────────────────────────
   // Fetches the stories tray at the top of the home feed and marks up to
   // `count` story reels as seen, simulating a user swiping through stories.
@@ -4945,6 +4883,7 @@ export class InstagramWebClient {
   // a proper mobile-originated session — web cookies return login_required on those.
   // If no igApiCookies session is available, returns null immediately (no fallback).
   private async mobileSessionPost(path: string, body = ""): Promise<any> {
+    this.assertActionEndpointAllowed(path);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some(c => c.startsWith("sessionid=")) || !!authorization;
     if (!hasMobileSession) {
@@ -6607,7 +6546,7 @@ export class InstagramWebClient {
   // Calls the mobile API topical explore endpoint (equivalent to tapping the
   // Search/Explore tab in the app), simulating natural discovery browsing.
   async visitExplorePage(scrollCount: number): Promise<Array<{ mediaId: string; shortcode: string; username: string; userId: string }>> {
-    return this.timed("VisitExplorePage", async () => {
+    return this.withActionContext("visitExplorePage", async () => this.timed("VisitExplorePage", async () => {
       // Nav chain: user navigated Home → Explore tab.
       this._navChainScreen = "explore";
       const items: Array<{ mediaId: string; shortcode: string; username: string; userId: string }> = [];
@@ -6654,7 +6593,7 @@ export class InstagramWebClient {
         } catch {}
       }
       return items.slice(0, scrollCount);
-    }, `Visit explore page (scroll ${scrollCount})`);
+    }, `Visit explore page (scroll ${scrollCount})`));
   }
 
   // ── Follow X users from the Suggested Users page ──────────────────────────
