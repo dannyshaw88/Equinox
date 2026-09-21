@@ -2293,7 +2293,10 @@ export async function registerInstagramRoutes(
       const assignedProxy = (await storage.getProxies()).find(p => p.id === profile.proxyId);
       const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
       const confirmBurntProxy = req.query.confirmBurntProxy === "true" || req.body?.confirmBurntProxy === true;
-      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
+      // Burnt proxies only require confirmation for accounts that are not yet
+      // established on that proxy. Existing accounts may continue verifying
+      // through the proxy without showing the new-login warning.
+      if (burntUntil > Date.now() && !isEstablishedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
         return fail(409, `This proxy is marked as burnt until ${new Date(burntUntil).toISOString()}.`, {
           code: "burnt_proxy_confirmation_required",
           burntUntil: assignedProxy?.burntUntil,
@@ -5110,7 +5113,9 @@ export async function registerInstagramRoutes(
       if (!p.proxyId) return false;
       const linked = allProxies.find(px => px.id === p.proxyId);
       const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
-      return burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId);
+      // Existing accounts established on this proxy are not new-login risk;
+      // only unestablished accounts need the confirmation dialog.
+      return burntUntil > Date.now() && !isEstablishedOnProxy(p, p.proxyId);
     });
     if (burntTargets.length > 0 && !confirmBurntProxy) {
       return res.status(409).json({
