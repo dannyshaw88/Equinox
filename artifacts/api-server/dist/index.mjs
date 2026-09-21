@@ -163502,7 +163502,7 @@ var SESSION_OPS = /* @__PURE__ */ new Set([
   "GetReelsTray",
   "ViewUserFeed",
   "GetDirectMessages",
-  "TopicalExplore",
+  "DiscoverExplore",
   "ExecuteNotificationsBadge",
   "ViewTimelineStories",
   "VisitUserProfile",
