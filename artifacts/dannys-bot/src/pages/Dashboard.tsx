@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.558",
+    date: "2026-09-21",
+    items: [
+      { category: "Fix", text: "Removed the legacy Force Emulation startup runner. Old saved Force Emulation settings are now ignored, so they cannot generate hidden API calls." },
+    ],
+  },
+  {
     version: "1.1.557",
     date: "2026-09-21",
     items: [

@@ -157095,16 +157095,6 @@ function randomMobileUA() {
   const entry = pool[Math.floor(Math.random() * pool.length)];
   return `Instagram ${MOBILE_VERSION} Android (${entry.api}; ${MOBILE_VERSION_CODE})`;
 }
-var FORCE_EMU_FRIENDLY = {
-  GetReelsTray: "Checked reels tray",
-  NotificationsBadge: "Checked notifications",
-  GetDirectInbox: "Checked direct inbox",
-  GetCurrentUser: "Fetched own account info",
-  ViewTimelineFeed: "Loaded timeline feed",
-  LauncherSync: "Synced mobile config",
-  BatchFetchWeb: "Batch fetched web queries",
-  AttributionLaunch: "Sent attribution launch"
-};
 var InstagramWebClient = class {
   cookieJar = [];
   csrfToken = "";
@@ -159563,46 +159553,6 @@ var InstagramWebClient = class {
       const j = await this.mobileSessionGet(`/api/v1/feed/user/${userId}/?count=12`);
       return !!(j?.items || j?.profile_grid_items);
     }, "Refresh own profile");
-  }
-  // ── Click Settings and Activity ───────────────────────────────────────────
-  // Simulates visiting the Settings page — fetches account security info.
-  // This endpoint requires POST as of 2024 (GET returns 405).
-  async runForceEmulation(randomise) {
-    const entries = [
-      // reels_media removed — requires a list of reel IDs in the query string;
-      // a bare GET with no IDs returns "Invalid reel id list" every time.
-      { method: "GET", path: "/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true", opName: "NotificationsBadge" },
-      // Full params match the real GetDirectMessages call at line 2415
-      { method: "GET", path: "/api/v1/direct_v2/inbox/?visual_message_return_type=unseen&thread_message_limit=10&limit=20", opName: "GetDirectInbox" },
-      { method: "GET", path: "/api/v1/accounts/current_user/?edit=true", opName: "GetCurrentUser" },
-      // Body matches viewTimelineFeed() at line 2033 — required by Instagram for cold-start fetches
-      { method: "POST", path: "/api/v1/feed/timeline/", body: "reason=cold_start_fetch&is_pull_to_refresh=0", opName: "ViewTimelineFeed" },
-      // server_config_retrieval=1 is the minimum body the real app sends on launcher/sync
-      { method: "POST", path: "/api/v1/launcher/sync/", body: "server_config_retrieval=1", opName: "LauncherSync" },
-      // Batch query-parameter prefetch — fires unconditionally on every real app open
-      // Minimal surface set (5717 = home feed, 5718 = stories) matches the startup call pattern
-      { method: "POST", path: "/api/v1/qp/batch_fetch_web/", body: `surfaces_to_queries=${encodeURIComponent(JSON.stringify({ "5717": {}, "5718": {} }))}`, opName: "BatchFetchWeb" },
-      // App-launch attribution ping — fires unconditionally on every real app open
-      { method: "POST", path: "/api/v1/attribution/launch/", opName: "AttributionLaunch" }
-    ];
-    const ordered = randomise ? [...entries].sort(() => Math.random() - 0.5) : entries;
-    for (const { path: path6, method, opName, body } of ordered) {
-      await this.timed(opName, async () => {
-        try {
-          if (method === "POST") {
-            await this.mobileSessionPost(path6, body ?? "");
-          } else {
-            await this.mobileSessionGet(path6);
-          }
-          console.log(`[webClient] forceEmulation: ${method} ${path6} OK`);
-          return true;
-        } catch (e) {
-          const errMsg = (e?.message ?? "error").slice(0, 80);
-          console.warn(`[webClient] forceEmulation: ${method} ${path6} failed: ${errMsg}`);
-          return false;
-        }
-      }, (ok) => ok ? FORCE_EMU_FRIENDLY[opName] ?? "OK" : `Failed`);
-    }
   }
   async visitSettingsAndActivity() {
     return this.timed("VisitSettingsAndActivity", async () => {
@@ -167956,24 +167906,6 @@ ${err?.stack ?? ""}`);
       }
       return false;
     };
-    if (!!s.forceEmulationEnabled) {
-      const feChanceMin = Math.min(100, Math.max(0, Number(s.forceEmulationChanceMin ?? 100)));
-      const feChanceMax = Math.min(100, Math.max(feChanceMin, Number(s.forceEmulationChanceMax ?? 100)));
-      const feChance = feChanceMin + Math.random() * (feChanceMax - feChanceMin);
-      if (Math.random() * 100 < feChance) {
-        client.setApiCallSource("Human Session Emulation");
-        try {
-          await client.runForceEmulation(s.forceEmulationRandomise === true);
-          console.log(`[engine] @${profile.username}: \u{1F4F1} force emulation calls complete`);
-          this.logAction(profile.id, tool.id, "force_emulation", "", "", "", "ok", "Force emulation API calls fired");
-        } catch (e) {
-          if (await checkSessionErr(e, "force_emulation")) return;
-          console.warn(`[engine] @${profile.username}: force emulation error: ${e?.message}`);
-        }
-      } else {
-        console.log(`[engine] @${profile.username}: \u{1F4F1} force emulation skipped (chance roll: ${feChance.toFixed(1)}%)`);
-      }
-    }
     const queue = [];
     const enqueue = (label, enabled, notUsedMinKey, notUsedMaxKey, orderMinKey, orderMaxKey, fn) => {
       if (!enabled) {

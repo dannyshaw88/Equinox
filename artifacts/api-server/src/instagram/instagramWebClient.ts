@@ -423,17 +423,6 @@ export function randomMobileUA(): string {
   return `Instagram ${MOBILE_VERSION} Android (${entry.api}; ${MOBILE_VERSION_CODE})`;
 }
 
-const FORCE_EMU_FRIENDLY: Record<string, string> = {
-  GetReelsTray:       "Checked reels tray",
-  NotificationsBadge: "Checked notifications",
-  GetDirectInbox:     "Checked direct inbox",
-  GetCurrentUser:     "Fetched own account info",
-  ViewTimelineFeed:   "Loaded timeline feed",
-  LauncherSync:       "Synced mobile config",
-  BatchFetchWeb:      "Batch fetched web queries",
-  AttributionLaunch:  "Sent attribution launch",
-};
-
 // ── Public client class ───────────────────────────────────────────────────────
 export class InstagramWebClient {
   private cookieJar: string[] = [];
@@ -3522,57 +3511,6 @@ export class InstagramWebClient {
       const j = await this.mobileSessionGet(`/api/v1/feed/user/${userId}/?count=12`);
       return !!(j?.items || j?.profile_grid_items);
     }, "Refresh own profile");
-  }
-
-  // ── Click Settings and Activity ───────────────────────────────────────────
-  // Simulates visiting the Settings page — fetches account security info.
-  // This endpoint requires POST as of 2024 (GET returns 405).
-  async runForceEmulation(randomise: boolean): Promise<void> {
-    // Endpoints that accept GET (read-only fetches).
-    // NOTE: /api/v1/qe/sync/ (FetchConfig) is intentionally excluded — it
-    // returns "400 Invalid experiment" because the library's LOGIN_EXPERIMENTS
-    // list is outdated vs our declared app version. Removed to avoid noise.
-    const entries: Array<{ path: string; method: "GET" | "POST"; opName: string; body?: string }> = [
-      // reels_media removed — requires a list of reel IDs in the query string;
-      // a bare GET with no IDs returns "Invalid reel id list" every time.
-      { method: "GET",  path: "/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true",                                      opName: "NotificationsBadge" },
-      // Full params match the real GetDirectMessages call at line 2415
-      { method: "GET",  path: "/api/v1/direct_v2/inbox/?visual_message_return_type=unseen&thread_message_limit=10&limit=20", opName: "GetDirectInbox"     },
-      { method: "GET",  path: "/api/v1/accounts/current_user/?edit=true",                                                              opName: "GetCurrentUser"     },
-      // Body matches viewTimelineFeed() at line 2033 — required by Instagram for cold-start fetches
-      { method: "POST", path: "/api/v1/feed/timeline/",   body: "reason=cold_start_fetch&is_pull_to_refresh=0",                        opName: "ViewTimelineFeed"   },
-      // server_config_retrieval=1 is the minimum body the real app sends on launcher/sync
-      { method: "POST", path: "/api/v1/launcher/sync/",   body: "server_config_retrieval=1",                                          opName: "LauncherSync"       },
-      // Batch query-parameter prefetch — fires unconditionally on every real app open
-      // Minimal surface set (5717 = home feed, 5718 = stories) matches the startup call pattern
-      { method: "POST", path: "/api/v1/qp/batch_fetch_web/",  body: `surfaces_to_queries=${encodeURIComponent(JSON.stringify({ "5717": {}, "5718": {} }))}`, opName: "BatchFetchWeb" },
-      // App-launch attribution ping — fires unconditionally on every real app open
-      { method: "POST", path: "/api/v1/attribution/launch/",                                                                            opName: "AttributionLaunch"  },
-    ];
-    const ordered = randomise
-      ? [...entries].sort(() => Math.random() - 0.5)
-      : entries;
-    for (const { path, method, opName, body } of ordered) {
-      // Each endpoint gets its own timed() entry so every call appears
-      // individually in the API calls log instead of as one bundled summary.
-      // Errors are caught per-endpoint so a single 400 never propagates out
-      // and incorrectly marks the account as logged_out.
-      await this.timed(opName, async () => {
-        try {
-          if (method === "POST") {
-            await this.mobileSessionPost(path, body ?? "");
-          } else {
-            await this.mobileSessionGet(path);
-          }
-          console.log(`[webClient] forceEmulation: ${method} ${path} OK`);
-          return true;
-        } catch (e: any) {
-          const errMsg = (e?.message ?? "error").slice(0, 80);
-          console.warn(`[webClient] forceEmulation: ${method} ${path} failed: ${errMsg}`);
-          return false;
-        }
-      }, (ok) => ok ? FORCE_EMU_FRIENDLY[opName] ?? "OK" : `Failed`);
-    }
   }
 
   async visitSettingsAndActivity(): Promise<boolean> {
