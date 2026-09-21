@@ -168135,10 +168135,18 @@ ${err?.stack ?? ""}`);
       "viewReelsOrderMin",
       "viewReelsOrderMax",
       async () => {
+        const execHsTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "human_sessions");
+        const execSettings = execHsTool?.settings ?? {};
+        if (execHsTool?.enabled !== true || execSettings.viewReelsEnabled !== true || execSettings.emulationGroupEnabled === false) {
+          console.log(`[engine] @${profile.username}: HS viewReels skipped (disabled at execution time)`);
+          return;
+        }
+        console.log(`[engine] @${profile.username}: HS viewReels executing \u2014 this is the sole Human Session source of /api/v1/clips/home`);
         client.setApiCallSource("Human Session Emulation");
         const reelCount = randInt2(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {
           console.log(`[engine] @${profile.username}: \u{1F3AC} View Reels \u2014 reel count rolled 0, skipping`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Reels action entered but reel count rolled 0");
           return;
         }
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
@@ -168164,7 +168172,9 @@ ${err?.stack ?? ""}`);
           }
         } catch (e) {
           if (await checkSessionErr(e, "view_reels")) return;
-          console.warn(`[engine] @${profile.username}: view reels error: ${e?.message}`);
+          const message = e?.message ?? "unknown error";
+          console.warn(`[engine] @${profile.username}: view reels error: ${message}`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "error", `View Reels failed \u2014 ${message.slice(0, 300)}`);
         }
       }
     );
@@ -168847,7 +168857,7 @@ ${err?.stack ?? ""}`);
       }
     );
     queue.sort((a2, b3) => b3.order - a2.order);
-    const orderSummary = queue.map((e) => e.label).join(" \u2192 ");
+    const orderSummary = queue.map((e) => `${e.label}[${e.order}]`).join(" \u2192 ");
     console.log(`[engine] @${profile.username}: session order: ${orderSummary || "(nothing to run)"}`);
     for (const entry of queue) {
       if (sessionError) break;

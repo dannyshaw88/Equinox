@@ -4963,10 +4963,25 @@ class AutomationEngine {
       "viewReelsNotUsedMin", "viewReelsNotUsedMax",
       "viewReelsOrderMin",   "viewReelsOrderMax",
       async () => {
+        // Re-read the Human Session settings at execution time. The queue is
+        // built once at session start, but the UI can disable a sub-action
+        // while an earlier queued action is still running. Do not allow a
+        // stale queue snapshot to make the Reels request after the toggle is
+        // off.
+        const execHsTool = (await storage.getToolsByProfile(profile.id))
+          .find(t => t.type === "human_sessions");
+        const execSettings = (execHsTool?.settings ?? {}) as any;
+        if (execHsTool?.enabled !== true || execSettings.viewReelsEnabled !== true || execSettings.emulationGroupEnabled === false) {
+          console.log(`[engine] @${profile.username}: HS viewReels skipped (disabled at execution time)`);
+          return;
+        }
+
+        console.log(`[engine] @${profile.username}: HS viewReels executing — this is the sole Human Session source of /api/v1/clips/home`);
         client.setApiCallSource("Human Session Emulation");
         const reelCount = randInt(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {
           console.log(`[engine] @${profile.username}: 🎬 View Reels — reel count rolled 0, skipping`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Reels action entered but reel count rolled 0");
           return;
         }
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
@@ -4992,7 +5007,9 @@ class AutomationEngine {
           }
         } catch (e: any) {
           if (await checkSessionErr(e, "view_reels")) return;
-          console.warn(`[engine] @${profile.username}: view reels error: ${e?.message}`);
+          const message = e?.message ?? "unknown error";
+          console.warn(`[engine] @${profile.username}: view reels error: ${message}`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "error", `View Reels failed — ${message.slice(0, 300)}`);
         }
       },
     );
@@ -5766,7 +5783,7 @@ class AutomationEngine {
     // Sort descending by order value (higher order = runs first — ties keep insertion order)
     queue.sort((a, b) => b.order - a.order);
 
-    const orderSummary = queue.map(e => e.label).join(" → ");
+    const orderSummary = queue.map(e => `${e.label}[${e.order}]`).join(" → ");
     console.log(`[engine] @${profile.username}: session order: ${orderSummary || "(nothing to run)"}`);
 
     // Execute in sorted order — stop immediately on any account-level error

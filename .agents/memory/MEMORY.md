@@ -37,3 +37,4 @@
 - [Canonical Equinox robot asset](canonical-equinox-robot-asset.md) — `bot-logo.png` is the source of truth for web, Electron, desktop, and tray branding.
 - [Instagram Your Activity endpoint](instagram-news-activities-404.md) — one run returned HTML HTTP 404 on the mobile route; do not treat that alone as global retirement or session-health evidence.
 - [Verify EB readiness](verify-eb-readiness.md) — `/eb/open` is normally fire-and-forget; Verify must request awaited toolbar initialization before clicking native `#lbtn`.
+- [Human Session Reels attribution](human-session-reels-attribution.md) — clips/home failures can hide the high-level row; re-check the toggle at execution and log the failure visibly.
