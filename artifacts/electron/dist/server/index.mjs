@@ -146888,7 +146888,8 @@ var proxies = sqliteTable("proxies", {
   rotateEveryMax: integer("rotate_every_max"),
   lastRotatedAt: text("last_rotated_at"),
   lastRotationOldIp: text("last_rotation_old_ip"),
-  lastRotationNewIp: text("last_rotation_new_ip")
+  lastRotationNewIp: text("last_rotation_new_ip"),
+  burntUntil: text("burnt_until")
 });
 var ACCOUNT_STATUSES = [
   "verifying",
@@ -146989,6 +146990,7 @@ var profiles = sqliteTable("profiles", {
   templateId: text("template_id"),
   createdAt: text("created_at"),
   validSince: text("valid_since"),
+  verifiedProxyIds: text("verified_proxy_ids"),
   stagingBootstrapFiresAt: text("staging_bootstrap_fires_at")
 });
 var tools = sqliteTable("tools", {
@@ -147327,7 +147329,8 @@ sqlite.exec(`
     rotate_every_max INTEGER,
     last_rotated_at TEXT,
     last_rotation_old_ip TEXT,
-    last_rotation_new_ip TEXT
+    last_rotation_new_ip TEXT,
+    burnt_until TEXT
   );
 
   CREATE TABLE IF NOT EXISTS profiles (
@@ -147371,7 +147374,8 @@ sqlite.exec(`
     followers_count INTEGER,
     following_count INTEGER,
     posts_count INTEGER,
-    last_synced_at TEXT
+    last_synced_at TEXT,
+    verified_proxy_ids TEXT
   );
 
   CREATE TABLE IF NOT EXISTS tools (
@@ -147575,6 +147579,14 @@ sqlite.exec(`
     endpoint_snapshot TEXT DEFAULT '[]'
   );
 `);
+var proxyColumns = sqlite.prepare("PRAGMA table_info(proxies)").all();
+if (!proxyColumns.some((c3) => c3.name === "burnt_until")) {
+  sqlite.exec("ALTER TABLE proxies ADD COLUMN burnt_until TEXT");
+}
+var profileColumns = sqlite.prepare("PRAGMA table_info(profiles)").all();
+if (!profileColumns.some((c3) => c3.name === "verified_proxy_ids")) {
+  sqlite.exec("ALTER TABLE profiles ADD COLUMN verified_proxy_ids TEXT");
+}
 {
   const ownerExists = sqlite.prepare("SELECT 1 FROM licenses WHERE LOWER(username) = 'equinox'").get();
   if (!ownerExists) {
@@ -170758,6 +170770,17 @@ function pickUAForAccount(username) {
 }
 var DEFAULT_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 var verifyInFlight = /* @__PURE__ */ new Map();
+function verifiedProxyIds(profile) {
+  try {
+    const parsed = JSON.parse(profile?.verifiedProxyIds || "[]");
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+  } catch {
+    return [];
+  }
+}
+function isVerifiedOnProxy(profile, proxyId) {
+  return proxyId != null && verifiedProxyIds(profile).includes(proxyId);
+}
 var VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1e3;
 var API_VERIFY_MIN_DELAY_MINUTES = 60;
 var API_VERIFY_MAX_DELAY_MINUTES = 99;
@@ -172475,6 +172498,13 @@ ${stamp_l}` : stamp_l });
     };
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
+    if (profile.proxyId) {
+      const assignedProxy = (await storage.getProxies()).find((p) => p.id === profile.proxyId);
+      const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
+      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId)) {
+        return fail(423, `No new accounts can be verified on this proxy until ${new Date(burntUntil).toISOString()}.`);
+      }
+    }
     if (profile.accountStatus === "verifying_to_api" && profile.apiVerifyAfter && profile.igApiCookies?.includes("sessionid=")) {
       return fail(429, "Browser verification succeeded. Mobile API verification is already scheduled.");
     }
@@ -172643,18 +172673,19 @@ ${stamp_l}` : stamp_l });
             if (mid) cookieParts.push(`mid=${mid}`);
             if (igDid) cookieParts.push(`ig_did=${igDid}`);
             const freshCookies = cookieParts.join("; ");
-            const scheduledApiVerify = chooseApiVerifyAfter();
+            const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+            const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
             await storage.updateProfile(profile.id, {
               igApiCookies: freshCookies,
-              accountStatus: "verifying_to_api",
-              apiVerifyAfter: scheduledApiVerify.at,
-              statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+              accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
+              apiVerifyAfter: scheduledApiVerify?.at ?? null,
+              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
             });
             if (closeVerifyBrowser) await closeVerifyBrowser();
             sendLoginDone(
               profileId,
               true,
-              `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+              repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
             );
             void (async () => {
               try {
@@ -172682,7 +172713,7 @@ ${stamp_l}` : stamp_l });
                 console.warn(`[verify:${profileId}] silent leak test failed (non-fatal): ${leakErr?.message}`);
               }
             })();
-            if (!await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at)) {
+            if (scheduledApiVerify && !await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at)) {
               console.warn(`[verify:${profileId}] @${profile.username} \u2014 API cooldown was cancelled before expiry`);
               return;
             }
@@ -172751,6 +172782,7 @@ ${stamp_l}` : stamp_l });
             statusMessage: null,
             ...finalStatus === "valid" ? { credentialsDirty: false } : {},
             ...result.igDeviceState ? { igDeviceState: result.igDeviceState } : {},
+            ...finalStatus === "valid" && profile.proxyId ? { verifiedProxyIds: JSON.stringify([.../* @__PURE__ */ new Set([...verifiedProxyIds(profile), profile.proxyId])]) } : {},
             // Save session cookies captured from the fresh login so follow/DM tools
             // can restore the session on Path 2 without re-logging in.
             ..."igApiCookies" in result && result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}
@@ -174766,7 +174798,8 @@ ${stamp}` : stamp;
     const eligible = targets.filter((p) => {
       if (p.proxyId) {
         const linked = allProxies.find((px) => px.id === p.proxyId);
-        return !!(linked?.host && linked?.port);
+        const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
+        return !!(linked?.host && linked?.port) && !(burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId));
       }
       return !!(p.proxyHost && p.proxyPort);
     });
@@ -174900,16 +174933,17 @@ ${stamp}` : stamp;
             if (dsUserId) cookieParts.push(`ds_user_id=${dsUserId}`);
             if (mid) cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
-            const scheduledApiVerify = chooseApiVerifyAfter();
+            const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+            const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
             await storage.updateProfile(profile.id, {
               igApiCookies: freshCookies,
-              accountStatus: "verifying_to_api",
-              apiVerifyAfter: scheduledApiVerify.at,
-              statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+              accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
+              apiVerifyAfter: scheduledApiVerify?.at ?? null,
+              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
             });
             if (closeBulkBrowser) await closeBulkBrowser();
-            console.log(`[bulk-verify] @${profile.username} \u2014 browser verified; mobile API scheduled in ${scheduledApiVerify.minutes} minutes`);
-            if (!await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at)) {
+            console.log(`[bulk-verify] @${profile.username} \u2014 browser verified; mobile API ${repeatProxyVerification ? "starting immediately (proxy already verified)" : `scheduled in ${scheduledApiVerify.minutes} minutes`}`);
+            if (scheduledApiVerify && !await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at)) {
               result = {
                 ok: false,
                 accountStatus: "pending",
@@ -174937,7 +174971,8 @@ ${stamp}` : stamp;
           apiVerifyAfter: null,
           statusMessage: null,
           ...result.ok ? { credentialsDirty: false } : {},
-          ...result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}
+          ...result.igApiCookies ? { igApiCookies: result.igApiCookies } : {},
+          ...result.accountStatus === "valid" && profile.proxyId ? { verifiedProxyIds: JSON.stringify([.../* @__PURE__ */ new Set([...verifiedProxyIds(profile), profile.proxyId])]) } : {}
         });
         if (!result.ok && result.accountStatus === "captcha" && result.checkpointUrl) {
           setCheckpointUrl(profile.id, result.checkpointUrl);

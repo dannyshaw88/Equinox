@@ -78,6 +78,11 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.548",
+    date: "2026-09-20",
+    items: [{ category: "Fix", text: "Repeat verification on a proxy already verified for the account now starts mobile API verification immediately instead of waiting 60–99 minutes." }],
+  },
+  {
     version: "1.1.547",
     date: "2026-09-20",
     items: [{ category: "Fix", text: "Included the generated frontend bundle in the published Electron update so the app entry page cannot resolve its JavaScript to HTML." }],

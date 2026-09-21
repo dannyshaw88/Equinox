@@ -2510,12 +2510,15 @@ export async function registerInstagramRoutes(
         // the mobile API call temporarily fails (network hiccup, proxy lag, etc.).
         // The deadline and status are written in the same update so a restart
         // can continue from this exact point without opening EB again.
-        const scheduledApiVerify = chooseApiVerifyAfter();
+        const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+        const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
         await storage.updateProfile(profile.id, {
           igApiCookies: freshCookies,
-          accountStatus: "verifying_to_api",
-          apiVerifyAfter: scheduledApiVerify.at,
-          statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+          accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
+          apiVerifyAfter: scheduledApiVerify?.at ?? null,
+          statusMessage: repeatProxyVerification
+            ? "Browser verification succeeded. Mobile API verification is starting immediately."
+            : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify!.minutes} minutes.`,
         } as any);
         // The status/cookie handoff is now durable. Only close the visible
         // browser after this point so the UI cannot disappear before the
@@ -2524,7 +2527,9 @@ export async function registerInstagramRoutes(
         sendLoginDone(
           profileId,
           true,
-          `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+          repeatProxyVerification
+            ? "Browser verification succeeded. Mobile API verification is starting immediately."
+            : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify!.minutes} minutes.`,
         );
 
         // Fire-and-forget: run the full leak test (WebRTC, Bot, Canvas, etc.) in a
@@ -2563,7 +2568,7 @@ export async function registerInstagramRoutes(
         // EB login proves the web session is alive.  This step confirms the same
         // cookies work at the mobile API layer before the account is marked valid.
         // Never call the mobile API before the persisted cooldown expires.
-        if (!(await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at))) {
+        if (scheduledApiVerify && !(await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at))) {
           console.warn(`[verify:${profileId}] @${profile.username} — API cooldown was cancelled before expiry`);
           return;
         }
@@ -5226,16 +5231,19 @@ export async function registerInstagramRoutes(
             if (dsUserId)  cookieParts.push(`ds_user_id=${dsUserId}`);
             if (mid)       cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
-            const scheduledApiVerify = chooseApiVerifyAfter();
+            const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+            const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
             await storage.updateProfile(profile.id, {
               igApiCookies: freshCookies,
-              accountStatus: "verifying_to_api",
-              apiVerifyAfter: scheduledApiVerify.at,
-              statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+              accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
+              apiVerifyAfter: scheduledApiVerify?.at ?? null,
+              statusMessage: repeatProxyVerification
+                ? "Browser verification succeeded. Mobile API verification is starting immediately."
+                : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify!.minutes} minutes.`,
             } as any);
              if (closeBulkBrowser) await closeBulkBrowser();
-            console.log(`[bulk-verify] @${profile.username} — browser verified; mobile API scheduled in ${scheduledApiVerify.minutes} minutes`);
-            if (!(await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at))) {
+            console.log(`[bulk-verify] @${profile.username} — browser verified; mobile API ${repeatProxyVerification ? "starting immediately (proxy already verified)" : `scheduled in ${scheduledApiVerify!.minutes} minutes`}`);
+            if (scheduledApiVerify && !(await waitUntilApiVerifyAfter(profile.id, scheduledApiVerify.at))) {
               result = {
                 ok: false,
                 accountStatus: "pending",
