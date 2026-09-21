@@ -4225,20 +4225,19 @@ export class InstagramWebClient {
     // Route: prefer web session (www.instagram.com) over mobile API (i.instagram.com).
     const useWebSession = hasWebSession;
 
-    // ── Step 1: warm up the session (NotificationsBadge) ─────────────────────
-    // _buildWarmedIgClient fires news/inbox via mobileSessionGet — the same
-    // notification badge check the real Instagram app performs before any inbox
-    // access.  Result is cached per-session; zero cost if already called this
-    // session (e.g. from sendDM).
-    // NOTE: this warm-up does NOT lift the 4415001 "Prompt has contribution"
-    // gate.  4415001 is an account-level state set by Instagram when there is
-    // an in-app prompt (feature intro, birthday info, notification permission
-    // etc.) that the user must dismiss in the real app first.  When 4415001
-    // occurs the engine aborts remaining session tools via sessionGated so no
-    // further API calls are made — continuing after 4415001 causes Instagram
-    // to escalate to logout_reason:3 (forced server-side session kill) on the
-    // very next request.
-    await this._buildWarmedIgClient();
+    // ── Step 1: no mobile warm-up for Check Direct Messages ───────────────────
+    // The actual inbox request below is routed to www.instagram.com whenever
+    // the EB/web session is present.  Calling _buildWarmedIgClient() here would
+    // create an unrelated mobile bootstrap branch before the inbox request:
+    //
+    //   _buildWarmedIgClient()
+    //     └─ Phase 2a: GET /api/v1/users/{ownUserId}/info/ (UsersInfo)
+    //     └─ Phase 2b: GET /api/v1/news/inbox/ (NotificationsBadge)
+    //
+    // That warm-up does not fix the web DM path and made Check Direct Messages
+    // emit UsersInfo even though it only needed direct_v2/inbox.  Keep the
+    // mobile warm-up for operations that actually use the warmed IgApiClient
+    // (for example mobile DM sends), but do not run it from the inbox checker.
 
     // Extract own user ID from igApiCookies (ds_user_id=…) for fromMe detection.
     const dsMatch = (this.igApiCookies ?? "").match(/(?:^|;)\s*ds_user_id=([^;]+)/);

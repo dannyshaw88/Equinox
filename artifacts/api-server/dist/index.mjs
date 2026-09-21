@@ -160118,7 +160118,6 @@ var InstagramWebClient = class {
       return { count: 0, ok: false, threads: [] };
     }
     const useWebSession = hasWebSession;
-    await this._buildWarmedIgClient();
     const dsMatch = (this.igApiCookies ?? "").match(/(?:^|;)\s*ds_user_id=([^;]+)/);
     const myUserId = dsMatch ? dsMatch[1].trim() : "";
     const mapThread = (thread) => {
