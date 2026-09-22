@@ -157081,6 +157081,9 @@ function patchDeviceStringVersionCode(ig, targetVersionCode) {
     ig.state.deviceString = ig.state.deviceString.trimEnd() + `; ${targetVersionCode}`;
   }
 }
+function normalizeMobileDeviceString(deviceString) {
+  return deviceString.replace(/^\s*33\/13\s*;/, "34/14;");
+}
 var MOBILE_VERSION = "449.0.0.0.45";
 var MOBILE_VERSION_CODE = "385512056";
 var MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
@@ -157314,6 +157317,7 @@ var InstagramWebClient = class {
       }
     }
     deviceStr = deviceStr ?? this.userAgentApi;
+    if (deviceStr) deviceStr = normalizeMobileDeviceString(deviceStr);
     return deviceStr ? `Instagram ${MOBILE_VERSION} Android (${deviceStr}; ${MOBILE_VERSION_CODE})` : MOBILE_UA;
   }
   setApiLimits(limits) {
@@ -158077,14 +158081,14 @@ var InstagramWebClient = class {
         if (saved.uuid) ig.state.uuid = saved.uuid;
         if (saved.phoneId) ig.state.phoneId = saved.phoneId;
         if (saved.adid) ig.state.adid = saved.adid;
-        if (saved.deviceString) ig.state.deviceString = saved.deviceString;
+        if (saved.deviceString) ig.state.deviceString = normalizeMobileDeviceString(saved.deviceString);
       } catch {
         ig.state.generateDevice(deviceSeed);
-        if (this.userAgentApi) ig.state.deviceString = this.userAgentApi;
+        if (this.userAgentApi) ig.state.deviceString = normalizeMobileDeviceString(this.userAgentApi);
       }
     } else {
       ig.state.generateDevice(deviceSeed);
-      if (this.userAgentApi) ig.state.deviceString = this.userAgentApi;
+      if (this.userAgentApi) ig.state.deviceString = normalizeMobileDeviceString(this.userAgentApi);
     }
     {
       const m2 = (this.userAgentApi ?? "").match(/^Instagram ([\d.]+) Android \(([^)]+)\)/);
@@ -158319,7 +158323,7 @@ var InstagramWebClient = class {
   // Update alongside MOBILE_VERSION when Instagram bumps its minimum version.
   _buildMobileHeaders(csrf, contentType) {
     const MOBILE_APP_ID = "567067343352427";
-    const BLOKS_VERSION_ID = "ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48";
+    const BLOKS_VERSION_ID = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
     let igDid = this._mobileIgDid || "";
     let androidId = "";
     let wwwClaim = "0";
@@ -159202,7 +159206,9 @@ var InstagramWebClient = class {
       ownUserId = decoded.split(":")[0] ?? "";
     }
     const cookiesWithUserId = ownUserId ? `${this.igApiCookies};ds_user_id=${ownUserId}` : this.igApiCookies;
-    await this._deserializeIgCookies(ig, cookiesWithUserId);
+    const nativeCsrf = this.mobileCsrf && this.mobileCsrf !== "missing" ? this.mobileCsrf : "";
+    const cookiesForNativeClient = nativeCsrf && !cookiesWithUserId.includes("csrftoken=") ? `${cookiesWithUserId};csrftoken=${nativeCsrf}` : cookiesWithUserId;
+    await this._deserializeIgCookies(ig, cookiesForNativeClient);
     console.log(`[webClient] _buildWarmedIgClient: Phase 1 \u2014 cookies loaded (userId=${ownUserId || "unknown"})`);
     if (ownUserId) {
       try {
@@ -159759,6 +159765,29 @@ var InstagramWebClient = class {
     }
     if (j?.status === "fail") {
       console.warn(`[webClient] viewReelsTab: clips/discover/stream failed \u2014 ${j?.message ?? "unknown"}`);
+      try {
+        const warmed = await this._buildWarmedIgClient();
+        if (warmed?.ig) {
+          const streamParams = Object.fromEntries(new URLSearchParams(streamBody).entries());
+          const nativeCsrf = this.mobileCsrf || "missing";
+          streamParams._csrftoken = nativeCsrf;
+          console.log(`[webClient] viewReelsTab: native Clips request csrf=${nativeCsrf.slice(0, 8)}...`);
+          const nativeResponse = await warmed.ig.request.send({
+            method: "POST",
+            url: "/api/v1/clips/discover/stream/",
+            form: warmed.ig.request.sign(streamParams)
+          });
+          const nativeItems = nativeResponse?.items ?? nativeResponse?.feed_items;
+          if (Array.isArray(nativeItems) && nativeItems.length) {
+            console.log(`[webClient] viewReelsTab: warmed API Clips fallback returned ${nativeItems.length} item(s)`);
+            j = { ...nativeResponse, items: nativeItems };
+          } else {
+            console.warn(`[webClient] viewReelsTab: warmed API Clips fallback returned no items`);
+          }
+        }
+      } catch (nativeErr) {
+        console.warn(`[webClient] viewReelsTab: warmed API Clips fallback failed \u2014 ${nativeErr?.message ?? "unknown error"}`);
+      }
       if (userId) {
         const fallbackBody = new URLSearchParams({
           user_id: userId,
@@ -165972,7 +166001,6 @@ ${err?.stack ?? ""}`);
     if (client.isMobileLoggedIn()) {
       console.log(`[engine] @${profile.username}: resuming mobile API session from stored cookies`);
       client.loadBrowserCookies();
-      client.syncWebCookiesToMobileJar();
       return client;
     }
     const browserOk = client.loadBrowserCookies();

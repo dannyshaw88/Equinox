@@ -356,6 +356,10 @@ function patchDeviceStringVersionCode(ig: IgApiClient, targetVersionCode: string
   }
 }
 
+function normalizeMobileDeviceString(deviceString: string): string {
+  return deviceString.replace(/^\s*33\/13\s*;/, "34/14;");
+}
+
 // isTransportCall=true means a real HTTP hit to Instagram servers (logged via _logTransport).
 // isTransportCall=false/undefined means a high-level operation wrapper (logged via timed()) —
 // no direct HTTP call at this level; the transport is "Equinox" (internal).
@@ -648,6 +652,11 @@ export class InstagramWebClient {
       try { deviceStr = JSON.parse(this.igDeviceState).deviceString; } catch { /* ignore */ }
     }
     deviceStr = deviceStr ?? this.userAgentApi;
+    // Instagram rejects the current 449 release when it is paired with the
+    // Android 13 platform prefix persisted by older sessions. Preserve the
+    // account's device/model identity, but keep the platform portion coherent
+    // with the current release UA used by the API client.
+    if (deviceStr) deviceStr = normalizeMobileDeviceString(deviceStr);
     return deviceStr
       ? `Instagram ${MOBILE_VERSION} Android (${deviceStr}; ${MOBILE_VERSION_CODE})`
       : MOBILE_UA;
@@ -1581,14 +1590,14 @@ export class InstagramWebClient {
         if (saved.uuid)         ig.state.uuid         = saved.uuid;
         if (saved.phoneId)      ig.state.phoneId      = saved.phoneId;
         if (saved.adid)         ig.state.adid         = saved.adid;
-        if (saved.deviceString) ig.state.deviceString = saved.deviceString;
+        if (saved.deviceString) ig.state.deviceString = normalizeMobileDeviceString(saved.deviceString);
       } catch {
         ig.state.generateDevice(deviceSeed);
-        if (this.userAgentApi) ig.state.deviceString = this.userAgentApi;
+        if (this.userAgentApi) ig.state.deviceString = normalizeMobileDeviceString(this.userAgentApi);
       }
     } else {
       ig.state.generateDevice(deviceSeed);
-      if (this.userAgentApi) ig.state.deviceString = this.userAgentApi;
+      if (this.userAgentApi) ig.state.deviceString = normalizeMobileDeviceString(this.userAgentApi);
     }
 
     // Always patch app version constants — use version from full UA string when present,
@@ -1859,7 +1868,7 @@ export class InstagramWebClient {
   // Update alongside MOBILE_VERSION when Instagram bumps its minimum version.
   private _buildMobileHeaders(csrf: string, contentType?: string): Record<string, string> {
     const MOBILE_APP_ID = "567067343352427";
-    const BLOKS_VERSION_ID = "ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48";
+    const BLOKS_VERSION_ID = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
 
     // Extract device IDs from stored state — same priority order as verify flow.
     let igDid  = this._mobileIgDid || "";
@@ -3020,7 +3029,13 @@ export class InstagramWebClient {
     const cookiesWithUserId = ownUserId
       ? `${this.igApiCookies};ds_user_id=${ownUserId}`
       : this.igApiCookies;
-    await this._deserializeIgCookies(ig, cookiesWithUserId);
+    const nativeCsrf = this.mobileCsrf && this.mobileCsrf !== "missing"
+      ? this.mobileCsrf
+      : "";
+    const cookiesForNativeClient = nativeCsrf && !cookiesWithUserId.includes("csrftoken=")
+      ? `${cookiesWithUserId};csrftoken=${nativeCsrf}`
+      : cookiesWithUserId;
+    await this._deserializeIgCookies(ig, cookiesForNativeClient);
     console.log(`[webClient] _buildWarmedIgClient: Phase 1 — cookies loaded (userId=${ownUserId || "unknown"})`);
 
     // ── Phase 2: Authenticated warm-up ───────────────────────────────────────
@@ -3750,6 +3765,34 @@ export class InstagramWebClient {
     }
     if (j?.status === "fail") {
       console.warn(`[webClient] viewReelsTab: clips/discover/stream failed — ${j?.message ?? "unknown"}`);
+      // The hand-built transport can receive a generic Clips failure even when
+      // the authenticated IgApiClient session is usable. Retry the same API
+      // endpoint through the warmed client before downgrading to account-scoped
+      // or timeline fallbacks; this preserves the mobile session and uses the
+      // library's normal signed request path.
+      try {
+        const warmed = await this._buildWarmedIgClient();
+        if (warmed?.ig) {
+          const streamParams: Record<string, string> = Object.fromEntries(new URLSearchParams(streamBody).entries());
+          const nativeCsrf = this.mobileCsrf || "missing";
+          streamParams._csrftoken = nativeCsrf;
+          console.log(`[webClient] viewReelsTab: native Clips request csrf=${nativeCsrf.slice(0, 8)}...`);
+          const nativeResponse = await warmed.ig.request.send({
+            method: "POST",
+            url: "/api/v1/clips/discover/stream/",
+            form: warmed.ig.request.sign(streamParams),
+          });
+          const nativeItems = nativeResponse?.items ?? nativeResponse?.feed_items;
+          if (Array.isArray(nativeItems) && nativeItems.length) {
+            console.log(`[webClient] viewReelsTab: warmed API Clips fallback returned ${nativeItems.length} item(s)`);
+            j = { ...nativeResponse, items: nativeItems };
+          } else {
+            console.warn(`[webClient] viewReelsTab: warmed API Clips fallback returned no items`);
+          }
+        }
+      } catch (nativeErr: any) {
+        console.warn(`[webClient] viewReelsTab: warmed API Clips fallback failed — ${nativeErr?.message ?? "unknown error"}`);
+      }
       // Instagram has intermittently rejected the Discover stream while the
       // older, account-scoped Clips endpoint still works for the same session.
       // Keep the dedicated stream as the primary path, but use the established
