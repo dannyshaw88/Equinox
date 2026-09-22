@@ -41,3 +41,4 @@
 - [Clips stream UUID contract](clips-stream-uuid-contract.md) — `/clips/discover/stream/` expects `state.uuid` in `_uuid`, not the persisted `android-*` device ID.
 - [Stories tray request contract](reels-tray-contract.md) — `/feed/reels_tray/` needs the native POST form; the obsolete GET `?surface=2` can fail while the same session still works elsewhere.
 - [Reels endpoint account blocker](reels-endpoint-account-blocker.md) — a valid imported session can pass settings/notifications while Clips endpoints fail; distinguish endpoint/proxy rejection from session expiry.
+- [Browser transport status classification](browser-transport-status-classification.md) — Chrome/proxy/network failures are inconclusive and must remain pending, never be recorded as an account lock.

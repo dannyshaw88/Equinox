@@ -1000,9 +1000,12 @@ export async function registerInstagramRoutes(
       // Never allow a PATCH to overwrite a meaningful verify-result status with "pending".
       // This prevents the frontend from trampling "locked", "captcha", or
       // "automated_behaviour_detected" with stale form data immediately after verify.
-      // Only the dedicated /verify route, /wipe, and /reset-device-ids may set "pending".
+      // Only the dedicated /verify route, /wipe, /reset-device-ids, or an explicit
+      // false-lock recovery may set "pending".
       const PROTECTED_STATUSES = new Set(["locked", "captcha", "automated_behaviour_detected", "valid", "stopped"]);
-      if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "")) {
+      const recoverFalseLock = body.recoverFalseLock === true;
+      delete body.recoverFalseLock;
+      if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "") && !(recoverFalseLock && current.accountStatus === "locked")) {
         console.warn(`[status-guard] BLOCKED attempt to set profile ${id} → "pending" via PATCH route (current: ${current.accountStatus})`);
         delete body.accountStatus;
       }
@@ -2670,7 +2673,7 @@ export async function registerInstagramRoutes(
       else if (/permanently disabled|Account permanently disabled/i.test(msg))  accountStatus = "account_disabled";
       else if (/suspended/i.test(msg))                                          accountStatus = "suspended";
       else if (/human.*verif|confirm.*human|human verification/i.test(msg))     accountStatus = "confirm_human";
-      else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg))  accountStatus = "pending";
+           else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
       result = { ok: false, accountStatus, message: `@${profile.username} — ${msg}` };
     }
 
@@ -3461,7 +3464,7 @@ export async function registerInstagramRoutes(
           else if (/permanently disabled|Account permanently disabled/i.test(msg))  accountStatus = "account_disabled";
           else if (/suspended/i.test(msg))                                          accountStatus = "suspended";
           else if (/human.*verif|confirm.*human|human verification/i.test(msg))     accountStatus = "confirm_human";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg))  accountStatus = "pending";
+          else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
           await storage.updateProfile(profileId, { accountStatus }).catch(() => {});
           return;
         }
@@ -5328,7 +5331,7 @@ export async function registerInstagramRoutes(
           else if (/challenge|checkpoint/i.test(msg))                               accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg))  accountStatus = "account_disabled";
           else if (/suspended/i.test(msg))                                          accountStatus = "suspended";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg))  accountStatus = "pending";
+           else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
           result = { ok: false, accountStatus, message: `@${profile.username} — ${msg}` };
         }
 

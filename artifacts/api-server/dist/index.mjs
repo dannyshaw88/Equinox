@@ -171413,7 +171413,9 @@ ${stamp}` : stamp;
         body.statusMessage = null;
       }
       const PROTECTED_STATUSES = /* @__PURE__ */ new Set(["locked", "captcha", "automated_behaviour_detected", "valid", "stopped"]);
-      if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "")) {
+      const recoverFalseLock = body.recoverFalseLock === true;
+      delete body.recoverFalseLock;
+      if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "") && !(recoverFalseLock && current.accountStatus === "locked")) {
         console.warn(`[status-guard] BLOCKED attempt to set profile ${id} \u2192 "pending" via PATCH route (current: ${current.accountStatus})`);
         delete body.accountStatus;
       }
@@ -172729,7 +172731,7 @@ ${stamp_l}` : stamp_l });
           else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
           else if (/suspended/i.test(msg)) accountStatus = "suspended";
           else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg)) accountStatus = "pending";
+          else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
           result = { ok: false, accountStatus, message: `@${profile.username} \u2014 ${msg}` };
         }
         sendLoginDone(profileId, result.ok, result.message);
@@ -173377,7 +173379,7 @@ ${stamp}` : stamp;
         else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
         else if (/suspended/i.test(msg)) accountStatus = "suspended";
         else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
-        else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg)) accountStatus = "pending";
+        else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
         await storage.updateProfile(profileId, { accountStatus }).catch(() => {
         });
         return;
@@ -174958,7 +174960,7 @@ ${stamp}` : stamp;
           else if (/challenge|checkpoint/i.test(msg)) accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
           else if (/suspended/i.test(msg)) accountStatus = "suspended";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg)) accountStatus = "pending";
+          else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
           result = { ok: false, accountStatus, message: `@${profile.username} \u2014 ${msg}` };
         }
         await storage.updateProfile(profile.id, {
