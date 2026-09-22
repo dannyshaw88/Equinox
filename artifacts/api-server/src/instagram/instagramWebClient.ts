@@ -3659,16 +3659,20 @@ export class InstagramWebClient {
   // native seen/chaining payload. Do not use /api/v1/feed/reels_tray/ here:
   // that is the Stories tray, not the Reels page.
   async viewReelsTab(reelCount: number, reelWatchPercentMin: number = 50, reelWatchPercentMax: number = 100): Promise<{ watched: number; reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }>; sessionExpired?: boolean; reason?: string }> {
-    let deviceId = "";
+    // _uuid is the per-session UUID (state.uuid), not the persisted Android
+    // device ID (state.deviceId, which has the "android-" prefix). The Clips
+    // stream rejects the latter with a generic status:"fail" response.
+    let uuid = "";
     try {
       const state = JSON.parse(this.igDeviceState ?? "{}");
-      deviceId = String(state?.deviceId ?? state?.uuid ?? "");
+      uuid = String(state?.uuid ?? "");
     } catch { /* device state is optional; the endpoint can still reject explicitly */ }
+    this._navChainScreen = "reels";
     const streamBody = new URLSearchParams({
       seen_reels: "{}",
       enable_mixed_media_chaining: "true",
       should_refetch_chaining_media: "false",
-      _uuid: deviceId,
+      _uuid: uuid,
     }).toString();
     const j = await this.mobileSessionPost(
       `/api/v1/clips/discover/stream/`,
@@ -3748,7 +3752,7 @@ export class InstagramWebClient {
           seen_reels: "{}",
           enable_mixed_media_chaining: "true",
           should_refetch_chaining_media: "false",
-          _uuid: deviceId,
+          _uuid: uuid,
           max_id: nextMaxId,
         }).toString(),
       );

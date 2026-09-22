@@ -159659,17 +159659,18 @@ var InstagramWebClient = class {
   // native seen/chaining payload. Do not use /api/v1/feed/reels_tray/ here:
   // that is the Stories tray, not the Reels page.
   async viewReelsTab(reelCount, reelWatchPercentMin = 50, reelWatchPercentMax = 100) {
-    let deviceId = "";
+    let uuid3 = "";
     try {
       const state = JSON.parse(this.igDeviceState ?? "{}");
-      deviceId = String(state?.deviceId ?? state?.uuid ?? "");
+      uuid3 = String(state?.uuid ?? "");
     } catch {
     }
+    this._navChainScreen = "reels";
     const streamBody = new URLSearchParams({
       seen_reels: "{}",
       enable_mixed_media_chaining: "true",
       should_refetch_chaining_media: "false",
-      _uuid: deviceId
+      _uuid: uuid3
     }).toString();
     const j = await this.mobileSessionPost(
       `/api/v1/clips/discover/stream/`,
@@ -159747,7 +159748,7 @@ var InstagramWebClient = class {
           seen_reels: "{}",
           enable_mixed_media_chaining: "true",
           should_refetch_chaining_media: "false",
-          _uuid: deviceId,
+          _uuid: uuid3,
           max_id: nextMaxId
         }).toString()
       );
