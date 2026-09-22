@@ -28,3 +28,9 @@ GitHub's create-commit API rejects Git's raw timezone suffix (`+0000`); serializ
 **Why:** The first exact-history publish attempt was rejected before the ref update solely because the API date parser requires the colonized offset format.
 
 **How to apply:** Convert `±HHMM` to `±HH:MM` for the JSON request, keep the original commit message newline, and compare every returned commit SHA before moving the branch ref.
+
+Large generated bundles can exceed Node's default child-process buffer while uploading Git Data blobs.
+
+**Why:** A publish can fail before the ref update even when the GitHub connection and commit reconstruction are correct.
+
+**How to apply:** Use a sufficiently large internal `maxBuffer` for `git cat-file blob`, but return only SHAs and status from the publish routine.
