@@ -975,11 +975,16 @@ export async function registerInstagramRoutes(
       const id = Number(req.params.id);
       const body = req.body;
       const current = await storage.getProfile(id);
+      const recoverFalseLock = body.recoverFalseLock === true;
+      delete body.recoverFalseLock;
       // The general PATCH route must NEVER set accountStatus to "valid" except
       // when restoring a previously-stopped account (toggle-on from Accounts page).
       // Only the explicit /verify route is authoritative for validating a session.
       if ("accountStatus" in body && body.accountStatus === "valid") {
-        if (!current || current.accountStatus !== "stopped") {
+        const explicitlyRecoveringFalseLock =
+          recoverFalseLock &&
+          (current?.accountStatus === "locked" || current?.accountStatus === "pending");
+        if (!current || (current.accountStatus !== "stopped" && !explicitlyRecoveringFalseLock)) {
           console.warn(`[status-guard] BLOCKED attempt to set profile ${id} → "valid" via PATCH route (current: ${current?.accountStatus})`);
           delete body.accountStatus;
         }
@@ -1003,8 +1008,6 @@ export async function registerInstagramRoutes(
       // Only the dedicated /verify route, /wipe, /reset-device-ids, or an explicit
       // false-lock recovery may set "pending".
       const PROTECTED_STATUSES = new Set(["locked", "captcha", "automated_behaviour_detected", "valid", "stopped"]);
-      const recoverFalseLock = body.recoverFalseLock === true;
-      delete body.recoverFalseLock;
       if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "") && !(recoverFalseLock && current.accountStatus === "locked")) {
         console.warn(`[status-guard] BLOCKED attempt to set profile ${id} → "pending" via PATCH route (current: ${current.accountStatus})`);
         delete body.accountStatus;
@@ -2625,16 +2628,18 @@ export async function registerInstagramRoutes(
         try {
           apiResult = await verifyInstagramCredentials(profileWithCookies);
         } catch (verifyErr: any) {
-          // Unexpected throw from the mobile API layer — reset to pending so the
-          // account doesn't stay stuck at "verifying" forever.
+          // An unexpected mobile transport failure is inconclusive. Restore the
+          // status that existed before verification rather than inventing an
+          // account-level state from a local exception.
+          const preservedStatus = profile.accountStatus ?? "pending";
           console.error(`[verify] verifyInstagramCredentials threw for @${profile.username}:`, verifyErr);
           result = {
             ok: false,
-            accountStatus: "pending",
+            accountStatus: preservedStatus,
             message: `@${profile.username} — mobile API check failed unexpectedly: ${verifyErr?.message ?? "unknown error"}. Try verifying again.`,
           };
           sendLoginDone(profileId, false, result.message ?? "");
-          await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null } as any);
+          await storage.updateProfile(profile.id, { accountStatus: preservedStatus, apiVerifyAfter: null, statusMessage: null } as any);
           verifyInFlight.delete(profileId);
           return;
         }
@@ -2667,13 +2672,15 @@ export async function registerInstagramRoutes(
       if (closeVerifyBrowser) await closeVerifyBrowser();
       // Classify the failure
       const msg = loginResult.message ?? "";
-      let accountStatus = "locked";
+      // Unknown and transport-level failures are inconclusive. Preserve the
+      // pre-verify status; only explicit Instagram account evidence may change it.
+      let accountStatus = profile.accountStatus ?? "pending";
       if (/2fa|two.factor|two_factor/i.test(msg))                              accountStatus = "2fa_verification";
       else if (/challenge|checkpoint/i.test(msg))                               accountStatus = "captcha";
       else if (/permanently disabled|Account permanently disabled/i.test(msg))  accountStatus = "account_disabled";
       else if (/suspended/i.test(msg))                                          accountStatus = "suspended";
       else if (/human.*verif|confirm.*human|human verification/i.test(msg))     accountStatus = "confirm_human";
-           else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
+      else if (/account.*locked|locked.*account/i.test(msg))                    accountStatus = "locked";
       result = { ok: false, accountStatus, message: `@${profile.username} — ${msg}` };
     }
 
@@ -2754,7 +2761,12 @@ export async function registerInstagramRoutes(
 
     } catch (_topVerifyErr: any) {
       console.error(`[verify:${profileId}] unhandled crash in background verify — clearing lock:`, _topVerifyErr?.message ?? _topVerifyErr);
-      await storage.updateProfile(profileId, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null } as any).catch(() => {});
+      const currentAfterCrash = await storage.getProfile(profileId).catch(() => null);
+      const preservedStatus =
+        currentAfterCrash?.accountStatus === "verifying"
+          ? (profile.accountStatus ?? "pending")
+          : (currentAfterCrash?.accountStatus ?? profile.accountStatus ?? "pending");
+      await storage.updateProfile(profileId, { accountStatus: preservedStatus, apiVerifyAfter: null, statusMessage: null } as any).catch(() => {});
     } finally {
       verifyInFlight.delete(profileId);
     }
@@ -3458,13 +3470,13 @@ export async function registerInstagramRoutes(
           sendLoginDone(profileId, false, loginResult.message);
           // Classify the failure and persist status
           const msg = loginResult.message ?? "";
-          let accountStatus = "locked";
+          let accountStatus = profile.accountStatus ?? "pending";
           if (/2fa|two.factor|two_factor/i.test(msg))                              accountStatus = "2fa_verification";
           else if (/challenge|checkpoint/i.test(msg))                               accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg))  accountStatus = "account_disabled";
           else if (/suspended/i.test(msg))                                          accountStatus = "suspended";
           else if (/human.*verif|confirm.*human|human verification/i.test(msg))     accountStatus = "confirm_human";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
+          else if (/account.*locked|locked.*account/i.test(msg))                    accountStatus = "locked";
           await storage.updateProfile(profileId, { accountStatus }).catch(() => {});
           return;
         }
@@ -5326,12 +5338,13 @@ export async function registerInstagramRoutes(
         } else {
           if (closeBulkBrowser) await closeBulkBrowser();
           const msg = bulkLoginResult.message ?? "";
-          let accountStatus = "locked";
+          let accountStatus = profile.accountStatus ?? "pending";
           if (/2fa|two.factor|two_factor/i.test(msg))                              accountStatus = "2fa_verification";
           else if (/challenge|checkpoint/i.test(msg))                               accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg))  accountStatus = "account_disabled";
           else if (/suspended/i.test(msg))                                          accountStatus = "suspended";
-           else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
+          else if (/human.*verif|confirm.*human|human verification/i.test(msg))     accountStatus = "confirm_human";
+          else if (/account.*locked|locked.*account/i.test(msg))                    accountStatus = "locked";
           result = { ok: false, accountStatus, message: `@${profile.username} — ${msg}` };
         }
 

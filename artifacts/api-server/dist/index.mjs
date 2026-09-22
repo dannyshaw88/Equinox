@@ -171399,8 +171399,11 @@ ${stamp}` : stamp;
       const id = Number(req.params.id);
       const body = req.body;
       const current = await storage.getProfile(id);
+      const recoverFalseLock = body.recoverFalseLock === true;
+      delete body.recoverFalseLock;
       if ("accountStatus" in body && body.accountStatus === "valid") {
-        if (!current || current.accountStatus !== "stopped") {
+        const explicitlyRecoveringFalseLock = recoverFalseLock && (current?.accountStatus === "locked" || current?.accountStatus === "pending");
+        if (!current || current.accountStatus !== "stopped" && !explicitlyRecoveringFalseLock) {
           console.warn(`[status-guard] BLOCKED attempt to set profile ${id} \u2192 "valid" via PATCH route (current: ${current?.accountStatus})`);
           delete body.accountStatus;
         }
@@ -171413,8 +171416,6 @@ ${stamp}` : stamp;
         body.statusMessage = null;
       }
       const PROTECTED_STATUSES = /* @__PURE__ */ new Set(["locked", "captcha", "automated_behaviour_detected", "valid", "stopped"]);
-      const recoverFalseLock = body.recoverFalseLock === true;
-      delete body.recoverFalseLock;
       if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "") && !(recoverFalseLock && current.accountStatus === "locked")) {
         console.warn(`[status-guard] BLOCKED attempt to set profile ${id} \u2192 "pending" via PATCH route (current: ${current.accountStatus})`);
         delete body.accountStatus;
@@ -172700,14 +172701,15 @@ ${stamp_l}` : stamp_l });
             try {
               apiResult = await verifyInstagramCredentials(profileWithCookies);
             } catch (verifyErr) {
+              const preservedStatus = profile.accountStatus ?? "pending";
               console.error(`[verify] verifyInstagramCredentials threw for @${profile.username}:`, verifyErr);
               result = {
                 ok: false,
-                accountStatus: "pending",
+                accountStatus: preservedStatus,
                 message: `@${profile.username} \u2014 mobile API check failed unexpectedly: ${verifyErr?.message ?? "unknown error"}. Try verifying again.`
               };
               sendLoginDone(profileId, false, result.message ?? "");
-              await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null });
+              await storage.updateProfile(profile.id, { accountStatus: preservedStatus, apiVerifyAfter: null, statusMessage: null });
               verifyInFlight.delete(profileId);
               return;
             }
@@ -172725,13 +172727,13 @@ ${stamp_l}` : stamp_l });
         } else {
           if (closeVerifyBrowser) await closeVerifyBrowser();
           const msg = loginResult.message ?? "";
-          let accountStatus = "locked";
+          let accountStatus = profile.accountStatus ?? "pending";
           if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
           else if (/challenge|checkpoint/i.test(msg)) accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
           else if (/suspended/i.test(msg)) accountStatus = "suspended";
           else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
+          else if (/account.*locked|locked.*account/i.test(msg)) accountStatus = "locked";
           result = { ok: false, accountStatus, message: `@${profile.username} \u2014 ${msg}` };
         }
         sendLoginDone(profileId, result.ok, result.message);
@@ -172786,7 +172788,9 @@ ${stamp_l}` : stamp_l });
         }
       } catch (_topVerifyErr) {
         console.error(`[verify:${profileId}] unhandled crash in background verify \u2014 clearing lock:`, _topVerifyErr?.message ?? _topVerifyErr);
-        await storage.updateProfile(profileId, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null }).catch(() => {
+        const currentAfterCrash = await storage.getProfile(profileId).catch(() => null);
+        const preservedStatus = currentAfterCrash?.accountStatus === "verifying" ? profile.accountStatus ?? "pending" : currentAfterCrash?.accountStatus ?? profile.accountStatus ?? "pending";
+        await storage.updateProfile(profileId, { accountStatus: preservedStatus, apiVerifyAfter: null, statusMessage: null }).catch(() => {
         });
       } finally {
         verifyInFlight.delete(profileId);
@@ -173373,13 +173377,13 @@ ${stamp}` : stamp;
       if (!loginResult.ok) {
         sendLoginDone(profileId, false, loginResult.message);
         const msg = loginResult.message ?? "";
-        let accountStatus = "locked";
+        let accountStatus = profile.accountStatus ?? "pending";
         if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
         else if (/challenge|checkpoint/i.test(msg)) accountStatus = "captcha";
         else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
         else if (/suspended/i.test(msg)) accountStatus = "suspended";
         else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
-        else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
+        else if (/account.*locked|locked.*account/i.test(msg)) accountStatus = "locked";
         await storage.updateProfile(profileId, { accountStatus }).catch(() => {
         });
         return;
@@ -174955,12 +174959,13 @@ ${stamp}` : stamp;
         } else {
           if (closeBulkBrowser) await closeBulkBrowser();
           const msg = bulkLoginResult.message ?? "";
-          let accountStatus = "locked";
+          let accountStatus = profile.accountStatus ?? "pending";
           if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
           else if (/challenge|checkpoint/i.test(msg)) accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
           else if (/suspended/i.test(msg)) accountStatus = "suspended";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted|ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_INVALID_AUTH_CREDENTIALS|proxy|network|connection/i.test(msg)) accountStatus = "pending";
+          else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
+          else if (/account.*locked|locked.*account/i.test(msg)) accountStatus = "locked";
           result = { ok: false, accountStatus, message: `@${profile.username} \u2014 ${msg}` };
         }
         await storage.updateProfile(profile.id, {
