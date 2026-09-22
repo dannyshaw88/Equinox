@@ -4985,7 +4985,7 @@ class AutomationEngine {
           return;
         }
 
-        console.log(`[engine] @${profile.username}: HS viewReels executing — this is the sole Human Session source of /api/v1/clips/home`);
+        console.log(`[engine] @${profile.username}: HS viewReels executing — this is the sole Human Session source of /api/v1/clips/discover/stream/`);
         client.setApiCallSource("Human Session Emulation");
         const reelCount = randInt(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {

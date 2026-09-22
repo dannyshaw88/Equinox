@@ -255,7 +255,8 @@ function extractOperationName(rawUrl: string): string {
     "feed/timeline":                           "GetTimeLineFeed",
     "feed/reels_tray":                         "GetReelsTray",
     "feed/liked":                              "GetLikedFeed",
-    "discover/explore":                        "ExecuteDiscoverExplore",
+    "discover/topical_explore":                "ExecuteDiscoverTopicalExplore",
+    "clips/discover/stream":                   "ExecuteClipsDiscoverStream",
     "discover/top_live":                       "GetTopLive",
     // Stories
     "feed/reels_media":                        "GetStoriesMedia",

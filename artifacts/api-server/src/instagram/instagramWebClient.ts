@@ -817,8 +817,10 @@ export class InstagramWebClient {
         } else if (igPath.includes("/feed/reels_tray")) {
           const n: number = (result?.tray ?? []).length;
           successMsg = `${n} stor${n === 1 ? "y" : "ies"} in tray`;
-        } else if (igPath.includes("/discover/explore")) {
+        } else if (igPath.includes("/discover/topical_explore")) {
           successMsg = "Explore feed loaded";
+        } else if (igPath.includes("/clips/discover/stream")) {
+          successMsg = "Reels feed loaded";
         } else if (igPath.includes("/feed/timeline")) {
           const n: number = (result?.feed_items ?? result?.items ?? []).length;
           successMsg = n > 0 ? `${n} post${n !== 1 ? "s" : ""} in timeline` : "Loading timeline feed";
@@ -1180,7 +1182,7 @@ export class InstagramWebClient {
         "/api/v1/feed/reels_tray":                  ["Stories tray loaded",             "Stories tray failed"],
         "/api/v1/feed/user/*":                      ["User feed loaded",                "User feed failed"],
         "/api/v1/feed/tag/*":                       ["Hashtag feed loaded",             "Hashtag feed failed"],
-        "/api/v1/discover/explore":                 ["Explore feed loaded",             "Explore feed failed"],
+        "/api/v1/discover/topical_explore":         ["Explore feed loaded",             "Explore feed failed"],
         "/api/v1/discover/ayml":                    ["Suggestions loaded",              "Suggestions failed"],
         "/api/v1/media/seen":                       ["Marking media as seen",           "Mark seen failed"],
         "/api/v1/media/*/like":                     ["Liked post",                      "Like failed"],
@@ -1205,7 +1207,7 @@ export class InstagramWebClient {
         "/api/v1/launcher/sync":                    ["Launcher sync",                   "Launcher sync failed"],
         "/api/v1/si/fetch_headers":                 ["Mobile CSRF bootstrap",           "CSRF bootstrap failed"],
         "/api/v1/users/self/banner_dismiss":        ["Dismiss banner",                  "Banner dismiss failed"],
-        "/api/v1/clips/home":                       ["Reels feed loaded",               "Reels feed failed"],
+        "/api/v1/clips/discover/stream":            ["Reels feed loaded",               "Reels feed failed"],
         "/api/v1/clips/user":                       ["Clips loaded",                    "Clips load failed"],
         "/api/v1/clips/clips_viewed":               ["Reel impressions sent",           "Reel impressions failed"],
         "/api/v1/tags":                             ["Hashtag feed loaded",             "Hashtag feed failed"],
@@ -3653,17 +3655,27 @@ export class InstagramWebClient {
   }
 
   // ── View Reels (independent tool) — open the dedicated Reels tab ──────────
-  // The Reels page uses POST /api/v1/clips/feed/.
-  // Do not use /api/v1/clips/home/ here: it returns an HTML 404 for this
-  // mobile session/request shape. Do not use /api/v1/feed/reels_tray/ either:
+  // The Reels page uses POST /api/v1/clips/discover/stream/ with the
+  // native seen/chaining payload. Do not use /api/v1/feed/reels_tray/ here:
   // that is the Stories tray, not the Reels page.
   async viewReelsTab(reelCount: number, reelWatchPercentMin: number = 50, reelWatchPercentMax: number = 100): Promise<{ watched: number; reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }>; sessionExpired?: boolean; reason?: string }> {
+    let deviceId = "";
+    try {
+      const state = JSON.parse(this.igDeviceState ?? "{}");
+      deviceId = String(state?.deviceId ?? state?.uuid ?? "");
+    } catch { /* device state is optional; the endpoint can still reject explicitly */ }
+    const streamBody = new URLSearchParams({
+      seen_reels: "{}",
+      enable_mixed_media_chaining: "true",
+      should_refetch_chaining_media: "false",
+      _uuid: deviceId,
+    }).toString();
     const j = await this.mobileSessionPost(
-      `/api/v1/clips/feed/`,
-      new URLSearchParams({ reason: "pull_to_refresh", max_id: "" }).toString(),
+      `/api/v1/clips/discover/stream/`,
+      streamBody,
     );
     if (!j) {
-      console.warn(`[webClient] viewReelsTab: clips/feed returned null — no mobile session or no response`);
+      console.warn(`[webClient] viewReelsTab: clips/discover/stream returned null — no mobile session or no response`);
       return { watched: 0, reelWatches: [] };
     }
     if (j?.message === "login_required" || j?.require_login || (j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? ""))) {
@@ -3677,7 +3689,7 @@ export class InstagramWebClient {
       return { watched: 0, reelWatches: [], sessionExpired: true, reason };
     }
     if (j?.status === "fail") {
-      console.warn(`[webClient] viewReelsTab: clips/feed failed — ${j?.message ?? "unknown"}`);
+      console.warn(`[webClient] viewReelsTab: clips/discover/stream failed — ${j?.message ?? "unknown"}`);
       return { watched: 0, reelWatches: [] };
     }
 
@@ -3730,12 +3742,19 @@ export class InstagramWebClient {
     let page = 1;
     while (watched < reelCount && nextMaxId && page < MAX_PAGES) {
       const pageJ = await this.mobileSessionPost(
-        `/api/v1/clips/feed/`,
-        new URLSearchParams({ reason: "pagination", max_id: nextMaxId }).toString(),
+        `/api/v1/clips/discover/stream/`,
+        new URLSearchParams({
+          ...Object.fromEntries(new URLSearchParams(streamBody)),
+          seen_reels: "{}",
+          enable_mixed_media_chaining: "true",
+          should_refetch_chaining_media: "false",
+          _uuid: deviceId,
+          max_id: nextMaxId,
+        }).toString(),
       );
       if (!pageJ) break;
       if (pageJ?.status === "fail") {
-        console.warn(`[webClient] viewReelsTab: clips/feed pagination failed — ${pageJ?.message ?? "unknown"}`);
+        console.warn(`[webClient] viewReelsTab: clips/discover/stream pagination failed — ${pageJ?.message ?? "unknown"}`);
         break;
       }
       const pageRaw: any[] = pageJ?.items ?? pageJ?.feed_items ?? [];
@@ -4312,7 +4331,7 @@ export class InstagramWebClient {
     // Batch all reel seen marks into 1 call upfront — 1 throttle instead of N.
     // Instagram's home feed is now predominantly Reels, so we must mark them seen
     // before liking (same as a real user scrolling past). The dedicated Watch Reels
-    // tool uses /api/v1/clips/feed/ (a separate endpoint) — no overlap.
+    // tool uses /api/v1/clips/discover/stream/ (a separate endpoint) — no overlap.
     const reelSeenEntries: string[] = [];
     for (const media of toProcess) {
       const isReel = media?.media_type === 2 || media?.product_type === "clips";
@@ -6492,7 +6511,7 @@ export class InstagramWebClient {
       try {
         // Primary endpoint: Explore tab
         const j = await this.mobileSessionGet(
-          "/api/v1/discover/explore/",
+          `/api/v1/discover/topical_explore/?is_prefetch=false&is_auto_paginate=false&omit_cover_media=false&module=explore_popular&reels_configuration=default&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}`,
           (json) => {
             const n = (json?.sectional_items ?? json?.items ?? []).reduce((acc: number, s: any) => acc + (s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []).length, 0);
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
@@ -6512,24 +6531,7 @@ export class InstagramWebClient {
           }
         }
       } catch (e: any) {
-        console.warn(`[webClient] visitExplorePage discover/explore failed: ${e?.message}`);
-      }
-      // Fallback: ayml discover if discover/explore returned nothing
-      if (items.length === 0) {
-        try {
-          const j2 = await this.mobileSessionGet(`/api/v1/discover/ayml/?max_id=&module=explore_popular&is_nonpersonalized=false`);
-          const users: any[] = j2?.suggested_users ?? j2?.users ?? [];
-          for (const item of users) {
-            const media = item?.media_infos?.[0] ?? item?.media ?? null;
-            if (!media) continue;
-            const mediaId = String(media?.pk ?? media?.id ?? "");
-            const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
-            const owner = media?.user ?? item?.user ?? {};
-            const username = String(owner?.username ?? "");
-            const userId = String(owner?.pk ?? owner?.id ?? "");
-            if (mediaId) items.push({ mediaId, shortcode, username, userId });
-          }
-        } catch {}
+        console.warn(`[webClient] visitExplorePage topical_explore failed: ${e?.message}`);
       }
       return items.slice(0, scrollCount);
     }, `Visit explore page (scroll ${scrollCount})`));

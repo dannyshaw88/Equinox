@@ -25,7 +25,8 @@ const SESSION_OPS = new Set([
   "GetTimeLineFeed", "ViewTimelineFeedSeen", "GetReelsTray", "ViewUserFeed",
   "GetDirectMessages", "DiscoverExplore", "ExecuteNotificationsBadge",
   "ViewTimelineStories", "VisitUserProfile", "ViewFeedPost", "LikeMedia",
-  "SaveMedia", "feed/timeline", "discover/explore", "feed/user",
+  "SaveMedia", "feed/timeline", "discover/topical_explore", "feed/user",
+  "clips/discover/stream",
   "direct_v2/inbox", "news/inbox", "media/like",
 ]);
 

@@ -3,8 +3,8 @@ name: Human Session Reels attribution
 description: How to distinguish the independent View Reels action from unrelated transport calls
 ---
 
-The independent Human Session View Reels action uses `POST /api/v1/clips/feed/` for its initial page and pagination. `GET /api/v1/clips/home/` is not its request route; it is retained only in the Explore safety guard and diagnostic attribution text. Independent queued actions should re-check their persisted enable flag at execution time and log failures as visible action rows.
+The independent Human Session View Reels action uses `POST /api/v1/clips/discover/stream/` with the native seen/chaining payload for its initial page and pagination. Explore uses `GET /api/v1/discover/topical_explore/` with the Explore query parameters; `discover/ayml` is POST-only suggestions data, not an Explore fallback.
 
-**Why:** The queue is created from a settings snapshot, while the UI can change settings during a long-running earlier action; transport errors were previously only written to the server warning log. The clips-home route also returned an HTML 404 for the mobile session/request shape.
+**Why:** The attached production capture showed `/discover/explore/` and `/clips/feed/` returning HTML 404s, while an AYML GET returned JSON 405. A captured Android route set identifies `topical_explore` and `clips/discover/stream` as the current mobile surfaces.
 
-**How to apply:** When investigating a raw API call with no dashboard row, check the action's catch path and the queue order/settings snapshot before looking for a second caller or process. Do not change View Reels back to `clips/home`; preserve the `clips/feed` POST contract for both page loads.
+**How to apply:** Keep the independent action's execution-time enable check and visible failure row. Do not substitute `discover/ayml`, `clips/feed`, or `clips/home` for these routes without a new captured request proving the replacement.
