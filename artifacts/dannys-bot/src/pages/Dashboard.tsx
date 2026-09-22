@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.566",
+    date: "22 Sep 2026",
+    items: [
+      { category: "New", text: "Accounts Manager Actions now includes Unmark Proxy as Burnt, clearing the burnt-proxy restriction from selected accounts' assigned proxies." },
+    ],
+  },
+  {
     version: "1.1.565",
     date: "22 Sep 2026",
     items: [

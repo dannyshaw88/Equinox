@@ -534,6 +534,30 @@ export function ProfilesPage() {
     await queryClient.invalidateQueries({ queryKey: [api.proxies.list.path] });
     toast({ title: "🔥 Proxy marked as burnt", description: `${updated} proxy${updated === 1 ? "" : "ies"} blocked for new account verification for 9 hours.` });
   }, [profiles, selectedProfileIds, toast]);
+  const handleUnmarkBurntProxy = useCallback(async () => {
+    if (!selectedProfileIds.length) return;
+    const proxyIds = [...new Set(selectedProfileIds.map(id => profiles?.find(p => p.id === id)?.proxyId).filter((id): id is number => id != null))];
+    if (!proxyIds.length) {
+      toast({ title: "No assigned proxies", description: "Select accounts assigned to a proxy.", variant: "destructive" });
+      return;
+    }
+    if (!window.confirm(`Remove the burnt mark from ${proxyIds.length} selected prox${proxyIds.length === 1 ? "y" : "ies"}?`)) return;
+    let updated = 0;
+    for (const id of proxyIds) {
+      try {
+        const r = await fetch(`/api/proxies/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ burntUntil: null }),
+        });
+        if (r.ok) updated++;
+      } catch {}
+    }
+    setActionsOpen(false);
+    await queryClient.invalidateQueries({ queryKey: [api.proxies.list.path] });
+    toast({ title: "Proxy burn marks cleared", description: `${updated} proxy${updated === 1 ? "" : "ies"} are no longer marked as burnt.` });
+  }, [profiles, selectedProfileIds, queryClient, toast]);
   const [statusFilter, setStatusFilter] = useState<string>(() => sessionStorage.getItem("profiles:filter") ?? "");
   const [sortField, setSortField] = useState<"account" | "status" | "ip" | "followers" | "following" | "trustscore" | "sync" | "lastApiCall" | "totalCalls" | "aliveFor" | null>(() => {
     const v = localStorage.getItem("profiles:sortField");
@@ -2571,6 +2595,10 @@ export function ProfilesPage() {
               <button onClick={handleBurntProxy} disabled={selectedProfileIds.length === 0} className="flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-orange-50 text-left disabled:opacity-40 disabled:cursor-not-allowed">
                 <Flame className="w-4 h-4 shrink-0 text-orange-500" fill="currentColor" />
                 Flag Burnt Proxy{selectedProfileIds.length > 0 ? ` (${selectedProfileIds.length})` : ""}
+              </button>
+              <button onClick={handleUnmarkBurntProxy} disabled={selectedProfileIds.length === 0} className="flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-muted/60 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed">
+                <Flame className="w-4 h-4 shrink-0 text-muted-foreground" />
+                Unmark Proxy as Burnt{selectedProfileIds.length > 0 ? ` (${selectedProfileIds.length})` : ""}
               </button>
               <div className="col-span-3 mx-4 my-1 border-t border-border" />
               <button onClick={() => { setActionsOpen(false); handleBulkDelete(); }} disabled={selectedProfileIds.length === 0} className="col-span-3 flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-red-50 text-destructive transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed">

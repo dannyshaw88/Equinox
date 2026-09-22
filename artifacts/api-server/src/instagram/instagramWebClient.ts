@@ -3668,15 +3668,34 @@ export class InstagramWebClient {
       uuid = String(state?.uuid ?? "");
     } catch { /* device state is optional; the endpoint can still reject explicitly */ }
     this._navChainScreen = "reels";
+    const viewerSessionId = randomUUID();
     const streamBody = new URLSearchParams({
-      seen_reels: "{}",
+      seen_reels: "[]",
+      client_flashcache_size: "0",
       enable_mixed_media_chaining: "true",
+      device_status: "{}",
       should_refetch_chaining_media: "false",
       _uuid: uuid,
+      prefetch_trigger_type: "cold_start",
+      viewer_session_id: viewerSessionId,
+      server_driven_cache_config: JSON.stringify({
+        serve_from_server_cache: true,
+        cohort_to_ttl_map: "",
+        serve_on_foreground_prefetch: "true",
+        serve_on_background_prefetch: "true",
+        meta: "",
+      }),
+      container_module: "clips_viewer_clips_tab",
     }).toString();
+    const streamHeaders = {
+      "X-Ig-Client-Endpoint": "feed_timeline",
+      "X-Fb-Friendly-Name": "IgApi: clips/discover/stream/",
+      "x-ig-prefetch-request": "foreground",
+    };
     const j = await this.mobileSessionPost(
       `/api/v1/clips/discover/stream/`,
       streamBody,
+      streamHeaders,
     );
     if (!j) {
       console.warn(`[webClient] viewReelsTab: clips/discover/stream returned null — no mobile session or no response`);
@@ -3749,12 +3768,9 @@ export class InstagramWebClient {
         `/api/v1/clips/discover/stream/`,
         new URLSearchParams({
           ...Object.fromEntries(new URLSearchParams(streamBody)),
-          seen_reels: "{}",
-          enable_mixed_media_chaining: "true",
-          should_refetch_chaining_media: "false",
-          _uuid: uuid,
           max_id: nextMaxId,
         }).toString(),
+        streamHeaders,
       );
       if (!pageJ) break;
       if (pageJ?.status === "fail") {
@@ -4844,7 +4860,7 @@ export class InstagramWebClient {
   // Used for write actions (follow, unfollow) where i.instagram.com strictly requires
   // a proper mobile-originated session — web cookies return login_required on those.
   // If no igApiCookies session is available, returns null immediately (no fallback).
-  private async mobileSessionPost(path: string, body = ""): Promise<any> {
+  private async mobileSessionPost(path: string, body = "", extraHeaders?: Record<string, string>): Promise<any> {
     this.assertActionEndpointAllowed(path);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some(c => c.startsWith("sessionid=")) || !!authorization;
@@ -4869,7 +4885,10 @@ export class InstagramWebClient {
       host: "i.instagram.com",
       path,
       method: "POST",
-      headers: this._buildMobileHeaders(csrf, "application/x-www-form-urlencoded; charset=UTF-8"),
+      headers: {
+        ...this._buildMobileHeaders(csrf, "application/x-www-form-urlencoded; charset=UTF-8"),
+        ...extraHeaders,
+      },
       body,
       cookieJar: this.mobileCookieJar,
       proxyUrl: this.proxyUrl,
