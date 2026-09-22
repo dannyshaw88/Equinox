@@ -159743,11 +159743,35 @@ var InstagramWebClient = class {
       "X-Fb-Friendly-Name": "IgApi: clips/discover/stream/",
       "x-ig-prefetch-request": "foreground"
     };
-    let j = await this.mobileSessionPost(
-      `/api/v1/clips/discover/stream/`,
-      streamBody,
-      streamHeaders
-    );
+    let j = null;
+    try {
+      const warmed = await this._buildWarmedIgClient();
+      if (warmed?.ig) {
+        const nativeParams = Object.fromEntries(new URLSearchParams(streamBody).entries());
+        nativeParams._csrftoken = this.mobileCsrf || "missing";
+        const nativeResponse = await warmed.ig.request.send({
+          method: "POST",
+          url: "/api/v1/clips/discover/stream/",
+          form: warmed.ig.request.sign(nativeParams)
+        });
+        const nativeItems = nativeResponse?.items ?? nativeResponse?.feed_items;
+        if (Array.isArray(nativeItems) && nativeItems.length) {
+          console.log(`[webClient] viewReelsTab: native API Clips primary returned ${nativeItems.length} item(s)`);
+          j = { ...nativeResponse, items: nativeItems };
+        } else {
+          console.warn(`[webClient] viewReelsTab: native API Clips primary returned no items; using mobile fallback`);
+        }
+      }
+    } catch (nativeErr) {
+      console.warn(`[webClient] viewReelsTab: native API Clips primary failed \u2014 ${nativeErr?.message ?? "unknown error"}; using mobile fallback`);
+    }
+    if (!j) {
+      j = await this.mobileSessionPost(
+        `/api/v1/clips/discover/stream/`,
+        streamBody,
+        streamHeaders
+      );
+    }
     if (!j) {
       console.warn(`[webClient] viewReelsTab: clips/discover/stream returned null \u2014 no mobile session or no response`);
       return { watched: 0, reelWatches: [] };
