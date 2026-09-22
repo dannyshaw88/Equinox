@@ -1226,6 +1226,7 @@ export class InstagramWebClient {
         "/api/v1/feed/user/*":                      ["User feed loaded",                "User feed failed"],
         "/api/v1/feed/tag/*":                       ["Hashtag feed loaded",             "Hashtag feed failed"],
         "/api/v1/discover/explore":                 ["Explore feed loaded",             "Explore feed failed"],
+        "/api/v1/discover/topical_explore":        ["Explore feed loaded",             "Explore feed failed"],
         "/api/v1/discover/ayml":                    ["Suggestions loaded",              "Suggestions failed"],
         "/api/v1/media/seen":                       ["Marking media as seen",           "Mark seen failed"],
         "/api/v1/media/*/like":                     ["Liked post",                      "Like failed"],
@@ -6765,41 +6766,99 @@ export class InstagramWebClient {
 
   // ── Visit the Explore page and return up to `scrollCount` post items ───────
   // Used by the Human Session engine when the timeline returns 0 posts.
-  // Calls the mobile API Explore endpoint (equivalent to tapping the
-  // Search/Explore tab in the app), simulating natural discovery browsing.
+  // The installed instagram-private-api client implements the current mobile
+  // Explore media feed as topical_explore. Keep the response diagnostics below:
+  // the route name is misleading, so we must verify that Instagram returned
+  // media sections rather than only fixed destinations/topic-style sections.
   async visitExplorePage(scrollCount: number): Promise<Array<{ mediaId: string; shortcode: string; username: string; userId: string }>> {
     return this.withActionContext("visitExplorePage", async () => this.timed("VisitExplorePage", async () => {
       // Nav chain: user navigated Home → Explore tab.
       this._navChainScreen = "explore";
       const items: Array<{ mediaId: string; shortcode: string; username: string; userId: string }> = [];
       try {
-        // Primary endpoint: the actual Explore tab.  Do not use
-        // /discover/topical_explore here: that route is for the topic/interest
-        // and activity-pill surface, not the Explore post grid.
         const exploreSessionId = randomUUID();
-        // The Explore route still expects the same native feed-shaping
-        // parameters as the current Android client.  A bare session_id can
-        // reach the route but is rejected as an incomplete feed request.
+        // Match TopicalExploreFeed from instagram-private-api@1.46.1.  Its
+        // response is sectional_items containing the Explore media grid; the
+        // name "topical" does not mean this request is limited to interest
+        // pills. Do not add max_id on the first page.
         const exploreQuery = new URLSearchParams({
           is_prefetch: "false",
-          is_auto_paginate: "false",
-          omit_cover_media: "false",
+          omit_cover_media: "true",
           module: "explore_popular",
-          reels_configuration: "default",
+          reels_configuration: "hide_hero",
           use_sectional_payload: "true",
           timezone_offset: this._tzOffset,
           cluster_id: "explore_all:0",
           session_id: exploreSessionId,
           include_fixed_destinations: "true",
         }).toString();
+
+        const classifyExploreResponse = (json: any) => {
+          const sections: any[] = Array.isArray(json?.sectional_items) ? json.sectional_items : [];
+          const entries: any[] = [
+            ...sections.flatMap((section: any) => {
+              const content = section?.layout_content ?? {};
+              return [
+                ...(Array.isArray(content.medias) ? content.medias : []),
+                ...(Array.isArray(content.fill_items) ? content.fill_items : []),
+                ...(Array.isArray(content.items) ? content.items : []),
+              ];
+            }),
+            ...(Array.isArray(json?.items) ? json.items : []),
+          ];
+          const mediaEntries = entries
+            .map((entry: any) => entry?.media ?? entry)
+            .filter((media: any) => Boolean(
+              media &&
+              (media.pk ?? media.id) &&
+              (
+                media.code ??
+                media.shortcode ??
+                media.media_type ??
+                media.image_versions2 ??
+                media.carousel_media ??
+                media.video_versions
+              ),
+            ));
+          const fixedDestinations = [
+            ...(Array.isArray(json?.fixed_destinations) ? json.fixed_destinations : []),
+            ...sections.flatMap((section: any) => {
+              const content = section?.layout_content ?? {};
+              return Array.isArray(content.fixed_destinations) ? content.fixed_destinations : [];
+            }),
+          ];
+          const topicOrPillSections = sections.filter((section: any) => {
+            const content = section?.layout_content ?? {};
+            const sectionText = [
+              section?.layout_type,
+              content?.layout_type,
+              content?.title?.text,
+              content?.title,
+            ].filter(Boolean).join(" ").toLowerCase();
+            return /pill|topic|interest/.test(sectionText)
+              || Array.isArray(content.topics)
+              || Array.isArray(content.interests);
+          });
+          const surface = mediaEntries.length > 0
+            ? "media_feed"
+            : topicOrPillSections.length > 0
+              ? "topic_or_pill_only"
+              : "unknown";
+          return {
+            surface,
+            sections: sections.length,
+            mediaItems: mediaEntries.length,
+            fixedDestinations: fixedDestinations.length,
+            topicOrPillSections: topicOrPillSections.length,
+            entries: entries.length,
+          };
+        };
+
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/explore/?${exploreQuery}`,
+          `/api/v1/discover/topical_explore/?${exploreQuery}`,
           (json) => {
-            const n = [
-              ...(json?.sectional_items ?? []).flatMap((s: any) => s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []),
-              ...(json?.items ?? []),
-            ].length;
-            return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
+            const shape = classifyExploreResponse(json);
+            return `Explore feed loaded [surface=${shape.surface}, sections=${shape.sections}, media=${shape.mediaItems}, fixed=${shape.fixedDestinations}, topic_pill_sections=${shape.topicOrPillSections}]`;
           }
         );
         if (j?.status === "fail" || j?.status === "error") {
@@ -6810,8 +6869,21 @@ export class InstagramWebClient {
         if (!j) {
           throw new Error("Explore API returned no response");
         }
-        const sectionItems = (j?.sectional_items ?? []).flatMap((section: any) =>
-          section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? []);
+        const shape = classifyExploreResponse(j);
+        console.log(
+          `[webClient] topical_explore response: surface=${shape.surface} ` +
+          `sections=${shape.sections} media=${shape.mediaItems} ` +
+          `fixed_destinations=${shape.fixedDestinations} ` +
+          `topic_pill_sections=${shape.topicOrPillSections} entries=${shape.entries}`,
+        );
+        const sectionItems = (j?.sectional_items ?? []).flatMap((section: any) => {
+          const content = section?.layout_content ?? {};
+          return [
+            ...(Array.isArray(content.medias) ? content.medias : []),
+            ...(Array.isArray(content.fill_items) ? content.fill_items : []),
+            ...(Array.isArray(content.items) ? content.items : []),
+          ];
+        });
         const feedItems: any[] = [...sectionItems, ...(j?.items ?? [])];
         for (const m of feedItems) {
           const media = m?.media ?? m;
@@ -6823,7 +6895,7 @@ export class InstagramWebClient {
           if (mediaId) items.push({ mediaId, shortcode, username, userId });
         }
       } catch (e: any) {
-        console.warn(`[webClient] visitExplorePage discover/explore failed: ${e?.message}`);
+        console.warn(`[webClient] visitExplorePage topical_explore failed: ${e?.message}`);
         throw e;
       }
       return items.slice(0, scrollCount);
