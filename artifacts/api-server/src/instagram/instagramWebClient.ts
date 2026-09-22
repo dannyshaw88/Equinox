@@ -3753,7 +3753,7 @@ export class InstagramWebClient {
         }).toString(),
       );
       if (!pageJ) break;
-      if (pageJ?.status === "fail") {
+      if (pageJ?.status === "fail" || pageJ?.status === "error") {
         console.warn(`[webClient] viewReelsTab: clips/discover/stream pagination failed — ${pageJ?.message ?? "unknown"}`);
         break;
       }
@@ -3859,21 +3859,65 @@ export class InstagramWebClient {
         return { count: -1, items: [] };
       }
 
-      const j = await this.mobileSessionGet(
-        `/api/v1/feed/reels_tray/?surface=2`,
-        (json) => { const n = Array.isArray(json?.tray) ? json.tray.length : 0; return `${n} stor${n === 1 ? "y" : "ies"} in tray`; }
-      );
-      if (j === null) {
-        // mobileSessionGet returned null — the session was present but Instagram
-        // rejected it (HTTP 4xx / expired / checkpoint).  Return -5 so the caller
-        // can show a more accurate "session expired" message instead of "no session".
-        return { count: -5, items: [] };
+      const trayPath = `/api/v1/feed/reels_tray/?surface=2`;
+      let j: any = null;
+      let traySource = "";
+
+      // The web app and the mobile app do not always receive the same
+      // experiment/configuration for the Stories tray. Prefer the browser
+      // session when it is available because that is the session whose feed
+      // the user can see, then retain the mobile route as the offline path.
+      if (this.isLoggedIn()) {
+        try {
+          const webTray = await this.webGet(trayPath);
+          if (webTray && String(webTray?.status ?? "").toLowerCase() !== "fail" &&
+              String(webTray?.status ?? "").toLowerCase() !== "error") {
+            j = webTray;
+            traySource = "web reels_tray";
+          } else {
+            console.warn(`[webClient] viewTimelineStories: web reels_tray rejected — ${webTray?.message ?? "unknown"}`);
+          }
+        } catch (err: any) {
+          console.warn(`[webClient] viewTimelineStories: web reels_tray failed — ${err?.message ?? err}`);
+        }
+      }
+
+      if (!j) {
+        try {
+          const mobileTray = await this.mobileSessionGet(
+            trayPath,
+            (json) => { const n = Array.isArray(json?.tray) ? json.tray.length : 0; return `${n} stor${n === 1 ? "y" : "ies"} in tray`; }
+          );
+          if (mobileTray === null) {
+            // mobileSessionGet returned null — the session was present but
+            // Instagram rejected it (HTTP 4xx / expired / checkpoint).
+            return { count: -5, items: [] };
+          }
+          if (String(mobileTray?.status ?? "").toLowerCase() === "fail" ||
+              String(mobileTray?.status ?? "").toLowerCase() === "error") {
+            console.warn(`[webClient] viewTimelineStories: mobile reels_tray rejected — ${mobileTray?.message ?? "unknown"}`);
+          } else {
+            j = mobileTray;
+            traySource = "mobile reels_tray";
+          }
+        } catch (err: any) {
+          const message = String(err?.message ?? err);
+          if (/login_required|logged.?out|session.?expired|not.?authorized|checkpoint_required/i.test(message)) {
+            return { count: -5, items: [] };
+          }
+          console.warn(`[webClient] viewTimelineStories: mobile reels_tray failed — ${message}`);
+        }
+      }
+
+      if (!j) {
+        console.warn(`[webClient] viewTimelineStories: all Stories tray sources rejected`);
+        return { count: -4, items: [] };
       }
       const tray: any[] = Array.isArray(j?.tray) ? j.tray : [];
       if (!tray.length) {
         const topKeys = Object.keys(j ?? {}).join(", ") || "(none)";
         const statusField = j?.status ?? "(no status field)";
-        console.log(`[webClient] viewTimelineStories: empty tray. status="${statusField}" top-level keys=[${topKeys}]`);
+        console.log(`[webClient] viewTimelineStories: empty ${traySource}. status="${statusField}" top-level keys=[${topKeys}]`);
         return { count: -2, items: [] };
       }
 
