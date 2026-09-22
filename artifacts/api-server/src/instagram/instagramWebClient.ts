@@ -363,15 +363,15 @@ type ApiCallLogger = (op: string, durationMs: number, message?: string, isError?
 
 // Keep this version current — Instagram rejects signup requests from versions
 // older than a few months with error_type:"needs_upgrade".
-// APK metadata confirmed 447.0.0.55.81 on 2026-09-19.
+// APK metadata confirmed 449.0.0.0.45 on 2026-09-22.
 // Version codes confirmed from current Android release metadata:
 //   222.0.0.13.114 → 350696709
 //   384.0.0.36.112 → 663869969
 //   427.0.0.47.73  → 746996204
 //   428.0.0.47.67  → 961145276
-//   447.0.0.55.81  → 385311921  ← current Android release line
-export const MOBILE_VERSION      = "447.0.0.55.81";
-export const MOBILE_VERSION_CODE = "385311921";
+//   449.0.0.0.45   → 385412056  ← current Android release line
+export const MOBILE_VERSION      = "449.0.0.0.45";
+export const MOBILE_VERSION_CODE = "385412056";
 // The mobile reels-tray endpoint expects this capability list in the form body.
 const MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
   {
@@ -402,7 +402,7 @@ const MOBILE_VIDEO_DEVICE_STATUS = JSON.stringify({
 });
 // Date this version was last confirmed / updated. Warn after 90 days so there
 // is time to update before Instagram starts rejecting the version.
-const MOBILE_VERSION_DATE = "2026-09-19";
+const MOBILE_VERSION_DATE = "2026-09-22";
 (() => {
   const ageMs = Date.now() - new Date(MOBILE_VERSION_DATE).getTime();
   const ageDays = Math.floor(ageMs / 86_400_000);

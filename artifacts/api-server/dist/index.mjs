@@ -150434,19 +150434,33 @@ function patchIgClientTls(ig, proxyUrl) {
       } catch {
       }
     }
-    const rawIgAuth = resp.headers["ig-set-authorization"];
+    const getResponseHeader = (name) => {
+      const key = Object.keys(resp.headers).find((k2) => k2.toLowerCase() === name);
+      return key ? resp.headers[key] : void 0;
+    };
+    const rawIgAuth = getResponseHeader("ig-set-authorization");
     if (rawIgAuth) {
       const authVal = Array.isArray(rawIgAuth) ? rawIgAuth[0] : rawIgAuth;
       if (authVal && authVal.startsWith("IGT:")) {
         ig.state.authorization = authVal;
       }
     }
-    const rawIgClaim = resp.headers["ig-set-www-claim"];
+    const rawIgClaim = getResponseHeader("ig-set-www-claim");
     if (rawIgClaim) {
       const claimVal = Array.isArray(rawIgClaim) ? rawIgClaim[0] : rawIgClaim;
       if (claimVal && claimVal !== "0") {
         ig.state.igWWWClaim = claimVal;
       }
+    }
+    const rawPasswordKeyId = getResponseHeader("ig-set-password-encryption-key-id");
+    if (rawPasswordKeyId) {
+      const keyId = Array.isArray(rawPasswordKeyId) ? rawPasswordKeyId[0] : rawPasswordKeyId;
+      if (keyId) ig.state.passwordEncryptionKeyId = keyId;
+    }
+    const rawPasswordPubKey = getResponseHeader("ig-set-password-encryption-pub-key");
+    if (rawPasswordPubKey) {
+      const pubKey = Array.isArray(rawPasswordPubKey) ? rawPasswordPubKey[0] : rawPasswordPubKey;
+      if (pubKey) ig.state.passwordEncryptionPubKey = pubKey;
     }
     const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
     let parsedBody = resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data) ? resp.data : rawBody;
@@ -157067,8 +157081,8 @@ function patchDeviceStringVersionCode(ig, targetVersionCode) {
     ig.state.deviceString = ig.state.deviceString.trimEnd() + `; ${targetVersionCode}`;
   }
 }
-var MOBILE_VERSION = "447.0.0.55.81";
-var MOBILE_VERSION_CODE = "385311921";
+var MOBILE_VERSION = "449.0.0.0.45";
+var MOBILE_VERSION_CODE = "385412056";
 var MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
   {
     name: "SUPPORTED_SDK_VERSIONS",
@@ -157093,7 +157107,7 @@ var MOBILE_VIDEO_DEVICE_STATUS = JSON.stringify({
   max_ghz_sum: 0,
   min_ghz_sum: 0
 });
-var MOBILE_VERSION_DATE = "2026-09-19";
+var MOBILE_VERSION_DATE = "2026-09-22";
 (() => {
   const ageMs = Date.now() - new Date(MOBILE_VERSION_DATE).getTime();
   const ageDays = Math.floor(ageMs / 864e5);
