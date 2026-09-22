@@ -157082,7 +157082,7 @@ function patchDeviceStringVersionCode(ig, targetVersionCode) {
   }
 }
 var MOBILE_VERSION = "449.0.0.0.45";
-var MOBILE_VERSION_CODE = "385412056";
+var MOBILE_VERSION_CODE = "385512056";
 var MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
   {
     name: "SUPPORTED_SDK_VERSIONS",
@@ -159778,11 +159778,46 @@ var InstagramWebClient = class {
           );
           const timelineItems = timeline?.feed_items ?? timeline?.items;
           if (timeline && timeline.status !== "fail" && Array.isArray(timelineItems)) {
-            console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s)`);
-            j = { ...timeline, items: timelineItems };
+            const timelineHasReel = timelineItems.some((raw) => {
+              const media = raw?.media_or_ad ?? raw?.media ?? raw;
+              return media?.media_type === 2 || media?.product_type === "clips";
+            });
+            if (timelineHasReel) {
+              console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s), including reel media`);
+              j = { ...timeline, items: timelineItems };
+            } else {
+              console.warn(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} non-reel item(s); trying authenticated web Clips fallback`);
+              try {
+                const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
+                const webItems = webClips?.items ?? webClips?.feed_items;
+                if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
+                  console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
+                  j = { ...webClips, items: webItems };
+                } else {
+                  console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
+                  return { watched: 0, reelWatches: [] };
+                }
+              } catch (webErr) {
+                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed \u2014 ${webErr?.message ?? "unknown error"}`);
+                return { watched: 0, reelWatches: [] };
+              }
+            }
           } else {
-            console.warn(`[webClient] viewReelsTab: timeline fallback also returned no usable data`);
-            return { watched: 0, reelWatches: [] };
+            console.warn(`[webClient] viewReelsTab: timeline fallback also returned no usable data; trying authenticated web Clips fallback`);
+            try {
+              const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
+              const webItems = webClips?.items ?? webClips?.feed_items;
+              if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
+                console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
+                j = { ...webClips, items: webItems };
+              } else {
+                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
+                return { watched: 0, reelWatches: [] };
+              }
+            } catch (webErr) {
+              console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed \u2014 ${webErr?.message ?? "unknown error"}`);
+              return { watched: 0, reelWatches: [] };
+            }
           }
         }
       } else {
@@ -162189,7 +162224,7 @@ async function createInstagramAccountViaApi(params) {
   } else {
     step("Geo: no proxy \u2014 using defaults (UTC-5, en_US)");
   }
-  const BLOKS_VERSION_ID = "ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48";
+  const BLOKS_VERSION_ID = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
   const baseHeaders = {
     "Host": "i.instagram.com",
     "User-Agent": effectiveUA,

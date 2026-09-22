@@ -363,15 +363,15 @@ type ApiCallLogger = (op: string, durationMs: number, message?: string, isError?
 
 // Keep this version current — Instagram rejects signup requests from versions
 // older than a few months with error_type:"needs_upgrade".
-// APK metadata confirmed 449.0.0.0.45 on 2026-09-22.
+// Instagram login currently requires the 449 release line as of 2026-09-22.
 // Version codes confirmed from current Android release metadata:
 //   222.0.0.13.114 → 350696709
 //   384.0.0.36.112 → 663869969
 //   427.0.0.47.73  → 746996204
 //   428.0.0.47.67  → 961145276
-//   449.0.0.0.45   → 385412056  ← current Android release line
+//   449.0.0.0.45   → 385512056  ← current Android release line
 export const MOBILE_VERSION      = "449.0.0.0.45";
-export const MOBILE_VERSION_CODE = "385412056";
+export const MOBILE_VERSION_CODE = "385512056";
 // The mobile reels-tray endpoint expects this capability list in the form body.
 const MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
   {
@@ -3774,11 +3774,46 @@ export class InstagramWebClient {
           );
           const timelineItems = timeline?.feed_items ?? timeline?.items;
           if (timeline && timeline.status !== "fail" && Array.isArray(timelineItems)) {
-            console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s)`);
-            j = { ...timeline, items: timelineItems };
+            const timelineHasReel = timelineItems.some((raw: any) => {
+              const media = raw?.media_or_ad ?? raw?.media ?? raw;
+              return media?.media_type === 2 || media?.product_type === "clips";
+            });
+            if (timelineHasReel) {
+              console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s), including reel media`);
+              j = { ...timeline, items: timelineItems };
+            } else {
+              console.warn(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} non-reel item(s); trying authenticated web Clips fallback`);
+              try {
+                const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
+                const webItems = webClips?.items ?? webClips?.feed_items;
+                if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
+                  console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
+                  j = { ...webClips, items: webItems };
+                } else {
+                  console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
+                  return { watched: 0, reelWatches: [] };
+                }
+              } catch (webErr: any) {
+                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed — ${webErr?.message ?? "unknown error"}`);
+                return { watched: 0, reelWatches: [] };
+              }
+            }
           } else {
-            console.warn(`[webClient] viewReelsTab: timeline fallback also returned no usable data`);
-            return { watched: 0, reelWatches: [] };
+            console.warn(`[webClient] viewReelsTab: timeline fallback also returned no usable data; trying authenticated web Clips fallback`);
+            try {
+              const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
+              const webItems = webClips?.items ?? webClips?.feed_items;
+              if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
+                console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
+                j = { ...webClips, items: webItems };
+              } else {
+                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
+                return { watched: 0, reelWatches: [] };
+              }
+            } catch (webErr: any) {
+              console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed — ${webErr?.message ?? "unknown error"}`);
+              return { watched: 0, reelWatches: [] };
+            }
           }
         }
       } else {
@@ -6804,7 +6839,10 @@ export async function createInstagramAccountViaApi(params: {
   // Old v427 value (16b7bd25...) also caused "needs_upgrade" after Instagram bumped minimum version.
   // Old v428 value (7189b949...) caused "needs_upgrade" after Instagram bumped to v431.
   // Update this alongside MOBILE_VERSION when Instagram bumps its minimum accepted version.
-  const BLOKS_VERSION_ID = "ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48";
+  // Current Bloks identifier from Instagram's maintained Android app profile.
+  // A stale identifier is also rejected as needs_upgrade, even when the
+  // app-version/version-code pair is current.
+  const BLOKS_VERSION_ID = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
   const baseHeaders: Record<string, string> = {
     "Host": "i.instagram.com",
     "User-Agent": effectiveUA,
