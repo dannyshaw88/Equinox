@@ -1,6 +1,7 @@
 - [Ban dataset interpretation rules](ban-analysis-corrections.md) — timestamp clustering = Danny manually marking, SLOW = user label, re-added = prior ban history, not server sweeps
 - [Verify bootstrap timing & call-order bugs](verify-bootstrap-bugs.md) — Phase 0 anonymous calls REMOVED (EB always provides cookies); sequence now starts at Phase 1 (load cookies)
 - [tlsRequest CycleTLS header stripping](tls-request-header-fix.md) — tlsRequest must strip Host, Connection, Content-Length before passing to CycleTLS or Instagram returns "something went wrong"
+- [Instagram auth header capture](instagram-auth-header-capture.md) — preserve the full Bearer IGT response token and match response-header casing or restored-session writes run unauthenticated
 - [Make a Post fix log](make-a-post-log.md) — chronological history of EB-driven posting flow bugs (clicks, visibility, Escape-key, recycling); read before touching that flow
 - [Activate Percentage gate levels](activate-percentage-gate-levels.md) — per-execution tool-level gate (View Feed/Stories/Follow/Jitter) vs per-user Inject Browsing gate are distinct; don't conflate
 - Note (5 Jul 2026): EB IP/DNS leak history, EB throttling/multi-tab IPC history, and image upload fix history were merged back into `replit.md` at the user's request (full detail preferred over a trimmed index). Read those sections directly in `replit.md`, not the old topic files.

@@ -1967,7 +1967,9 @@ export class InstagramWebClient {
   // so the next _buildMobileHeaders() call sends the current values.
   private _absorbResponseHeaders(responseHeaders: Record<string, string | string[] | undefined>): void {
     const raw = (key: string): string | undefined => {
-      const v = responseHeaders[key] ?? responseHeaders[key.toLowerCase()];
+      const matchingKey = Object.keys(responseHeaders).find(existing =>
+        existing.toLowerCase() === key.toLowerCase());
+      const v = matchingKey ? responseHeaders[matchingKey] : undefined;
       return Array.isArray(v) ? v[0] : v;
     };
     const newClaim = raw("ig-set-www-claim");

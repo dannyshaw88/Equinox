@@ -664,7 +664,11 @@ export function patchIgClientTls(ig: IgApiClient, proxyUrl: string | undefined):
     const rawIgAuth = getResponseHeader("ig-set-authorization");
     if (rawIgAuth) {
       const authVal = Array.isArray(rawIgAuth) ? rawIgAuth[0] : rawIgAuth;
-      if (authVal && authVal.startsWith("IGT:")) {
+      // Instagram returns the complete value expected by instagram-private-api:
+      // "Bearer IGT:2:<base64>".  Older code only accepted the token suffix
+      // ("IGT:"), so a valid response header was silently discarded and every
+      // subsequent write ran without the session's Bearer credential.
+      if (authVal && !authVal.endsWith(":") && /^(?:Bearer )?IGT:2:/i.test(authVal)) {
         (ig.state as any).authorization = authVal;
       }
     }

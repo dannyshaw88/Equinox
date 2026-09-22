@@ -150441,7 +150441,7 @@ function patchIgClientTls(ig, proxyUrl) {
     const rawIgAuth = getResponseHeader("ig-set-authorization");
     if (rawIgAuth) {
       const authVal = Array.isArray(rawIgAuth) ? rawIgAuth[0] : rawIgAuth;
-      if (authVal && authVal.startsWith("IGT:")) {
+      if (authVal && !authVal.endsWith(":") && /^(?:Bearer )?IGT:2:/i.test(authVal)) {
         ig.state.authorization = authVal;
       }
     }
@@ -158406,7 +158406,8 @@ var InstagramWebClient = class {
   // so the next _buildMobileHeaders() call sends the current values.
   _absorbResponseHeaders(responseHeaders) {
     const raw = (key) => {
-      const v3 = responseHeaders[key] ?? responseHeaders[key.toLowerCase()];
+      const matchingKey = Object.keys(responseHeaders).find((existing) => existing.toLowerCase() === key.toLowerCase());
+      const v3 = matchingKey ? responseHeaders[matchingKey] : void 0;
       return Array.isArray(v3) ? v3[0] : v3;
     };
     const newClaim = raw("ig-set-www-claim");
