@@ -6773,9 +6773,14 @@ export class InstagramWebClient {
       this._navChainScreen = "explore";
       const items: Array<{ mediaId: string; shortcode: string; username: string; userId: string }> = [];
       try {
-        // Primary endpoint: Explore tab
+        // Primary endpoint: Explore tab.  Keep this query aligned with the
+        // installed instagram-private-api TopicalExploreFeed contract:
+        // each feed visit gets a fresh session_id and the initial cluster is
+        // explicit.  Omitting those values makes every request look like an
+        // incomplete/replayed Explore fetch instead of a real tab visit.
+        const exploreSessionId = randomUUID();
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/topical_explore/?is_prefetch=false&is_auto_paginate=false&omit_cover_media=false&module=explore_popular&reels_configuration=default&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}`,
+          `/api/v1/discover/topical_explore/?is_prefetch=false&omit_cover_media=true&module=explore_popular&reels_configuration=hide_hero&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}&cluster_id=explore_all%3A0&session_id=${encodeURIComponent(exploreSessionId)}&include_fixed_destinations=true`,
           (json) => {
             const n = (json?.sectional_items ?? json?.items ?? []).reduce((acc: number, s: any) => acc + (s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []).length, 0);
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;

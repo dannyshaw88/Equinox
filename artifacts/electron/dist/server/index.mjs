@@ -162215,8 +162215,9 @@ Content-Disposition: form-data; name="${part.name}"`;
       this._navChainScreen = "explore";
       const items = [];
       try {
+        const exploreSessionId = randomUUID();
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/topical_explore/?is_prefetch=false&is_auto_paginate=false&omit_cover_media=false&module=explore_popular&reels_configuration=default&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}`,
+          `/api/v1/discover/topical_explore/?is_prefetch=false&omit_cover_media=true&module=explore_popular&reels_configuration=hide_hero&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}&cluster_id=explore_all%3A0&session_id=${encodeURIComponent(exploreSessionId)}&include_fixed_destinations=true`,
           (json2) => {
             const n = (json2?.sectional_items ?? json2?.items ?? []).reduce((acc, s) => acc + (s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []).length, 0);
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
