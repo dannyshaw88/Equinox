@@ -158608,7 +158608,6 @@ var InstagramWebClient = class {
   // "We're sorry, but something went wrong" on some users even though the EB
   // (which uses signed native app requests) worked fine.
   async _followViaIgClient(userId) {
-    return this._followViaFollowUserEndpoint(userId);
     if (!this.igApiCookies) return { ok: false, status: "follow_blocked", reason: "no igApiCookies \u2014 cannot use IgApiClient" };
     const ig = this._newAutomationIgClient();
     const deviceSeed = (this.userAgentApi ?? this.username ?? "instagram") + "|" + (this.username ?? "instagram");
@@ -159360,7 +159359,7 @@ var InstagramWebClient = class {
       "FollowedUser",
       async () => {
         this._navChainScreen = "profile";
-        return this._followViaMobileSession(userId);
+        return this._followViaIgClient(userId);
       },
       username ? `Follow @${username}${sourceLabel ? ` via ${sourceLabel}` : ""}` : `Follow user ${userId}`,
       (r2) => r2.ok

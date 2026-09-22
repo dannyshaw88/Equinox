@@ -2218,10 +2218,6 @@ export class InstagramWebClient {
   // "We're sorry, but something went wrong" on some users even though the EB
   // (which uses signed native app requests) worked fine.
   private async _followViaIgClient(userId: string): Promise<{ ok: boolean; status?: string; reason?: string; checkpointUrl?: string }> {
-    // Compatibility shim for stale callers. The obsolete friendship API is
-    // intentionally unreachable; all follow actions use FollowUser.
-    return this._followViaFollowUserEndpoint(userId);
-
     if (!this.igApiCookies) return { ok: false, status: "follow_blocked", reason: "no igApiCookies — cannot use IgApiClient" };
 
     // _newAutomationIgClient() hooks apiThrottle() into ig.request.send so every
@@ -3257,10 +3253,10 @@ export class InstagramWebClient {
     return this.timed("FollowedUser", async () => {
       // Nav chain: user navigated Home → Profile before tapping Follow.
       this._navChainScreen = "profile";
-      // Follow is an API-only mobile action. Use the signed native endpoint;
-      // the old www.instagram.com /web/friendships route returns an HTML 404
-      // instead of an Instagram JSON response.
-      return this._followViaMobileSession(userId);
+      // Follow is an API-only mobile action. Use the native IgApiClient
+      // friendship.create path so all database devices share the same signed
+      // request/authentication behavior.
+      return this._followViaIgClient(userId);
     }, username ? `Follow @${username}${sourceLabel ? ` via ${sourceLabel}` : ""}` : `Follow user ${userId}`,
     (r) => r.ok);
   }
