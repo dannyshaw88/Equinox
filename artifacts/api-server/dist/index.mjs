@@ -159782,6 +159782,16 @@ var InstagramWebClient = class {
               const media = raw?.media_or_ad ?? raw?.media ?? raw;
               return media?.media_type === 2 || media?.product_type === "clips";
             });
+            console.log(`[webClient] viewReelsTab: timeline media classification=${JSON.stringify(timelineItems.slice(0, 8).map((raw) => {
+              const media = raw?.media_or_ad ?? raw?.media ?? raw;
+              return {
+                mediaType: media?.media_type ?? null,
+                productType: media?.product_type ?? null,
+                hasVideoVersions: Array.isArray(media?.video_versions),
+                hasVideoDuration: media?.video_duration != null,
+                hasMediaId: Boolean(media?.id ?? media?.pk)
+              };
+            }))}`);
             if (timelineHasReel) {
               console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s), including reel media`);
               j = { ...timeline, items: timelineItems };
@@ -160728,6 +160738,17 @@ var InstagramWebClient = class {
       }
     } catch (err) {
       console.warn(`[webClient] _bootstrapMobileCsrf current_user failed: ${err?.message}`);
+    }
+    try {
+      const refreshed = await this.refreshCsrf();
+      if (refreshed && this.csrfToken) {
+        this.mobileCsrf = this.csrfToken;
+        this.mobileCookieJar = mergeCookies(this.mobileCookieJar, [`csrftoken=${this.mobileCsrf}`]);
+        console.log(`[webClient] _bootstrapMobileCsrf: csrftoken recovered from authenticated web session`);
+        return;
+      }
+    } catch (err) {
+      console.warn(`[webClient] _bootstrapMobileCsrf web-session refresh failed: ${err?.message}`);
     }
     const fallback = randomUUID().replace(/-/g, "");
     this.mobileCsrf = fallback;
