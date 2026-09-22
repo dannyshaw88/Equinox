@@ -157461,7 +157461,7 @@ var InstagramWebClient = class {
         } else if (igPath.includes("/feed/reels_tray")) {
           const n = (result?.tray ?? []).length;
           successMsg = `${n} stor${n === 1 ? "y" : "ies"} in tray`;
-        } else if (igPath.includes("/discover/topical_explore")) {
+        } else if (igPath.includes("/discover/explore")) {
           successMsg = "Explore feed loaded";
         } else if (igPath.includes("/clips/discover/stream")) {
           successMsg = "Reels feed loaded";
@@ -157763,7 +157763,7 @@ var InstagramWebClient = class {
         "/api/v1/feed/reels_tray": ["Stories tray loaded", "Stories tray failed"],
         "/api/v1/feed/user/*": ["User feed loaded", "User feed failed"],
         "/api/v1/feed/tag/*": ["Hashtag feed loaded", "Hashtag feed failed"],
-        "/api/v1/discover/topical_explore": ["Explore feed loaded", "Explore feed failed"],
+        "/api/v1/discover/explore": ["Explore feed loaded", "Explore feed failed"],
         "/api/v1/discover/ayml": ["Suggestions loaded", "Suggestions failed"],
         "/api/v1/media/seen": ["Marking media as seen", "Mark seen failed"],
         "/api/v1/media/*/like": ["Liked post", "Like failed"],
@@ -162217,27 +162217,28 @@ Content-Disposition: form-data; name="${part.name}"`;
       try {
         const exploreSessionId = randomUUID();
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/topical_explore/?is_prefetch=false&omit_cover_media=true&module=explore_popular&reels_configuration=hide_hero&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}&cluster_id=explore_all%3A0&session_id=${encodeURIComponent(exploreSessionId)}&include_fixed_destinations=true`,
+          `/api/v1/discover/explore/?session_id=${encodeURIComponent(exploreSessionId)}`,
           (json2) => {
-            const n = (json2?.sectional_items ?? json2?.items ?? []).reduce((acc, s) => acc + (s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []).length, 0);
+            const n = [
+              ...(json2?.sectional_items ?? []).flatMap((s) => s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []),
+              ...json2?.items ?? []
+            ].length;
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
           }
         );
-        const sections = j?.sectional_items ?? j?.items ?? [];
-        for (const section of sections) {
-          const medias = section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? [];
-          for (const m2 of medias) {
-            const media = m2?.media ?? m2;
-            const mediaId = String(media?.pk ?? media?.id ?? "");
-            const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
-            const owner = media?.user ?? media?.owner ?? {};
-            const username = String(owner?.username ?? "");
-            const userId = String(owner?.pk ?? owner?.id ?? "");
-            if (mediaId) items.push({ mediaId, shortcode, username, userId });
-          }
+        const sectionItems = (j?.sectional_items ?? []).flatMap((section) => section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? []);
+        const feedItems = [...sectionItems, ...j?.items ?? []];
+        for (const m2 of feedItems) {
+          const media = m2?.media ?? m2;
+          const mediaId = String(media?.pk ?? media?.id ?? "");
+          const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
+          const owner = media?.user ?? media?.owner ?? {};
+          const username = String(owner?.username ?? "");
+          const userId = String(owner?.pk ?? owner?.id ?? "");
+          if (mediaId) items.push({ mediaId, shortcode, username, userId });
         }
       } catch (e) {
-        console.warn(`[webClient] visitExplorePage topical_explore failed: ${e?.message}`);
+        console.warn(`[webClient] visitExplorePage discover/explore failed: ${e?.message}`);
       }
       return items.slice(0, scrollCount);
     }, `Visit explore page (scroll ${scrollCount})`));
@@ -162955,7 +162956,7 @@ function extractOperationName(rawUrl) {
     "feed/timeline": "GetTimeLineFeed",
     "feed/reels_tray": "GetReelsTray",
     "feed/liked": "GetLikedFeed",
-    "discover/topical_explore": "ExecuteDiscoverTopicalExplore",
+    "discover/explore": "ExecuteDiscoverExplore",
     "clips/discover/stream": "ExecuteClipsDiscoverStream",
     "discover/top_live": "GetTopLive",
     // Stories
@@ -163754,6 +163755,7 @@ var SESSION_OPS = /* @__PURE__ */ new Set([
   "feed/timeline",
   "discover/topical_explore",
   "feed/user",
+  "discover/explore",
   "clips/discover/stream",
   "direct_v2/inbox",
   "news/inbox",

@@ -89,6 +89,7 @@ const EP_LABELS: Record<string, { label: string; category: "follow" | "unfollow"
   "bloks":                { label: "Bloks (UI)",         category: "session" },
   "banyan":               { label: "Banyan Check",       category: "auth" },
   "topical_explore":      { label: "Explore",            category: "session" },
+  "discover/explore":     { label: "Explore",            category: "session" },
   "ProfileSync":          { label: "Profile Sync",       category: "session" },
   "friendships/following":{ label: "Following List",     category: "session" },
   "friendships/followers":{ label: "Followers List",     category: "session" },

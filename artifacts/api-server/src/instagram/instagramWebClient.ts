@@ -854,7 +854,7 @@ export class InstagramWebClient {
         } else if (igPath.includes("/feed/reels_tray")) {
           const n: number = (result?.tray ?? []).length;
           successMsg = `${n} stor${n === 1 ? "y" : "ies"} in tray`;
-        } else if (igPath.includes("/discover/topical_explore")) {
+        } else if (igPath.includes("/discover/explore")) {
           successMsg = "Explore feed loaded";
         } else if (igPath.includes("/clips/discover/stream")) {
           successMsg = "Reels feed loaded";
@@ -1225,7 +1225,7 @@ export class InstagramWebClient {
         "/api/v1/feed/reels_tray":                  ["Stories tray loaded",             "Stories tray failed"],
         "/api/v1/feed/user/*":                      ["User feed loaded",                "User feed failed"],
         "/api/v1/feed/tag/*":                       ["Hashtag feed loaded",             "Hashtag feed failed"],
-        "/api/v1/discover/topical_explore":         ["Explore feed loaded",             "Explore feed failed"],
+        "/api/v1/discover/explore":                 ["Explore feed loaded",             "Explore feed failed"],
         "/api/v1/discover/ayml":                    ["Suggestions loaded",              "Suggestions failed"],
         "/api/v1/media/seen":                       ["Marking media as seen",           "Mark seen failed"],
         "/api/v1/media/*/like":                     ["Liked post",                      "Like failed"],
@@ -6773,34 +6773,34 @@ export class InstagramWebClient {
       this._navChainScreen = "explore";
       const items: Array<{ mediaId: string; shortcode: string; username: string; userId: string }> = [];
       try {
-        // Primary endpoint: Explore tab.  Keep this query aligned with the
-        // installed instagram-private-api TopicalExploreFeed contract:
-        // each feed visit gets a fresh session_id and the initial cluster is
-        // explicit.  Omitting those values makes every request look like an
-        // incomplete/replayed Explore fetch instead of a real tab visit.
+        // Primary endpoint: the actual Explore tab.  Do not use
+        // /discover/topical_explore here: that route is for the topic/interest
+        // and activity-pill surface, not the Explore post grid.
         const exploreSessionId = randomUUID();
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/topical_explore/?is_prefetch=false&omit_cover_media=true&module=explore_popular&reels_configuration=hide_hero&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}&cluster_id=explore_all%3A0&session_id=${encodeURIComponent(exploreSessionId)}&include_fixed_destinations=true`,
+          `/api/v1/discover/explore/?session_id=${encodeURIComponent(exploreSessionId)}`,
           (json) => {
-            const n = (json?.sectional_items ?? json?.items ?? []).reduce((acc: number, s: any) => acc + (s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []).length, 0);
+            const n = [
+              ...(json?.sectional_items ?? []).flatMap((s: any) => s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []),
+              ...(json?.items ?? []),
+            ].length;
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
           }
         );
-        const sections: any[] = j?.sectional_items ?? j?.items ?? [];
-        for (const section of sections) {
-          const medias: any[] = section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? [];
-          for (const m of medias) {
-            const media = m?.media ?? m;
-            const mediaId = String(media?.pk ?? media?.id ?? "");
-            const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
-            const owner = media?.user ?? media?.owner ?? {};
-            const username = String(owner?.username ?? "");
-            const userId = String(owner?.pk ?? owner?.id ?? "");
-            if (mediaId) items.push({ mediaId, shortcode, username, userId });
-          }
+        const sectionItems = (j?.sectional_items ?? []).flatMap((section: any) =>
+          section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? []);
+        const feedItems: any[] = [...sectionItems, ...(j?.items ?? [])];
+        for (const m of feedItems) {
+          const media = m?.media ?? m;
+          const mediaId = String(media?.pk ?? media?.id ?? "");
+          const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
+          const owner = media?.user ?? media?.owner ?? {};
+          const username = String(owner?.username ?? "");
+          const userId = String(owner?.pk ?? owner?.id ?? "");
+          if (mediaId) items.push({ mediaId, shortcode, username, userId });
         }
       } catch (e: any) {
-        console.warn(`[webClient] visitExplorePage topical_explore failed: ${e?.message}`);
+        console.warn(`[webClient] visitExplorePage discover/explore failed: ${e?.message}`);
       }
       return items.slice(0, scrollCount);
     }, `Visit explore page (scroll ${scrollCount})`));
