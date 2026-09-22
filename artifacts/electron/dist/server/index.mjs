@@ -150059,6 +150059,7 @@ import * as https3 from "https";
 import * as http2 from "http";
 import * as fs2 from "fs";
 import * as path3 from "path";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID, createCipheriv, createHmac as createHmac2, publicEncrypt, randomBytes as randomBytes3, constants as cryptoConstants } from "crypto";
 init_userAgents();
 var import_instagram_private_api2 = __toESM(require_dist2(), 1);
@@ -150433,19 +150434,33 @@ function patchIgClientTls(ig, proxyUrl) {
       } catch {
       }
     }
-    const rawIgAuth = resp.headers["ig-set-authorization"];
+    const getResponseHeader = (name) => {
+      const key = Object.keys(resp.headers).find((k2) => k2.toLowerCase() === name);
+      return key ? resp.headers[key] : void 0;
+    };
+    const rawIgAuth = getResponseHeader("ig-set-authorization");
     if (rawIgAuth) {
       const authVal = Array.isArray(rawIgAuth) ? rawIgAuth[0] : rawIgAuth;
       if (authVal && authVal.startsWith("IGT:")) {
         ig.state.authorization = authVal;
       }
     }
-    const rawIgClaim = resp.headers["ig-set-www-claim"];
+    const rawIgClaim = getResponseHeader("ig-set-www-claim");
     if (rawIgClaim) {
       const claimVal = Array.isArray(rawIgClaim) ? rawIgClaim[0] : rawIgClaim;
       if (claimVal && claimVal !== "0") {
         ig.state.igWWWClaim = claimVal;
       }
+    }
+    const rawPasswordKeyId = getResponseHeader("ig-set-password-encryption-key-id");
+    if (rawPasswordKeyId) {
+      const keyId = Array.isArray(rawPasswordKeyId) ? rawPasswordKeyId[0] : rawPasswordKeyId;
+      if (keyId) ig.state.passwordEncryptionKeyId = keyId;
+    }
+    const rawPasswordPubKey = getResponseHeader("ig-set-password-encryption-pub-key");
+    if (rawPasswordPubKey) {
+      const pubKey = Array.isArray(rawPasswordPubKey) ? rawPasswordPubKey[0] : rawPasswordPubKey;
+      if (pubKey) ig.state.passwordEncryptionPubKey = pubKey;
     }
     const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
     let parsedBody = resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data) ? resp.data : rawBody;
@@ -157066,9 +157081,36 @@ function patchDeviceStringVersionCode(ig, targetVersionCode) {
     ig.state.deviceString = ig.state.deviceString.trimEnd() + `; ${targetVersionCode}`;
   }
 }
-var MOBILE_VERSION = "431.0.0.37.82";
-var MOBILE_VERSION_CODE = "383708339";
-var MOBILE_VERSION_DATE = "2026-05-24";
+function normalizeMobileDeviceString(deviceString) {
+  return deviceString.replace(/^\s*33\/13\s*;/, "34/14;");
+}
+var MOBILE_VERSION = "449.0.0.0.45";
+var MOBILE_VERSION_CODE = "385512056";
+var MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
+  {
+    name: "SUPPORTED_SDK_VERSIONS",
+    value: "13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0,24.0,25.0,26.0,27.0,28.0,29.0,30.0,31.0,32.0,33.0,34.0,35.0,36.0,37.0,38.0,39.0,40.0,41.0,42.0,43.0,44.0,45.0,46.0,47.0,48.0,49.0,50.0,51.0,52.0,53.0,54.0,55.0,56.0,57.0,58.0,59.0,60.0,61.0,62.0,63.0,64.0,65.0,66.0"
+  },
+  { name: "FACE_TRACKER_VERSION", value: 12 },
+  { name: "segmentation", value: "segmentation_enabled" },
+  { name: "COMPRESSION", value: "ETC2_COMPRESSION" },
+  { name: "world_tracker", value: "world_tracker_enabled" },
+  { name: "gyroscope", value: "gyroscope_enabled" }
+]);
+var MOBILE_VIDEO_DEVICE_STATUS = JSON.stringify({
+  hw_av1_dec: false,
+  hw_vp9_dec: false,
+  hw_avc_dec: false,
+  "10bit_hw_av1_dec": false,
+  "10bit_hw_vp9_dec": false,
+  is_hlg_supported: false,
+  chip_vendor: "others",
+  chip_name: "unknown",
+  core_count: 0,
+  max_ghz_sum: 0,
+  min_ghz_sum: 0
+});
+var MOBILE_VERSION_DATE = "2026-09-22";
 (() => {
   const ageMs = Date.now() - new Date(MOBILE_VERSION_DATE).getTime();
   const ageDays = Math.floor(ageMs / 864e5);
@@ -157095,16 +157137,6 @@ function randomMobileUA() {
   const entry = pool[Math.floor(Math.random() * pool.length)];
   return `Instagram ${MOBILE_VERSION} Android (${entry.api}; ${MOBILE_VERSION_CODE})`;
 }
-var FORCE_EMU_FRIENDLY = {
-  GetReelsTray: "Checked reels tray",
-  NotificationsBadge: "Checked notifications",
-  GetDirectInbox: "Checked direct inbox",
-  GetCurrentUser: "Fetched own account info",
-  ViewTimelineFeed: "Loaded timeline feed",
-  LauncherSync: "Synced mobile config",
-  BatchFetchWeb: "Batch fetched web queries",
-  AttributionLaunch: "Sent attribution launch"
-};
 var InstagramWebClient = class {
   cookieJar = [];
   csrfToken = "";
@@ -157114,6 +157146,9 @@ var InstagramWebClient = class {
   _apiCallSource = "Account";
   _inTimedCall = false;
   _lastTimedCallIsError = false;
+  // Action context is carried through async transport calls so endpoint guards
+  // cannot be bypassed by a nested helper or a future Explore refactor.
+  _actionContext = new AsyncLocalStorage();
   // User-agent to use for web (www.instagram.com) POST requests.
   // Should match the EB browser's UA so that cookies and UA are consistent.
   webUserAgent = WEB_UA;
@@ -157282,6 +157317,7 @@ var InstagramWebClient = class {
       }
     }
     deviceStr = deviceStr ?? this.userAgentApi;
+    if (deviceStr) deviceStr = normalizeMobileDeviceString(deviceStr);
     return deviceStr ? `Instagram ${MOBILE_VERSION} Android (${deviceStr}; ${MOBILE_VERSION_CODE})` : MOBILE_UA;
   }
   setApiLimits(limits) {
@@ -157427,12 +157463,11 @@ var InstagramWebClient = class {
           successMsg = `${n} stor${n === 1 ? "y" : "ies"} in tray`;
         } else if (igPath.includes("/discover/topical_explore")) {
           successMsg = "Explore feed loaded";
+        } else if (igPath.includes("/clips/discover/stream")) {
+          successMsg = "Reels feed loaded";
         } else if (igPath.includes("/feed/timeline")) {
           const n = (result?.feed_items ?? result?.items ?? []).length;
           successMsg = n > 0 ? `${n} post${n !== 1 ? "s" : ""} in timeline` : "Loading timeline feed";
-        } else if (igPath.includes("/friendships/create")) {
-          const status = result?.friendship_status?.following ? "following" : "requested";
-          successMsg = `Follow ${status}`;
         } else if (igPath.includes("/friendships/destroy")) {
           successMsg = "Unfollowed";
         } else if (igPath.includes("/like") && igPath.includes("/media")) {
@@ -157669,6 +157704,18 @@ var InstagramWebClient = class {
   //   • IgApiClient (ig.*) → hooked in _newAutomationIgClient() → _logTransport()
   //   • direct igReq() calls → caller is responsible for calling _logTransport()
   // This guarantees exactly 1 log row per real HTTP request with no duplicates.
+  async withActionContext(action, fn) {
+    return this._actionContext.run(action, fn);
+  }
+  assertActionEndpointAllowed(path6) {
+    const action = this._actionContext.getStore();
+    const endpoint = path6.split("?")[0].replace(/\/+$/, "");
+    if (action === "visitExplorePage" && endpoint === "/api/v1/clips/home") {
+      const message = `[webClient] BLOCKED invalid endpoint ${endpoint} during ${action}; Explore must never request the Reels tab`;
+      console.error(message);
+      throw new Error(message);
+    }
+  }
   async timed(opName, fn, message, shouldLog) {
     const _t0 = Date.now();
     this._inTimedCall = true;
@@ -157687,6 +157734,7 @@ var InstagramWebClient = class {
   }
   _opNameFromPath(path6, _method) {
     const base = path6.split("?")[0].replace(/\/+$/, "");
+    if (/^\/web\/friendships\/\d+\/follow$/.test(base)) return "FollowUser";
     const stripped = base.replace(/^\/api\/v\d+\//, "");
     const parts = stripped.split("/").filter((p) => p && !/^\d+$/.test(p) && !/^\d[\d_]{4,}$/.test(p));
     const pascal = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).replace(/_([a-z])/g, (_2, c3) => c3.toUpperCase()));
@@ -157715,13 +157763,11 @@ var InstagramWebClient = class {
         "/api/v1/media/*/like": ["Liked post", "Like failed"],
         "/api/v1/media/*/unlike": ["Unliked post", "Unlike failed"],
         "/api/v1/media/*/comment": ["Comment posted", "Comment failed"],
-        "/api/v1/friendships/create": ["Follow sent", "Follow failed"],
-        "/api/v1/friendships/create/*": ["Follow sent", "Follow failed"],
         "/api/v1/friendships/destroy": ["Unfollowed", "Unfollow failed"],
         "/api/v1/friendships/destroy/*": ["Unfollowed", "Unfollow failed"],
         "/api/v1/friendships/show": ["Friendship status checked", "Friendship check failed"],
-        "/api/v1/web/friendships/*/follow": ["Follow sent", "Follow failed"],
-        "/api/v1/web/friendships/*/unfollow": ["Unfollowed", "Unfollow failed"],
+        "/web/friendships/*/follow": ["Follow sent", "Follow failed"],
+        "/web/friendships/*/unfollow": ["Unfollowed", "Unfollow failed"],
         "/api/v1/direct_v2/inbox": ["DM inbox loaded", "DM inbox failed"],
         "/api/v1/direct_v2/threads/*/items": ["DM sent", "DM send failed"],
         "/api/v1/direct_v2/threads": ["DM thread action", "DM thread failed"],
@@ -157736,6 +157782,7 @@ var InstagramWebClient = class {
         "/api/v1/launcher/sync": ["Launcher sync", "Launcher sync failed"],
         "/api/v1/si/fetch_headers": ["Mobile CSRF bootstrap", "CSRF bootstrap failed"],
         "/api/v1/users/self/banner_dismiss": ["Dismiss banner", "Banner dismiss failed"],
+        "/api/v1/clips/discover/stream": ["Reels feed loaded", "Reels feed failed"],
         "/api/v1/clips/user": ["Clips loaded", "Clips load failed"],
         "/api/v1/clips/clips_viewed": ["Reel impressions sent", "Reel impressions failed"],
         "/api/v1/tags": ["Hashtag feed loaded", "Hashtag feed failed"]
@@ -158034,14 +158081,14 @@ var InstagramWebClient = class {
         if (saved.uuid) ig.state.uuid = saved.uuid;
         if (saved.phoneId) ig.state.phoneId = saved.phoneId;
         if (saved.adid) ig.state.adid = saved.adid;
-        if (saved.deviceString) ig.state.deviceString = saved.deviceString;
+        if (saved.deviceString) ig.state.deviceString = normalizeMobileDeviceString(saved.deviceString);
       } catch {
         ig.state.generateDevice(deviceSeed);
-        if (this.userAgentApi) ig.state.deviceString = this.userAgentApi;
+        if (this.userAgentApi) ig.state.deviceString = normalizeMobileDeviceString(this.userAgentApi);
       }
     } else {
       ig.state.generateDevice(deviceSeed);
-      if (this.userAgentApi) ig.state.deviceString = this.userAgentApi;
+      if (this.userAgentApi) ig.state.deviceString = normalizeMobileDeviceString(this.userAgentApi);
     }
     {
       const m2 = (this.userAgentApi ?? "").match(/^Instagram ([\d.]+) Android \(([^)]+)\)/);
@@ -158276,7 +158323,7 @@ var InstagramWebClient = class {
   // Update alongside MOBILE_VERSION when Instagram bumps its minimum version.
   _buildMobileHeaders(csrf, contentType) {
     const MOBILE_APP_ID = "567067343352427";
-    const BLOKS_VERSION_ID = "ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48";
+    const BLOKS_VERSION_ID = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
     let igDid = this._mobileIgDid || "";
     let androidId = "";
     let wwwClaim = "0";
@@ -158426,6 +158473,7 @@ var InstagramWebClient = class {
     }
   }
   async mobileSessionGet(path6, msgFn) {
+    this.assertActionEndpointAllowed(path6);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!authorization;
     if (!hasMobileSession) {
@@ -158540,10 +158588,19 @@ var InstagramWebClient = class {
       if (newCsrf) this.csrfToken = newCsrf;
     }
     if (!res.json) console.log(`[webClient] webPost ${path6} status=${res.status} body:`, res.rawBody.slice(0, 300));
-    this._logTransport(path6, "POST", Date.now() - _t0, res.status >= 400);
+    const responseStatus = String(res.json?.status ?? "").toLowerCase();
+    const applicationFailed = responseStatus === "fail" || responseStatus === "error";
+    const responseDetail = applicationFailed ? `HTTP ${res.status} \u2014 status=${responseStatus}${res.json?.message ? ` \u2014 ${String(res.json.message).slice(0, 180)}` : ""}` : void 0;
+    this._logTransport(path6, "POST", Date.now() - _t0, res.status >= 400 || applicationFailed, responseDetail);
     return { json: res.json, status: res.status, rawBody: res.rawBody };
   }
-  // ── Follow a user by numeric ID ────────────────────────────────────────────
+  // ── Legacy FollowUser compatibility alias ──────────────────────────────────
+  // Keep the old private method name safe for stale internal callers, but never
+  // send the obsolete www.instagram.com /web/friendships route. All follow
+  // actions must use the signed mobile friendships/create request below.
+  async _followViaFollowUserEndpoint(userId) {
+    return this._followViaMobileSession(userId);
+  }
   // Follow a user via IgApiClient — uses the library's native signed-body request
   // stack (identical pattern to _sendDmViaIgClient) so Instagram sees a proper
   // signed_body parameter instead of the unsigned URL-encoded body that the
@@ -158747,76 +158804,11 @@ var InstagramWebClient = class {
     }
     if (j?.status === "fail") {
       const msg = j?.message || "Instagram declined (status: fail)";
-      if (!this._deviceAuthorization && /something went wrong/i.test(msg)) {
-        console.log(`[webClient] follow ${userId}: mobile API "something went wrong" with no Bearer \u2014 trying web endpoint fallback`);
-        return this._followViaWebEndpoint(userId);
-      }
       return { ok: false, status: "follow_blocked", reason: `api_error: ${msg}` };
     }
     if (j?.status === "ok") return { ok: true, status: "following" };
     console.warn(`[webClient] follow ${userId} unexpected response:`, JSON.stringify(j));
     return { ok: false, status: "follow_blocked", reason: "unexpected response: " + JSON.stringify(j).slice(0, 200) };
-  }
-  // ── Web-endpoint follow fallback ──────────────────────────────────────────
-  // Used when _followViaMobileSession returns "something went wrong" with no Bearer
-  // token. The HMAC-signed Android body (device_id, radio_type, nav_chain) that
-  // _followViaMobileSession sends cannot be de-Androidified without removing the
-  // signature itself — Instagram verifies the HMAC and requires those fields.
-  // The web endpoint at www.instagram.com accepts plain web cookies + CSRF token
-  // and does NOT require a Bearer token or a signed body, so it succeeds for EB
-  // sessions that have never issued a Bearer token.
-  //
-  // Guards: only called when (1) auth is MISSING, (2) mobile returned "something
-  // went wrong", and (3) this.cookieJar contains a valid sessionid (web session).
-  async _followViaWebEndpoint(userId) {
-    const webSession = this.cookieJar.find((c3) => c3.startsWith("sessionid="));
-    if (!webSession) {
-      console.warn(`[webClient] follow ${userId}: _followViaWebEndpoint \u2014 no web session in cookieJar, cannot fall back`);
-      return { ok: false, status: "follow_blocked", reason: "api_error: We're sorry, but something went wrong (no web session for fallback)" };
-    }
-    console.log(`[webClient] follow ${userId}: _followViaWebEndpoint \u2014 web session present, POST www.instagram.com/api/v1/friendships/create/${userId}/`);
-    const res = await this.webPost(`/api/v1/friendships/create/${userId}/`, `user_id=${userId}`);
-    const j = res?.json;
-    if (!j) {
-      console.warn(`[webClient] follow ${userId}: _followViaWebEndpoint no JSON response (status=${res?.status})`);
-      return { ok: false, status: "follow_blocked", reason: `web-endpoint fallback: no JSON response (status=${res?.status})` };
-    }
-    console.log(`[webClient] follow ${userId} (_followViaWebEndpoint):`, JSON.stringify(j).slice(0, 400));
-    if (j?.message === "checkpoint_required" || j?.checkpoint_url) {
-      return { ok: false, status: "checkpoint_required", reason: "Instagram requires a security checkpoint", checkpointUrl: j?.checkpoint_url ?? "" };
-    }
-    if (j?.message === "challenge_required" || j?.challenge_url) {
-      return { ok: false, status: "checkpoint_required", reason: "Instagram requires a security challenge", checkpointUrl: j?.challenge_url ?? "" };
-    }
-    if (j?.spam === true) return { ok: false, status: "follow_blocked", reason: "spam \u2014 Instagram flagged this follow attempt" };
-    if (j?.feedback_required === true || /feedback_required|ActionBlocked/i.test(j?.message ?? "")) {
-      return { ok: false, status: "follow_blocked", reason: j?.message ?? "feedback_required" };
-    }
-    if (j?.require_login || j?.message === "login_required") {
-      return { ok: false, status: "follow_blocked", reason: "web session expired \u2014 re-verify account" };
-    }
-    if (j?.message && /please wait/i.test(String(j.message))) {
-      return { ok: false, status: "follow_blocked", reason: j.message };
-    }
-    if (j?.result === "following") return { ok: true, status: "following" };
-    if (j?.result === "requested") return { ok: true, status: "requested" };
-    if (j?.friendship_status) {
-      const fs6 = j.friendship_status;
-      return { ok: true, status: fs6.following ? "following" : "requested" };
-    }
-    if (j?.following !== void 0 || j?.outgoing_request !== void 0) {
-      if (j.following || j.outgoing_request) return { ok: true, status: j.following ? "following" : "requested" };
-      return { ok: false, status: "follow_blocked", reason: "web-endpoint: Instagram silently declined (following=false, outgoing_request=false)" };
-    }
-    if (j?.status === "ok") {
-      console.warn(`[webClient] follow ${userId} web-endpoint: status=ok but no friendship_status/result/following field \u2014 optimistically treating as success`, JSON.stringify(j).slice(0, 200));
-      return { ok: true, status: "following" };
-    }
-    if (j?.status === "fail") {
-      return { ok: false, status: "follow_blocked", reason: `web-endpoint api_error: ${j?.message ?? "Instagram declined (status: fail)"}` };
-    }
-    console.warn(`[webClient] follow ${userId} web-endpoint unexpected response:`, JSON.stringify(j));
-    return { ok: false, status: "follow_blocked", reason: "web-endpoint unexpected: " + JSON.stringify(j).slice(0, 200) };
   }
   // ── Programmatic consent acceptance ──────────────────────────────────────
   // When Instagram's mobile API returns consent_required, it means the account
@@ -159213,7 +159205,9 @@ var InstagramWebClient = class {
       ownUserId = decoded.split(":")[0] ?? "";
     }
     const cookiesWithUserId = ownUserId ? `${this.igApiCookies};ds_user_id=${ownUserId}` : this.igApiCookies;
-    await this._deserializeIgCookies(ig, cookiesWithUserId);
+    const nativeCsrf = this.mobileCsrf && this.mobileCsrf !== "missing" ? this.mobileCsrf : "";
+    const cookiesForNativeClient = nativeCsrf && !cookiesWithUserId.includes("csrftoken=") ? `${cookiesWithUserId};csrftoken=${nativeCsrf}` : cookiesWithUserId;
+    await this._deserializeIgCookies(ig, cookiesForNativeClient);
     console.log(`[webClient] _buildWarmedIgClient: Phase 1 \u2014 cookies loaded (userId=${ownUserId || "unknown"})`);
     if (ownUserId) {
       try {
@@ -159365,32 +159359,7 @@ var InstagramWebClient = class {
       "FollowedUser",
       async () => {
         this._navChainScreen = "profile";
-        if (this.igApiCookies) {
-          return this._followViaMobileSession(userId);
-        }
-        const body = new URLSearchParams({ user_id: userId }).toString();
-        const j = await this.mobileSessionPost(`/api/v1/friendships/create/${userId}/`, body);
-        if (!j) return { ok: false, status: "follow_blocked", reason: "no response from mobile API" };
-        console.log(`[webClient] follow ${userId} (fallback mobileSessionPost):`, JSON.stringify(j).slice(0, 400));
-        if (j?.message === "checkpoint_required" || j?.checkpoint_url) {
-          const url2 = j?.checkpoint_url ?? "";
-          return { ok: false, status: "checkpoint_required", reason: "Instagram requires a security checkpoint", checkpointUrl: url2 };
-        }
-        if (j?.spam === true) return { ok: false, status: "follow_blocked", reason: "spam \u2014 Instagram flagged this follow attempt" };
-        if (j?.require_login || j?.feedback_required || j?.message === "login_required") {
-          return { ok: false, status: "follow_blocked", reason: j?.message ?? j?.feedback_message ?? "unknown" };
-        }
-        if (j?.message && typeof j.message === "string" && j.message.toLowerCase().includes("please wait")) {
-          return { ok: false, status: "follow_blocked", reason: j.message };
-        }
-        if (j?.friendship_status) {
-          return { ok: true, status: j.friendship_status.following ? "following" : "requested" };
-        }
-        if (j?.status === "fail") {
-          return { ok: false, status: "follow_blocked", reason: j?.message || "Instagram declined (status: fail)" };
-        }
-        console.warn(`[webClient] follow ${userId} unexpected response:`, JSON.stringify(j));
-        return { ok: false, status: "follow_blocked", reason: "unexpected response" };
+        return this._followViaIgClient(userId);
       },
       username ? `Follow @${username}${sourceLabel ? ` via ${sourceLabel}` : ""}` : `Follow user ${userId}`,
       (r2) => r2.ok
@@ -159591,48 +159560,6 @@ var InstagramWebClient = class {
       return !!(j?.items || j?.profile_grid_items);
     }, "Refresh own profile");
   }
-  // ── Click Settings and Activity ───────────────────────────────────────────
-  // Simulates visiting the Settings page — fetches account security info.
-  // This endpoint requires POST as of 2024 (GET returns 405).
-  async runForceEmulation(randomise) {
-    const entries = [
-      // ?surface=2 — matches the real app's reels tray fetch (line 2260 uses same param)
-      { method: "GET", path: "/api/v1/feed/reels_tray/?surface=2", opName: "GetReelsTray" },
-      // reels_media removed — requires a list of reel IDs in the query string;
-      // a bare GET with no IDs returns "Invalid reel id list" every time.
-      { method: "GET", path: "/api/v1/news/inbox/?mark_as_seen=true&warning_sweep_enabled=true", opName: "NotificationsBadge" },
-      // Full params match the real GetDirectMessages call at line 2415
-      { method: "GET", path: "/api/v1/direct_v2/inbox/?visual_message_return_type=unseen&thread_message_limit=10&limit=20", opName: "GetDirectInbox" },
-      { method: "GET", path: "/api/v1/accounts/current_user/?edit=true", opName: "GetCurrentUser" },
-      // Body matches viewTimelineFeed() at line 2033 — required by Instagram for cold-start fetches
-      { method: "POST", path: "/api/v1/feed/timeline/", body: "reason=cold_start_fetch&is_pull_to_refresh=0", opName: "ViewTimelineFeed" },
-      // server_config_retrieval=1 is the minimum body the real app sends on launcher/sync
-      { method: "POST", path: "/api/v1/launcher/sync/", body: "server_config_retrieval=1", opName: "LauncherSync" },
-      // Batch query-parameter prefetch — fires unconditionally on every real app open
-      // Minimal surface set (5717 = home feed, 5718 = stories) matches the startup call pattern
-      { method: "POST", path: "/api/v1/qp/batch_fetch_web/", body: `surfaces_to_queries=${encodeURIComponent(JSON.stringify({ "5717": {}, "5718": {} }))}`, opName: "BatchFetchWeb" },
-      // App-launch attribution ping — fires unconditionally on every real app open
-      { method: "POST", path: "/api/v1/attribution/launch/", opName: "AttributionLaunch" }
-    ];
-    const ordered = randomise ? [...entries].sort(() => Math.random() - 0.5) : entries;
-    for (const { path: path6, method, opName, body } of ordered) {
-      await this.timed(opName, async () => {
-        try {
-          if (method === "POST") {
-            await this.mobileSessionPost(path6, body ?? "");
-          } else {
-            await this.mobileSessionGet(path6);
-          }
-          console.log(`[webClient] forceEmulation: ${method} ${path6} OK`);
-          return true;
-        } catch (e) {
-          const errMsg = (e?.message ?? "error").slice(0, 80);
-          console.warn(`[webClient] forceEmulation: ${method} ${path6} failed: ${errMsg}`);
-          return false;
-        }
-      }, (ok) => ok ? FORCE_EMU_FRIENDLY[opName] ?? "OK" : `Failed`);
-    }
-  }
   async visitSettingsAndActivity() {
     return this.timed("VisitSettingsAndActivity", async () => {
       const j = await this.mobileSessionPost(`/api/v1/accounts/account_security_info/`);
@@ -159770,22 +159697,83 @@ var InstagramWebClient = class {
     console.log(`[webClient] viewTimelineFeed: ${page} page(s) \u2014 ${viewed} posts seen`);
     return { viewed, items: viewedItems, reelWatches };
   }
-  // ── View Reels (independent tool) — fetch timeline pages and watch ONLY
-  // the reels found, ignoring regular feed posts. Uses the same
-  // /api/v1/feed/timeline/ endpoint as viewTimelineFeed (Instagram interleaves
-  // reels into the home timeline; there is no separate "reels tab" fetch used
-  // by the mobile app for this behaviour), but this is a fully independent
-  // pass — it does not like/save/open any of the regular posts it skips over,
-  // it only marks watched reels as seen. This lets "View Reels" run as its
-  // own tool with its own enabled/order/chance settings, decoupled from
-  // View Timeline Feed.
-  async viewReelsFromFeed(reelCount, reelWatchPercentMin = 50, reelWatchPercentMax = 100) {
-    const j = await this.mobileSessionPost(
-      `/api/v1/feed/timeline/`,
-      new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString()
-    );
+  // ── View Reels (independent tool) — open the dedicated Reels tab ──────────
+  // The Reels page uses POST /api/v1/clips/discover/stream/ with the
+  // native seen/chaining payload. Do not use /api/v1/feed/reels_tray/ here:
+  // that is the Stories tray, not the Reels page.
+  async viewReelsTab(reelCount, reelWatchPercentMin = 50, reelWatchPercentMax = 100) {
+    let uuid3 = "";
+    try {
+      const state = JSON.parse(this.igDeviceState ?? "{}");
+      uuid3 = String(state?.uuid ?? "");
+    } catch {
+    }
+    this._navChainScreen = "reels";
+    const viewerSessionId = randomUUID();
+    let userId = "";
+    try {
+      const cookieParts = (this.igApiCookies ?? "").split(";").map((part) => part.trim());
+      userId = cookieParts.find((part) => part.startsWith("ds_user_id="))?.split("=")[1] ?? "";
+    } catch {
+    }
+    const streamBody = new URLSearchParams({
+      seen_reels: "[]",
+      client_flashcache_size: "0",
+      enable_mixed_media_chaining: "true",
+      device_status: MOBILE_VIDEO_DEVICE_STATUS,
+      should_refetch_chaining_media: "false",
+      _uid: userId,
+      _uuid: uuid3,
+      prefetch_trigger_type: "cold_start",
+      viewer_session_id: viewerSessionId,
+      server_driven_cache_config: JSON.stringify({
+        serve_from_server_cache: true,
+        cohort_to_ttl_map: "",
+        serve_on_foreground_prefetch: "true",
+        serve_on_background_prefetch: "true",
+        meta: ""
+      }),
+      container_module: "clips_viewer_clips_tab"
+    }).toString();
+    const streamHeaders = {
+      // This is a Clips-tab request.  Advertising feed_timeline here
+      // contradicts container_module=clips_viewer_clips_tab and can make the
+      // discover stream return the generic HTTP 200/status=fail response.
+      "X-Ig-Client-Endpoint": "clips_viewer_clips_tab",
+      "X-Fb-Friendly-Name": "IgApi: clips/discover/stream/",
+      "x-ig-prefetch-request": "foreground"
+    };
+    let j = null;
+    try {
+      const warmed = await this._buildWarmedIgClient();
+      if (warmed?.ig) {
+        const nativeParams = Object.fromEntries(new URLSearchParams(streamBody).entries());
+        nativeParams._csrftoken = this.mobileCsrf || "missing";
+        const nativeResponse = await warmed.ig.request.send({
+          method: "POST",
+          url: "/api/v1/clips/discover/stream/",
+          form: warmed.ig.request.sign(nativeParams)
+        });
+        const nativeItems = nativeResponse?.items ?? nativeResponse?.feed_items;
+        if (Array.isArray(nativeItems) && nativeItems.length) {
+          console.log(`[webClient] viewReelsTab: native API Clips primary returned ${nativeItems.length} item(s)`);
+          j = { ...nativeResponse, items: nativeItems };
+        } else {
+          console.warn(`[webClient] viewReelsTab: native API Clips primary returned no items; using mobile fallback`);
+        }
+      }
+    } catch (nativeErr) {
+      console.warn(`[webClient] viewReelsTab: native API Clips primary failed \u2014 ${nativeErr?.message ?? "unknown error"}; using mobile fallback`);
+    }
     if (!j) {
-      console.warn(`[webClient] viewReelsFromFeed: mobileSessionPost returned null \u2014 no igApiCookies session`);
+      j = await this.mobileSessionPost(
+        `/api/v1/clips/discover/stream/`,
+        streamBody,
+        streamHeaders
+      );
+    }
+    if (!j) {
+      console.warn(`[webClient] viewReelsTab: clips/discover/stream returned null \u2014 no mobile session or no response`);
       return { watched: 0, reelWatches: [] };
     }
     if (j?.message === "login_required" || j?.require_login || j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? "")) {
@@ -159794,13 +159782,109 @@ var InstagramWebClient = class {
         j?.logout_reason ? `logout_reason: ${j.logout_reason}` : null,
         j?.error_title ? `error_title: ${j.error_title}` : null
       ].filter(Boolean).join(" | ") || "login_required";
-      console.warn(`[webClient] viewReelsFromFeed: session expired \u2014 ${reason}`);
+      console.warn(`[webClient] viewReelsTab: session expired \u2014 ${reason}`);
       this.mobileSessionReady = false;
       return { watched: 0, reelWatches: [], sessionExpired: true, reason };
     }
     if (j?.status === "fail") {
-      console.warn(`[webClient] viewReelsFromFeed: timeline fetch failed \u2014 ${j?.message ?? "unknown"}`);
-      return { watched: 0, reelWatches: [] };
+      console.warn(`[webClient] viewReelsTab: clips/discover/stream failed \u2014 ${j?.message ?? "unknown"}`);
+      try {
+        const warmed = await this._buildWarmedIgClient();
+        if (warmed?.ig) {
+          const streamParams = Object.fromEntries(new URLSearchParams(streamBody).entries());
+          const nativeCsrf = this.mobileCsrf || "missing";
+          streamParams._csrftoken = nativeCsrf;
+          console.log(`[webClient] viewReelsTab: native Clips request csrf=${nativeCsrf.slice(0, 8)}...`);
+          const nativeResponse = await warmed.ig.request.send({
+            method: "POST",
+            url: "/api/v1/clips/discover/stream/",
+            form: warmed.ig.request.sign(streamParams)
+          });
+          const nativeItems = nativeResponse?.items ?? nativeResponse?.feed_items;
+          if (Array.isArray(nativeItems) && nativeItems.length) {
+            console.log(`[webClient] viewReelsTab: warmed API Clips fallback returned ${nativeItems.length} item(s)`);
+            j = { ...nativeResponse, items: nativeItems };
+          } else {
+            console.warn(`[webClient] viewReelsTab: warmed API Clips fallback returned no items`);
+          }
+        }
+      } catch (nativeErr) {
+        console.warn(`[webClient] viewReelsTab: warmed API Clips fallback failed \u2014 ${nativeErr?.message ?? "unknown error"}`);
+      }
+      if (userId) {
+        const fallbackBody = new URLSearchParams({
+          user_id: userId,
+          max_id: "",
+          count: String(Math.max(reelCount, 6)),
+          include_feed_video: "true"
+        }).toString();
+        const fallback = await this.mobileSessionPost(`/api/v1/clips/user/`, fallbackBody);
+        if (fallback && fallback.status !== "fail" && Array.isArray(fallback.items)) {
+          console.log(`[webClient] viewReelsTab: Discover stream rejected; clips/user fallback returned ${fallback.items.length} item(s)`);
+          j = fallback;
+        } else {
+          console.warn(`[webClient] viewReelsTab: clips/user fallback also returned no usable reel data; trying timeline reel fallback`);
+          const timeline = await this.mobileSessionPost(
+            `/api/v1/feed/timeline/`,
+            new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString()
+          );
+          const timelineItems = timeline?.feed_items ?? timeline?.items;
+          if (timeline && timeline.status !== "fail" && Array.isArray(timelineItems)) {
+            const timelineHasReel = timelineItems.some((raw) => {
+              const media = raw?.media_or_ad ?? raw?.media ?? raw;
+              return media?.media_type === 2 || media?.product_type === "clips";
+            });
+            console.log(`[webClient] viewReelsTab: timeline media classification=${JSON.stringify(timelineItems.slice(0, 8).map((raw) => {
+              const media = raw?.media_or_ad ?? raw?.media ?? raw;
+              return {
+                mediaType: media?.media_type ?? null,
+                productType: media?.product_type ?? null,
+                hasVideoVersions: Array.isArray(media?.video_versions),
+                hasVideoDuration: media?.video_duration != null,
+                hasMediaId: Boolean(media?.id ?? media?.pk)
+              };
+            }))}`);
+            if (timelineHasReel) {
+              console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s), including reel media`);
+              j = { ...timeline, items: timelineItems };
+            } else {
+              console.warn(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} non-reel item(s); trying authenticated web Clips fallback`);
+              try {
+                const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
+                const webItems = webClips?.items ?? webClips?.feed_items;
+                if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
+                  console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
+                  j = { ...webClips, items: webItems };
+                } else {
+                  console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
+                  return { watched: 0, reelWatches: [] };
+                }
+              } catch (webErr) {
+                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed \u2014 ${webErr?.message ?? "unknown error"}`);
+                return { watched: 0, reelWatches: [] };
+              }
+            }
+          } else {
+            console.warn(`[webClient] viewReelsTab: timeline fallback also returned no usable data; trying authenticated web Clips fallback`);
+            try {
+              const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
+              const webItems = webClips?.items ?? webClips?.feed_items;
+              if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
+                console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
+                j = { ...webClips, items: webItems };
+              } else {
+                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
+                return { watched: 0, reelWatches: [] };
+              }
+            } catch (webErr) {
+              console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed \u2014 ${webErr?.message ?? "unknown error"}`);
+              return { watched: 0, reelWatches: [] };
+            }
+          }
+        }
+      } else {
+        return { watched: 0, reelWatches: [] };
+      }
     }
     const reelWatches = [];
     let watched = 0;
@@ -159842,25 +159926,33 @@ var InstagramWebClient = class {
         this.logCallFn?.("ViewReelsSeen", Date.now() - _seenT0, `Marked ${_seenN} reel${_seenN === 1 ? "" : "s"} as seen`, false);
       }
     };
-    const page1Raw = j?.feed_items ?? j?.items ?? [];
-    if (!page1Raw.length) return { watched: 0, feedEmpty: true, reelWatches: [] };
+    const page1Raw = j?.items ?? j?.feed_items ?? [];
+    if (!page1Raw.length) return { watched: 0, reelWatches: [] };
     await processPage(page1Raw);
     let nextMaxId = j?.next_max_id ?? null;
     const MAX_PAGES = 12;
     let page = 1;
     while (watched < reelCount && nextMaxId && page < MAX_PAGES) {
       const pageJ = await this.mobileSessionPost(
-        `/api/v1/feed/timeline/`,
-        new URLSearchParams({ reason: "pagination", max_id: nextMaxId, is_pull_to_refresh: "0" }).toString()
+        `/api/v1/clips/discover/stream/`,
+        new URLSearchParams({
+          ...Object.fromEntries(new URLSearchParams(streamBody)),
+          max_id: nextMaxId
+        }).toString(),
+        streamHeaders
       );
       if (!pageJ) break;
-      const pageRaw = pageJ?.feed_items ?? pageJ?.items ?? [];
+      if (pageJ?.status === "fail") {
+        console.warn(`[webClient] viewReelsTab: clips/discover/stream pagination failed \u2014 ${pageJ?.message ?? "unknown"}`);
+        break;
+      }
+      const pageRaw = pageJ?.items ?? pageJ?.feed_items ?? [];
       if (!pageRaw.length) break;
       await processPage(pageRaw);
       nextMaxId = pageJ?.next_max_id ?? null;
       page++;
     }
-    console.log(`[webClient] viewReelsFromFeed: ${page} page(s) \u2014 ${watched} reel(s) watched`);
+    console.log(`[webClient] viewReelsTab: ${page} Reels-tab page(s) \u2014 ${watched} reel(s) watched`);
     return { watched, reelWatches };
   }
   // ── Open / view a single feed post (simulates tapping into it) ───────────
@@ -159928,69 +160020,6 @@ var InstagramWebClient = class {
     }
     return result;
   }
-  // ── Watch reels from the home feed Reels tab ─────────────────────────────
-  // Fetches the reels explore/home feed and marks up to `count` reels as seen,
-  // simulating a user scrolling through the Reels tab.
-  async viewTimelineReels(count = 5) {
-    return this.timed(
-      "ViewTimelineReels",
-      async () => {
-        const sessionPresent = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!this._deviceAuthorization;
-        if (!sessionPresent) {
-          console.warn(`[webClient] viewTimelineReels: no mobile session \u2014 run Verify Credentials to establish igApiCookies`);
-          return -1;
-        }
-        const sessionId = randomUUID();
-        let j = await this.mobileSessionGet(
-          `/api/v1/clips/home/?session_id=${sessionId}&tab_type=clips&next_max_id=`
-        );
-        let source = "clips/home";
-        if (!j) {
-          console.warn(`[webClient] viewTimelineReels: clips/home returned null \u2014 falling back to feed/timeline`);
-          const body = new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString();
-          const tj = await this.mobileSessionPost(`/api/v1/feed/timeline/`, body);
-          if (!tj) {
-            console.warn(`[webClient] viewTimelineReels: feed/timeline also returned null \u2014 session expired/rejected`);
-            return -5;
-          }
-          const allItems = tj?.feed_items ?? tj?.items ?? [];
-          const reelItems = allItems.map((raw) => raw?.media_or_ad ?? raw?.media ?? raw).filter((m2) => m2?.media_type === 2 || m2?.product_type === "clips");
-          j = { items: reelItems, status: "ok" };
-          source = "feed/timeline (reels only)";
-        }
-        const items = j?.items ?? j?.feed_items ?? [];
-        console.log(`[webClient] viewTimelineReels [${source}]: status="${j?.status}" items.length=${items.length}`);
-        if (items.length > 0) {
-          const firstRaw = items[0];
-          console.log(`[webClient] viewTimelineReels: first item keys=[${Object.keys(firstRaw?.media ?? firstRaw ?? {}).join(", ")}]`);
-        }
-        if (!items.length) {
-          console.warn(`[webClient] viewTimelineReels: 0 items \u2014 response (500 chars): ${JSON.stringify(j).slice(0, 500)}`);
-          return 0;
-        }
-        const toView = items.slice(0, count);
-        const seenEntries = [];
-        for (const raw of toView) {
-          const media = raw?.media ?? raw;
-          const mediaId = String(media?.id ?? media?.pk ?? "");
-          if (!mediaId) continue;
-          const takenAt = media.taken_at ?? Math.floor(Date.now() / 1e3);
-          seenEntries.push(`${mediaId}_${takenAt}_${takenAt + 3}`);
-        }
-        if (seenEntries.length) {
-          const seenBody = new URLSearchParams({
-            reels: seenEntries.join(","),
-            live_vods_skipped: "",
-            nuxes_skipped: ""
-          }).toString();
-          await this.mobileSessionPost(`/api/v1/media/seen/`, seenBody);
-        }
-        return toView.length;
-      },
-      (n) => n > 0 ? `Viewed ${n} timeline reel${n === 1 ? "" : "s"}` : "",
-      (n) => n > 0
-    );
-  }
   // ── Watch stories from the timeline tray ─────────────────────────────────
   // Fetches the stories tray at the top of the home feed and marks up to
   // `count` story reels as seen, simulating a user swiping through stories.
@@ -160000,12 +160029,24 @@ var InstagramWebClient = class {
       if (!sessionPresent) {
         return { count: -1, items: [] };
       }
-      const j = await this.mobileSessionGet(
-        `/api/v1/feed/reels_tray/?surface=2`,
-        (json2) => {
-          const n = Array.isArray(json2?.tray) ? json2.tray.length : 0;
-          return `${n} stor${n === 1 ? "y" : "ies"} in tray`;
-        }
+      if (this.mobileCsrf === "missing" || !this.mobileCsrf) {
+        await this._bootstrapMobileCsrf();
+      }
+      let mobileUuid = "";
+      try {
+        mobileUuid = String(JSON.parse(this.igDeviceState ?? "{}")?.uuid ?? "");
+      } catch {
+      }
+      const trayBody = new URLSearchParams({
+        supported_capabilities_new: MOBILE_SUPPORTED_CAPABILITIES,
+        reason: "cold_start",
+        _csrftoken: this.mobileCsrf || "missing",
+        _uuid: mobileUuid
+      }).toString();
+      this._navChainScreen = "home";
+      const j = await this.mobileSessionPost(
+        `/api/v1/feed/reels_tray/`,
+        trayBody
       );
       if (j === null) {
         return { count: -5, items: [] };
@@ -160147,7 +160188,6 @@ var InstagramWebClient = class {
       return { count: 0, ok: false, threads: [] };
     }
     const useWebSession = hasWebSession;
-    await this._buildWarmedIgClient();
     const dsMatch = (this.igApiCookies ?? "").match(/(?:^|;)\s*ds_user_id=([^;]+)/);
     const myUserId = dsMatch ? dsMatch[1].trim() : "";
     const mapThread = (thread) => {
@@ -160751,6 +160791,17 @@ var InstagramWebClient = class {
     } catch (err) {
       console.warn(`[webClient] _bootstrapMobileCsrf current_user failed: ${err?.message}`);
     }
+    try {
+      const refreshed = await this.refreshCsrf();
+      if (refreshed && this.csrfToken) {
+        this.mobileCsrf = this.csrfToken;
+        this.mobileCookieJar = mergeCookies(this.mobileCookieJar, [`csrftoken=${this.mobileCsrf}`]);
+        console.log(`[webClient] _bootstrapMobileCsrf: csrftoken recovered from authenticated web session`);
+        return;
+      }
+    } catch (err) {
+      console.warn(`[webClient] _bootstrapMobileCsrf web-session refresh failed: ${err?.message}`);
+    }
     const fallback = randomUUID().replace(/-/g, "");
     this.mobileCsrf = fallback;
     this.mobileCookieJar = mergeCookies(this.mobileCookieJar, [`csrftoken=${fallback}`]);
@@ -160760,7 +160811,8 @@ var InstagramWebClient = class {
   // Used for write actions (follow, unfollow) where i.instagram.com strictly requires
   // a proper mobile-originated session — web cookies return login_required on those.
   // If no igApiCookies session is available, returns null immediately (no fallback).
-  async mobileSessionPost(path6, body = "") {
+  async mobileSessionPost(path6, body = "", extraHeaders) {
+    this.assertActionEndpointAllowed(path6);
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!authorization;
     if (!hasMobileSession) {
@@ -160778,7 +160830,10 @@ var InstagramWebClient = class {
       host: "i.instagram.com",
       path: path6,
       method: "POST",
-      headers: this._buildMobileHeaders(csrf, "application/x-www-form-urlencoded; charset=UTF-8"),
+      headers: {
+        ...this._buildMobileHeaders(csrf, "application/x-www-form-urlencoded; charset=UTF-8"),
+        ...extraHeaders
+      },
       body,
       cookieJar: this.mobileCookieJar,
       proxyUrl: this.proxyUrl
@@ -162132,15 +162187,15 @@ Content-Disposition: form-data; name="${part.name}"`;
   }
   // ── Visit the Explore page and return up to `scrollCount` post items ───────
   // Used by the Human Session engine when the timeline returns 0 posts.
-  // Calls the mobile API topical explore endpoint (equivalent to tapping the
+  // Calls the mobile API Explore endpoint (equivalent to tapping the
   // Search/Explore tab in the app), simulating natural discovery browsing.
   async visitExplorePage(scrollCount) {
-    return this.timed("VisitExplorePage", async () => {
+    return this.withActionContext("visitExplorePage", async () => this.timed("VisitExplorePage", async () => {
       this._navChainScreen = "explore";
       const items = [];
       try {
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/topical_explore/?is_prefetch=false&omit_cover_media=false&use_sectional_payload=true&timezone_offset=0&session_id=${Date.now()}&include_fixed_destinations=false`,
+          `/api/v1/discover/topical_explore/?is_prefetch=false&is_auto_paginate=false&omit_cover_media=false&module=explore_popular&reels_configuration=default&use_sectional_payload=true&timezone_offset=${encodeURIComponent(this._tzOffset)}`,
           (json2) => {
             const n = (json2?.sectional_items ?? json2?.items ?? []).reduce((acc, s) => acc + (s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []).length, 0);
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
@@ -162162,25 +162217,8 @@ Content-Disposition: form-data; name="${part.name}"`;
       } catch (e) {
         console.warn(`[webClient] visitExplorePage topical_explore failed: ${e?.message}`);
       }
-      if (items.length === 0) {
-        try {
-          const j2 = await this.mobileSessionGet(`/api/v1/discover/ayml/?max_id=&module=explore_popular&is_nonpersonalized=false`);
-          const users = j2?.suggested_users ?? j2?.users ?? [];
-          for (const item of users) {
-            const media = item?.media_infos?.[0] ?? item?.media ?? null;
-            if (!media) continue;
-            const mediaId = String(media?.pk ?? media?.id ?? "");
-            const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
-            const owner = media?.user ?? item?.user ?? {};
-            const username = String(owner?.username ?? "");
-            const userId = String(owner?.pk ?? owner?.id ?? "");
-            if (mediaId) items.push({ mediaId, shortcode, username, userId });
-          }
-        } catch {
-        }
-      }
       return items.slice(0, scrollCount);
-    }, `Visit explore page (scroll ${scrollCount})`);
+    }, `Visit explore page (scroll ${scrollCount})`));
   }
   // ── Follow X users from the Suggested Users page ──────────────────────────
   // Used by the Human Session engine when the timeline returns 0 posts.
@@ -162259,7 +162297,7 @@ async function createInstagramAccountViaApi(params) {
   } else {
     step("Geo: no proxy \u2014 using defaults (UTC-5, en_US)");
   }
-  const BLOKS_VERSION_ID = "ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48";
+  const BLOKS_VERSION_ID = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
   const baseHeaders = {
     "Host": "i.instagram.com",
     "User-Agent": effectiveUA,
@@ -162895,7 +162933,8 @@ function extractOperationName(rawUrl) {
     "feed/timeline": "GetTimeLineFeed",
     "feed/reels_tray": "GetReelsTray",
     "feed/liked": "GetLikedFeed",
-    "discover/explore": "ExecuteDiscoverExplore",
+    "discover/topical_explore": "ExecuteDiscoverTopicalExplore",
+    "clips/discover/stream": "ExecuteClipsDiscoverStream",
     "discover/top_live": "GetTopLive",
     // Stories
     "feed/reels_media": "GetStoriesMedia",
@@ -163674,7 +163713,7 @@ var VERIFY_OPS = /* @__PURE__ */ new Set([
 ]);
 var FOLLOW_OPS = /* @__PURE__ */ new Set([
   "FollowedUser",
-  "friendships/create",
+  "FollowUser",
   "follow"
 ]);
 var SESSION_OPS = /* @__PURE__ */ new Set([
@@ -163683,7 +163722,7 @@ var SESSION_OPS = /* @__PURE__ */ new Set([
   "GetReelsTray",
   "ViewUserFeed",
   "GetDirectMessages",
-  "TopicalExplore",
+  "DiscoverExplore",
   "ExecuteNotificationsBadge",
   "ViewTimelineStories",
   "VisitUserProfile",
@@ -163693,14 +163732,15 @@ var SESSION_OPS = /* @__PURE__ */ new Set([
   "feed/timeline",
   "discover/topical_explore",
   "feed/user",
+  "clips/discover/stream",
   "direct_v2/inbox",
   "news/inbox",
   "media/like"
 ]);
 var ACTION_OPS = /* @__PURE__ */ new Set([
   "FollowedUser",
+  "FollowUser",
   "UnfollowUser",
-  "friendships/create",
   "friendships/destroy",
   "direct_v2/broadcast",
   "follow",
@@ -164284,6 +164324,9 @@ var AutomationEngine = class _AutomationEngine {
   // Wake signals for HS runners — set to interrupt the idle 10s sleep immediately.
   // Keyed by profileId.  Runner resets wake=false after waking; triggerHumanSession sets wake=true.
   hsWakeSignals = /* @__PURE__ */ new Map();
+  // Accounts restored by Verify must use the normal Human Session delay window
+  // instead of firing immediately when reconcile sees them become valid again.
+  humanSessionDeferredAfterVerify = /* @__PURE__ */ new Set();
   async searchUserViaBrowser(profileId, username, proxy, igApiCookies, fp) {
     const ebIpcPort = process.env.EB_IPC_PORT;
     if (!ebIpcPort) return false;
@@ -164624,7 +164667,12 @@ var AutomationEngine = class _AutomationEngine {
         if (humanSessionTool && profile.accountStatus === "valid") {
           activeHumanSession.add(profile.id);
           if (!this.humanSessionStates.has(profile.id)) {
-            this.launchHumanSession(profile, humanSessionTool, profileRunImmediately);
+            const restoredAfterVerify = this.humanSessionDeferredAfterVerify.delete(profile.id);
+            this.launchHumanSession(
+              profile,
+              humanSessionTool,
+              restoredAfterVerify ? false : profileRunImmediately
+            );
           }
         }
         if (!hasHumanSessionTool) {
@@ -167214,7 +167262,7 @@ ${err?.stack ?? ""}`);
           const likePctMax = Math.min(100, Math.max(likePctMin, Number(s.exploreLikePctMax ?? 30)));
           const visitProfPctMin = Math.min(100, Math.max(0, Number(s.exploreVisitProfilePctMin ?? 0)));
           const visitProfPctMax = Math.min(100, Math.max(visitProfPctMin, Number(s.exploreVisitProfilePctMax ?? 20)));
-          const profScrollMin = Math.max(1, Number(s.exploreProfileScrollMin ?? 3));
+          const profScrollMin = Math.max(0, Number(s.exploreProfileScrollMin ?? 3));
           const profScrollMax = Math.max(profScrollMin, Number(s.exploreProfileScrollMax ?? 8));
           const profClickMin = Math.max(0, Number(s.exploreProfileClickMin ?? 1));
           const profClickMax = Math.max(profClickMin, Number(s.exploreProfileClickMax ?? 3));
@@ -167976,7 +168024,6 @@ ${err?.stack ?? ""}`);
       Math.max(1e3, Math.round(winMin / rMax)),
       Math.max(2e3, Math.round(winMax / rMin))
     );
-    let timelineFeedEmpty = false;
     let sessionError = null;
     const checkSessionErr = async (e, actionLabel) => {
       const msg = e?.message ?? "";
@@ -167989,24 +168036,6 @@ ${err?.stack ?? ""}`);
       }
       return false;
     };
-    if (!!s.forceEmulationEnabled) {
-      const feChanceMin = Math.min(100, Math.max(0, Number(s.forceEmulationChanceMin ?? 100)));
-      const feChanceMax = Math.min(100, Math.max(feChanceMin, Number(s.forceEmulationChanceMax ?? 100)));
-      const feChance = feChanceMin + Math.random() * (feChanceMax - feChanceMin);
-      if (Math.random() * 100 < feChance) {
-        client.setApiCallSource("Human Session Emulation");
-        try {
-          await client.runForceEmulation(s.forceEmulationRandomise === true);
-          console.log(`[engine] @${profile.username}: \u{1F4F1} force emulation calls complete`);
-          this.logAction(profile.id, tool.id, "force_emulation", "", "", "", "ok", "Force emulation API calls fired");
-        } catch (e) {
-          if (await checkSessionErr(e, "force_emulation")) return;
-          console.warn(`[engine] @${profile.username}: force emulation error: ${e?.message}`);
-        }
-      } else {
-        console.log(`[engine] @${profile.username}: \u{1F4F1} force emulation skipped (chance roll: ${feChance.toFixed(1)}%)`);
-      }
-    }
     const queue = [];
     const enqueue = (label, enabled, notUsedMinKey, notUsedMaxKey, orderMinKey, orderMaxKey, fn) => {
       if (!enabled) {
@@ -168094,11 +168123,6 @@ ${err?.stack ?? ""}`);
       "viewTimelineFeedOrderMax",
       async () => {
         client.setApiCallSource("Human Session Emulation");
-        if (timelineFeedEmpty) {
-          console.log(`[engine] @${profile.username}: \u23ED View Timeline Feed skipped \u2014 timeline already returned 0 posts this session`);
-          this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
-          return;
-        }
         const feedCount = randInt2(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
         let viewed = 0;
         let vtfResult = null;
@@ -168127,7 +168151,6 @@ ${err?.stack ?? ""}`);
             return;
           }
           viewed = vtfResult.viewed;
-          if (vtfResult.feedEmpty) timelineFeedEmpty = true;
           console.log(`[engine] @${profile.username}: \u{1F4F0} viewed ${viewed} timeline post(s)`);
           this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `Viewed ${viewed} timeline post${viewed === 1 ? "" : "s"}`);
           if (vtfResult.reelWatches?.length) {
@@ -168287,21 +168310,24 @@ ${err?.stack ?? ""}`);
       "viewReelsOrderMin",
       "viewReelsOrderMax",
       async () => {
-        client.setApiCallSource("Human Session Emulation");
-        if (timelineFeedEmpty) {
-          console.log(`[engine] @${profile.username}: \u23ED View Reels skipped \u2014 timeline already returned 0 posts this session`);
-          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Skipped \u2014 timeline feed already returned 0 posts earlier this session");
+        const execHsTool = (await storage.getToolsByProfile(profile.id)).find((t2) => t2.type === "human_sessions");
+        const execSettings = execHsTool?.settings ?? {};
+        if (execHsTool?.enabled !== true || execSettings.viewReelsEnabled !== true || execSettings.emulationGroupEnabled === false) {
+          console.log(`[engine] @${profile.username}: HS viewReels skipped (disabled at execution time)`);
           return;
         }
+        console.log(`[engine] @${profile.username}: HS viewReels executing \u2014 this is the sole Human Session source of /api/v1/clips/discover/stream/`);
+        client.setApiCallSource("Human Session Emulation");
         const reelCount = randInt2(Number(s.reelWatchCountMin ?? 1), Number(s.reelWatchCountMax ?? 3));
         if (reelCount <= 0) {
           console.log(`[engine] @${profile.username}: \u{1F3AC} View Reels \u2014 reel count rolled 0, skipping`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "Reels action entered but reel count rolled 0");
           return;
         }
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
         const reelViewPctMax = Number(s.reelWatchPercentMax ?? 100);
         try {
-          const result = await client.viewReelsFromFeed(reelCount, reelViewPctMin, reelViewPctMax);
+          const result = await client.viewReelsTab(reelCount, reelViewPctMin, reelViewPctMax);
           if (result.sessionExpired) {
             const expReason = result.reason ?? "session expired (login_required) \u2014 viewReels";
             console.warn(`[engine] @${profile.username}: viewReels \u2014 session expired, marking logged_out`);
@@ -168311,18 +168337,19 @@ ${err?.stack ?? ""}`);
             return;
           }
           console.log(`[engine] @${profile.username}: \u{1F3AC} watched ${result.watched} reel(s)`);
-          if (result.feedEmpty) timelineFeedEmpty = true;
           if (result.watched > 0) {
             this.logAction(profile.id, tool.id, "view_reels", "", "", "", "ok", `Watched ${result.watched} reel(s)`);
           } else {
-            this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "No reels found in timeline this pass");
+            this.logAction(profile.id, tool.id, "view_reels", "", "", "", "skipped", "No reels found on the Reels tab this pass");
           }
           for (const reel of result.reelWatches) {
-            this.logAction(profile.id, tool.id, "view_reel_from_feed", reel.username, reel.shortcode, "post", "ok", `Watched reel at ${reel.pct}% \xB7 ${reel.durationSec}s`);
+            this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% \xB7 ${reel.durationSec}s`);
           }
         } catch (e) {
           if (await checkSessionErr(e, "view_reels")) return;
-          console.warn(`[engine] @${profile.username}: view reels error: ${e?.message}`);
+          const message = e?.message ?? "unknown error";
+          console.warn(`[engine] @${profile.username}: view reels error: ${message}`);
+          this.logAction(profile.id, tool.id, "view_reels", "", "", "", "error", `View Reels failed \u2014 ${message.slice(0, 300)}`);
         }
       }
     );
@@ -168964,17 +168991,21 @@ ${err?.stack ?? ""}`);
                   console.warn(`[engine] @${profile.username}: explore visit profile error: ${e?.message}`);
                   continue;
                 }
-                const expProfileScrollMin = Number(s.exploreProfileScrollMin ?? 3);
-                const expProfileScrollMax = Number(s.exploreProfileScrollMax ?? 8);
+                const expProfileScrollMin = Math.max(0, Number(s.exploreProfileScrollMin ?? 3));
+                const expProfileScrollMax = Math.max(expProfileScrollMin, Number(s.exploreProfileScrollMax ?? 8));
                 const profileScrollCount = randInt2(expProfileScrollMin, expProfileScrollMax);
                 let profilePosts = [];
-                try {
-                  profilePosts = useHikerHumanSessionFeed ? await hikerClient.getUserFeedByUserId(item.userId, profileScrollCount) : await c3.viewUserFeed(item.userId, profileScrollCount);
-                  console.log(`[engine] @${profile.username}: \u{1F4CB} scrolled ${profilePosts.length} post(s) on @${item.username}'s profile (from explore)${useHikerHumanSessionFeed ? " [HikerAPI]" : ""}`);
-                  this.logAction(profile.id, tool.id, "view_profile_feed", item.username, "", "profile", "ok", `Scrolled ${profilePosts.length} post(s) on @${item.username}'s profile`);
-                } catch (e) {
-                  if (await checkSessionErr(e, "explore_profile_feed")) return;
-                  console.warn(`[engine] @${profile.username}: explore profile feed error: ${e?.message}`);
+                if (profileScrollCount > 0) {
+                  try {
+                    profilePosts = useHikerHumanSessionFeed ? await hikerClient.getUserFeedByUserId(item.userId, profileScrollCount) : await c3.viewUserFeed(item.userId, profileScrollCount);
+                    console.log(`[engine] @${profile.username}: \u{1F4CB} scrolled ${profilePosts.length} post(s) on @${item.username}'s profile (from explore)${useHikerHumanSessionFeed ? " [HikerAPI]" : ""}`);
+                    this.logAction(profile.id, tool.id, "view_profile_feed", item.username, "", "profile", "ok", `Scrolled ${profilePosts.length} post(s) on @${item.username}'s profile`);
+                  } catch (e) {
+                    if (await checkSessionErr(e, "explore_profile_feed")) return;
+                    console.warn(`[engine] @${profile.username}: explore profile feed error: ${e?.message}`);
+                  }
+                } else {
+                  console.log(`[engine] @${profile.username}: skipped profile feed scroll for @${item.username} (configured count is 0)`);
                 }
                 const expProfileClickMin = Number(s.exploreProfileClickMin ?? 1);
                 const expProfileClickMax = Number(s.exploreProfileClickMax ?? 3);
@@ -169001,7 +169032,7 @@ ${err?.stack ?? ""}`);
       }
     );
     queue.sort((a2, b3) => b3.order - a2.order);
-    const orderSummary = queue.map((e) => e.label).join(" \u2192 ");
+    const orderSummary = queue.map((e) => `${e.label}[${e.order}]`).join(" \u2192 ");
     console.log(`[engine] @${profile.username}: session order: ${orderSummary || "(nothing to run)"}`);
     for (const entry of queue) {
       if (sessionError) break;
@@ -169269,7 +169300,9 @@ ${err?.stack ?? ""}`);
         }
       }
     }
-    let followed = 0, dedupSkipped = 0, filterSkipped = 0, blocked = 0, skipped = 0;
+    let followed = 0, followAttempts = 0, dedupSkipped = 0, filterSkipped = 0, blocked = 0, skipped = 0;
+    const attemptedFollowUserIds = /* @__PURE__ */ new Set();
+    const followAttemptKey = (user) => String(user.pk || `username:${user.username.toLowerCase()}`);
     let hitHardLimit = false;
     const browseTargetProfile = async (label, targetUser) => {
       engineLog("INFO", `@${profile.username}: [${label}] starting profile browse of @${targetUser.username} (pk=${targetUser.pk})`);
@@ -169524,7 +169557,7 @@ ${err?.stack ?? ""}`);
       }
     };
     for (const user of candidates) {
-      if (followed >= processCount) break;
+      if (followAttempts >= processCount) break;
       if (state.stop.stopped) {
         hitHardLimit = true;
         break;
@@ -169632,7 +169665,14 @@ ${err?.stack ?? ""}`);
         hitHardLimit = true;
         break;
       }
+      const attemptKey = followAttemptKey(user);
+      if (attemptedFollowUserIds.has(attemptKey)) {
+        dedupSkipped++;
+        continue;
+      }
       let result;
+      attemptedFollowUserIds.add(attemptKey);
+      followAttempts++;
       try {
         const sourceLabel = source.value ? source.type === "hashtag" ? `#${source.value}` : source.value : void 0;
         result = await client.followUser(user.pk, user.username, sourceLabel);
@@ -169684,7 +169724,7 @@ ${err?.stack ?? ""}`);
           break;
         }
         const isApiError = reason.startsWith("api_error:");
-        const isLegitBlock = !isApiError && (reason.includes("Please wait") || reason.includes("feedback_required") || reason.includes("friendship.create"));
+        const isLegitBlock = !isApiError && (reason.includes("Please wait") || reason.includes("feedback_required"));
         if (isLegitBlock) {
           const isFeedbackRequired = reason.includes("feedback_required");
           if (isFeedbackRequired && state.client) {
@@ -169731,7 +169771,7 @@ ${err?.stack ?? ""}`);
       if (!result.ok) {
         const rawReason = result.reason ? `: ${result.reason}` : " (no reason returned by Instagram)";
         console.log(`[engine] @${profile.username}: skip @${user.username} \u2014 follow attempt failed${rawReason}`);
-        this.logAction(profile.id, tool.id, "follow_skipped", user.username, source.value, source.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 skipped, trying next candidate instead`);
+        this.logAction(profile.id, tool.id, "follow_skipped", user.username, source.value, source.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 this user will not be retried in this session`);
         skipped++;
         continue;
       }
@@ -169771,14 +169811,14 @@ ${err?.stack ?? ""}`);
     const seenFollowerPksBySource = /* @__PURE__ */ new Map();
     seenFollowerPksBySource.set(source.id, new Set(candidates.map((c3) => c3.pk)));
     const sourceRoundCount = /* @__PURE__ */ new Map();
-    if (!hitHardLimit && followed < processCount && !state.stop.stopped) {
+    if (!hitHardLimit && followAttempts < processCount && !state.stop.stopped) {
       let extraRound = 0;
-      while (followed < processCount && !hitHardLimit && !state.stop.stopped && extraRound < maxExtraRounds) {
+      while (followAttempts < processCount && !hitHardLimit && !state.stop.stopped && extraRound < maxExtraRounds) {
         extraRound++;
         const availableSources = sameTypeSources.filter((s2) => !exhaustedSourceIds.has(s2.id));
         if (!availableSources.length) break;
         const rescrapeSource = availableSources[(initialSourceIdx + extraRound) % availableSources.length];
-        const needMore = processCount - followed;
+        const needMore = processCount - followAttempts;
         let moreCandidates = [];
         let rawApiCount = -1;
         try {
@@ -169841,7 +169881,7 @@ ${err?.stack ?? ""}`);
         }
         engineLog("INFO", `@${profile.username}: re-scrape round ${extraRound} #${rescrapeSource.value} \u2014 ${moreCandidates.length} new candidates (need ${needMore} more)`);
         for (const user of moreCandidates) {
-          if (followed >= processCount || state.stop.stopped || hitHardLimit) break;
+          if (followAttempts >= processCount || state.stop.stopped || hitHardLimit) break;
           if (maxPerDay > 0 && this.daily(state) >= maxPerDay) {
             hitHardLimit = true;
             break;
@@ -169871,7 +169911,14 @@ ${err?.stack ?? ""}`);
             hitHardLimit = true;
             break;
           }
+          const attemptKey = followAttemptKey(user);
+          if (attemptedFollowUserIds.has(attemptKey)) {
+            dedupSkipped++;
+            continue;
+          }
           let result;
+          attemptedFollowUserIds.add(attemptKey);
+          followAttempts++;
           try {
             const sourceLabel = rescrapeSource.value ? rescrapeSource.type === "hashtag" ? `#${rescrapeSource.value}` : rescrapeSource.value : void 0;
             result = await client.followUser(user.pk, user.username, sourceLabel);
@@ -169906,7 +169953,7 @@ ${err?.stack ?? ""}`);
               break;
             }
             const isRescrapeABD = reason.includes("feedback_required");
-            if (!reason.startsWith("api_error:") && (reason.includes("Please wait") || isRescrapeABD || reason.includes("friendship.create"))) {
+            if (!reason.startsWith("api_error:") && (reason.includes("Please wait") || isRescrapeABD)) {
               if (isRescrapeABD && state.client) {
                 await storage.updateProfile(profile.id, { accountStatus: "automated_behaviour_detected" });
                 const abdOk = await state.client.tryDismissABD();
@@ -169951,7 +169998,7 @@ ${err?.stack ?? ""}`);
           if (!result.ok) {
             const rawReason = result.reason ? `: ${result.reason}` : " (no reason returned by Instagram)";
             console.log(`[engine] @${profile.username}: skip @${user.username} \u2014 follow attempt failed${rawReason} \u2014 trying next candidate`);
-            this.logAction(profile.id, tool.id, "follow_skipped", user.username, rescrapeSource.value, rescrapeSource.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 skipped, trying next candidate instead`);
+            this.logAction(profile.id, tool.id, "follow_skipped", user.username, rescrapeSource.value, rescrapeSource.type, "skipped", `Follow attempt failed for @${user.username}${rawReason} \u2014 this user will not be retried in this session`);
             skipped++;
             continue;
           }
@@ -169970,13 +170017,13 @@ ${err?.stack ?? ""}`);
           console.log(`[engine] @${profile.username}: \u2713 @${user.username} [${followed}/${processCount}] day:${state.dailyCount}`);
           await sleep(randInt2(followMin, followMax));
         }
-        if (!hitHardLimit && followed === 0 && blocked >= processCount) {
+        if (!hitHardLimit && followed === 0 && followAttempts >= processCount && blocked >= processCount) {
           engineLog("WARN", `@${profile.username}: re-scrape aborted after round ${extraRound} \u2014 ${blocked} block(s), 0 follows (session dead or action-blocked)`);
           hitHardLimit = true;
         }
       }
     }
-    console.log(`[engine] @${profile.username}: session done \u2014 followed ${followed}/${processCount}`);
+    console.log(`[engine] @${profile.username}: session done \u2014 attempted ${followAttempts}/${processCount}, followed ${followed}/${processCount}`);
     return { followed, scraped: candidates.length, dedupSkipped, filterSkipped, blocked, skipped };
   }
   // ── Weighted source picker ────────────────────────────────────────────────
@@ -170115,6 +170162,15 @@ ${err?.stack ?? ""}`);
       this.reconcile().catch(() => {
       });
     }
+  }
+  // Called after an established account is successfully re-verified from a
+  // captcha/automated-behaviour/other non-valid status. The account is valid
+  // again, but Human Session must wait for its configured delay window rather
+  // than treating recovery as a manual toggle-on.
+  deferHumanSessionAfterVerification(profileId) {
+    this.humanSessionDeferredAfterVerify.add(profileId);
+    this.reconcile().catch(() => {
+    });
   }
   // Called when an unfollow tool is explicitly enabled from the UI.
   // Immediately kicks off a reconcile so the runner starts without waiting
@@ -170781,6 +170837,15 @@ function verifiedProxyIds(profile) {
 function isVerifiedOnProxy(profile, proxyId) {
   return proxyId != null && verifiedProxyIds(profile).includes(proxyId);
 }
+function isEstablishedOnProxy(profile, proxyId) {
+  if (proxyId == null) return false;
+  if (isVerifiedOnProxy(profile, proxyId)) return true;
+  return !!profile?.validSince;
+}
+function verifiedProxyIdsWithCurrent(profile, proxyId) {
+  if (proxyId == null) return void 0;
+  return JSON.stringify([.../* @__PURE__ */ new Set([...verifiedProxyIds(profile), proxyId])]);
+}
 var VERIFY_LOCK_TTL_MS = 2 * 60 * 60 * 1e3;
 var API_VERIFY_MIN_DELAY_MINUTES = 60;
 var API_VERIFY_MAX_DELAY_MINUTES = 99;
@@ -170834,14 +170899,26 @@ async function resumeStuckVerifyingAccounts() {
   for (const profile of withCookies) {
     let deadline = profile.apiVerifyAfter;
     if (!deadline || !Number.isFinite(new Date(deadline).getTime())) {
-      const scheduled = chooseApiVerifyAfter();
-      deadline = scheduled.at;
-      await storage.updateProfile(profile.id, {
-        accountStatus: "verifying_to_api",
-        apiVerifyAfter: deadline,
-        statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduled.minutes} minutes.`
-      }).catch(() => {
-      });
+      if (isEstablishedOnProxy(profile, profile.proxyId)) {
+        deadline = (/* @__PURE__ */ new Date()).toISOString();
+        await storage.updateProfile(profile.id, {
+          accountStatus: "verifying_to_api",
+          apiVerifyAfter: deadline,
+          statusMessage: "Established account detected. Mobile API verification is starting immediately.",
+          ...verifiedProxyIdsWithCurrent(profile, profile.proxyId) ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {}
+        }).catch(() => {
+        });
+        console.log(`[startup:resume] @${profile.username} \u2014 established proxy account; bypassing legacy API cooldown`);
+      } else {
+        const scheduled = chooseApiVerifyAfter();
+        deadline = scheduled.at;
+        await storage.updateProfile(profile.id, {
+          accountStatus: "verifying_to_api",
+          apiVerifyAfter: deadline,
+          statusMessage: `Browser verification succeeded. Mobile API verification is scheduled in ${scheduled.minutes} minutes.`
+        }).catch(() => {
+        });
+      }
     } else if (profile.accountStatus !== "verifying_to_api") {
       await storage.updateProfile(profile.id, { accountStatus: "verifying_to_api" }).catch(() => {
       });
@@ -170874,6 +170951,7 @@ async function resumeStuckVerifyingAccounts() {
         statusMessage: null,
         ...finalStatus === "valid" ? { credentialsDirty: false } : {},
         ...apiResult.igDeviceState ? { igDeviceState: apiResult.igDeviceState } : {},
+        ...finalStatus === "valid" && profile.proxyId ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {},
         ..."igApiCookies" in apiResult && apiResult.igApiCookies ? { igApiCookies: apiResult.igApiCookies } : {}
       }).catch(() => {
       });
@@ -171429,8 +171507,11 @@ ${stamp}` : stamp;
       const id = Number(req.params.id);
       const body = req.body;
       const current = await storage.getProfile(id);
+      const recoverFalseLock = body.recoverFalseLock === true;
+      delete body.recoverFalseLock;
       if ("accountStatus" in body && body.accountStatus === "valid") {
-        if (!current || current.accountStatus !== "stopped") {
+        const explicitlyRecoveringFalseLock = recoverFalseLock && (current?.accountStatus === "locked" || current?.accountStatus === "pending");
+        if (!current || current.accountStatus !== "stopped" && !explicitlyRecoveringFalseLock) {
           console.warn(`[status-guard] BLOCKED attempt to set profile ${id} \u2192 "valid" via PATCH route (current: ${current?.accountStatus})`);
           delete body.accountStatus;
         }
@@ -171443,7 +171524,7 @@ ${stamp}` : stamp;
         body.statusMessage = null;
       }
       const PROTECTED_STATUSES = /* @__PURE__ */ new Set(["locked", "captcha", "automated_behaviour_detected", "valid", "stopped"]);
-      if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "")) {
+      if ("accountStatus" in body && body.accountStatus === "pending" && current && PROTECTED_STATUSES.has(current.accountStatus ?? "") && !(recoverFalseLock && current.accountStatus === "locked")) {
         console.warn(`[status-guard] BLOCKED attempt to set profile ${id} \u2192 "pending" via PATCH route (current: ${current.accountStatus})`);
         delete body.accountStatus;
       }
@@ -172498,11 +172579,12 @@ ${stamp_l}` : stamp_l });
     };
     const profile = await storage.getProfile(profileId);
     if (!profile) return fail(404, "Profile not found");
+    const establishedBeforeVerify = isEstablishedOnProxy(profile, profile.proxyId);
     if (profile.proxyId) {
       const assignedProxy = (await storage.getProxies()).find((p) => p.id === profile.proxyId);
       const burntUntil = assignedProxy?.burntUntil ? Date.parse(assignedProxy.burntUntil) : 0;
       const confirmBurntProxy = req.query.confirmBurntProxy === "true" || req.body?.confirmBurntProxy === true;
-      if (burntUntil > Date.now() && !isVerifiedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
+      if (burntUntil > Date.now() && !isEstablishedOnProxy(profile, profile.proxyId) && !confirmBurntProxy) {
         return fail(409, `This proxy is marked as burnt until ${new Date(burntUntil).toISOString()}.`, {
           code: "burnt_proxy_confirmation_required",
           burntUntil: assignedProxy?.burntUntil
@@ -172677,13 +172759,14 @@ ${stamp_l}` : stamp_l });
             if (mid) cookieParts.push(`mid=${mid}`);
             if (igDid) cookieParts.push(`ig_did=${igDid}`);
             const freshCookies = cookieParts.join("; ");
-            const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+            const repeatProxyVerification = isEstablishedOnProxy(profile, profile.proxyId);
             const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
             await storage.updateProfile(profile.id, {
               igApiCookies: freshCookies,
               accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
               apiVerifyAfter: scheduledApiVerify?.at ?? null,
-              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+              ...repeatProxyVerification && profile.proxyId ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {}
             });
             if (closeVerifyBrowser) await closeVerifyBrowser();
             sendLoginDone(
@@ -172726,14 +172809,15 @@ ${stamp_l}` : stamp_l });
             try {
               apiResult = await verifyInstagramCredentials(profileWithCookies);
             } catch (verifyErr) {
+              const preservedStatus = profile.accountStatus ?? "pending";
               console.error(`[verify] verifyInstagramCredentials threw for @${profile.username}:`, verifyErr);
               result = {
                 ok: false,
-                accountStatus: "pending",
+                accountStatus: preservedStatus,
                 message: `@${profile.username} \u2014 mobile API check failed unexpectedly: ${verifyErr?.message ?? "unknown error"}. Try verifying again.`
               };
               sendLoginDone(profileId, false, result.message ?? "");
-              await storage.updateProfile(profile.id, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null });
+              await storage.updateProfile(profile.id, { accountStatus: preservedStatus, apiVerifyAfter: null, statusMessage: null });
               verifyInFlight.delete(profileId);
               return;
             }
@@ -172751,17 +172835,24 @@ ${stamp_l}` : stamp_l });
         } else {
           if (closeVerifyBrowser) await closeVerifyBrowser();
           const msg = loginResult.message ?? "";
-          let accountStatus = "locked";
+          let accountStatus = profile.accountStatus ?? "pending";
           if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
           else if (/challenge|checkpoint/i.test(msg)) accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
           else if (/suspended/i.test(msg)) accountStatus = "suspended";
           else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg)) accountStatus = "pending";
+          else if (/account.*locked|locked.*account/i.test(msg)) accountStatus = "locked";
           result = { ok: false, accountStatus, message: `@${profile.username} \u2014 ${msg}` };
         }
         sendLoginDone(profileId, result.ok, result.message);
         let finalStatus = result.accountStatus;
+        const inconclusiveApiFailure = !result.ok && (result.accountStatus === "pending" || result.accountStatus === "logged_out") && /could not reach|proxy|network|timed?\s*out|http\s*\d+|request failed|connection|out of date|needs_upgrade|unexpected/i.test(result.message ?? "");
+        if (profile.accountStatus === "valid" && inconclusiveApiFailure) {
+          finalStatus = "valid";
+          console.log(
+            `[verify:${profile.id}] inconclusive mobile/API failure (${result.accountStatus}) \u2014 preserving pre-verify status=valid`
+          );
+        }
         if (result.accountStatus === "valid") {
           const ebChallengeUrl = getSessionChallengeUrl(profile.id);
           if (ebChallengeUrl) {
@@ -172791,6 +172882,9 @@ ${stamp_l}` : stamp_l });
             // can restore the session on Path 2 without re-logging in.
             ..."igApiCookies" in result && result.igApiCookies ? { igApiCookies: result.igApiCookies } : {}
           });
+          if (result.ok && finalStatus === "valid" && establishedBeforeVerify) {
+            automationEngine.deferHumanSessionAfterVerification(profile.id);
+          }
           automationEngine.invalidateWarmedClientCache(profile.id);
         }
         await storage.createSessionAction({
@@ -172809,7 +172903,9 @@ ${stamp_l}` : stamp_l });
         }
       } catch (_topVerifyErr) {
         console.error(`[verify:${profileId}] unhandled crash in background verify \u2014 clearing lock:`, _topVerifyErr?.message ?? _topVerifyErr);
-        await storage.updateProfile(profileId, { accountStatus: "pending", apiVerifyAfter: null, statusMessage: null }).catch(() => {
+        const currentAfterCrash = await storage.getProfile(profileId).catch(() => null);
+        const preservedStatus = currentAfterCrash?.accountStatus === "verifying" ? profile.accountStatus ?? "pending" : currentAfterCrash?.accountStatus ?? profile.accountStatus ?? "pending";
+        await storage.updateProfile(profileId, { accountStatus: preservedStatus, apiVerifyAfter: null, statusMessage: null }).catch(() => {
         });
       } finally {
         verifyInFlight.delete(profileId);
@@ -173396,13 +173492,13 @@ ${stamp}` : stamp;
       if (!loginResult.ok) {
         sendLoginDone(profileId, false, loginResult.message);
         const msg = loginResult.message ?? "";
-        let accountStatus = "locked";
+        let accountStatus = profile.accountStatus ?? "pending";
         if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
         else if (/challenge|checkpoint/i.test(msg)) accountStatus = "captcha";
         else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
         else if (/suspended/i.test(msg)) accountStatus = "suspended";
         else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
-        else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg)) accountStatus = "pending";
+        else if (/account.*locked|locked.*account/i.test(msg)) accountStatus = "locked";
         await storage.updateProfile(profileId, { accountStatus }).catch(() => {
         });
         return;
@@ -174803,7 +174899,7 @@ ${stamp}` : stamp;
       if (!p.proxyId) return false;
       const linked = allProxies.find((px) => px.id === p.proxyId);
       const burntUntil = linked?.burntUntil ? Date.parse(linked.burntUntil) : 0;
-      return burntUntil > Date.now() && !isVerifiedOnProxy(p, p.proxyId);
+      return burntUntil > Date.now() && !isEstablishedOnProxy(p, p.proxyId);
     });
     if (burntTargets.length > 0 && !confirmBurntProxy) {
       return res.status(409).json({
@@ -174835,6 +174931,7 @@ ${stamp}` : stamp;
       verifyInFlight.delete(profile.id);
       verifyInFlight.set(profile.id, Date.now());
       let closeBulkBrowser = null;
+      const establishedBeforeVerify = isEstablishedOnProxy(profile, profile.proxyId);
       try {
         await storage.updateProfile(profile.id, { accountStatus: "verifying", apiVerifyAfter: null, statusMessage: null });
         let effectiveP = { ...profile };
@@ -174951,13 +175048,14 @@ ${stamp}` : stamp;
             if (dsUserId) cookieParts.push(`ds_user_id=${dsUserId}`);
             if (mid) cookieParts.push(`mid=${mid}`);
             const freshCookies = cookieParts.join("; ");
-            const repeatProxyVerification = isVerifiedOnProxy(profile, profile.proxyId);
+            const repeatProxyVerification = isEstablishedOnProxy(profile, profile.proxyId);
             const scheduledApiVerify = repeatProxyVerification ? null : chooseApiVerifyAfter();
             await storage.updateProfile(profile.id, {
               igApiCookies: freshCookies,
               accountStatus: repeatProxyVerification ? "verifying" : "verifying_to_api",
               apiVerifyAfter: scheduledApiVerify?.at ?? null,
-              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`
+              statusMessage: repeatProxyVerification ? "Browser verification succeeded. Mobile API verification is starting immediately." : `Browser verification succeeded. Mobile API verification is scheduled in ${scheduledApiVerify.minutes} minutes.`,
+              ...repeatProxyVerification && profile.proxyId ? { verifiedProxyIds: verifiedProxyIdsWithCurrent(profile, profile.proxyId) } : {}
             });
             if (closeBulkBrowser) await closeBulkBrowser();
             console.log(`[bulk-verify] @${profile.username} \u2014 browser verified; mobile API ${repeatProxyVerification ? "starting immediately (proxy already verified)" : `scheduled in ${scheduledApiVerify.minutes} minutes`}`);
@@ -174976,13 +175074,21 @@ ${stamp}` : stamp;
         } else {
           if (closeBulkBrowser) await closeBulkBrowser();
           const msg = bulkLoginResult.message ?? "";
-          let accountStatus = "locked";
+          let accountStatus = profile.accountStatus ?? "pending";
           if (/2fa|two.factor|two_factor/i.test(msg)) accountStatus = "2fa_verification";
           else if (/challenge|checkpoint/i.test(msg)) accountStatus = "captcha";
           else if (/permanently disabled|Account permanently disabled/i.test(msg)) accountStatus = "account_disabled";
           else if (/suspended/i.test(msg)) accountStatus = "suspended";
-          else if (/aborted|timed?\s*out|ipc error|operation.*aborted/i.test(msg)) accountStatus = "pending";
+          else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
+          else if (/account.*locked|locked.*account/i.test(msg)) accountStatus = "locked";
           result = { ok: false, accountStatus, message: `@${profile.username} \u2014 ${msg}` };
+        }
+        const inconclusiveApiFailure = !result.ok && (result.accountStatus === "pending" || result.accountStatus === "logged_out") && /could not reach|proxy|network|timed?\s*out|http\s*\d+|request failed|connection|out of date|needs_upgrade|unexpected/i.test(result.message ?? "");
+        if (profile.accountStatus === "valid" && inconclusiveApiFailure) {
+          console.log(
+            `[bulk-verify] @${profile.username} \u2014 inconclusive mobile/API failure (${result.accountStatus}); preserving pre-verify status=valid`
+          );
+          result = { ...result, accountStatus: "valid" };
         }
         await storage.updateProfile(profile.id, {
           accountStatus: result.accountStatus,
@@ -174992,6 +175098,9 @@ ${stamp}` : stamp;
           ...result.igApiCookies ? { igApiCookies: result.igApiCookies } : {},
           ...result.accountStatus === "valid" && profile.proxyId ? { verifiedProxyIds: JSON.stringify([.../* @__PURE__ */ new Set([...verifiedProxyIds(profile), profile.proxyId])]) } : {}
         });
+        if (result.ok && result.accountStatus === "valid" && establishedBeforeVerify) {
+          automationEngine.deferHumanSessionAfterVerification(profile.id);
+        }
         if (!result.ok && result.accountStatus === "captcha" && result.checkpointUrl) {
           setCheckpointUrl(profile.id, result.checkpointUrl);
         }
