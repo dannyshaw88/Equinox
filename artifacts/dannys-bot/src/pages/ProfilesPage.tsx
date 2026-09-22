@@ -1697,7 +1697,7 @@ export function ProfilesPage() {
                     }
                     if (key === "aliveFor") {
                       const validSince = (profile as any).validSince ? new Date((profile as any).validSince) : null;
-                      let aliveLabel: React.ReactNode = <span>0mins</span>;
+                      let aliveLabel: React.ReactNode = <span>0m</span>;
                       if (validSince) {
                         const diffMs   = Date.now() - validSince.getTime();
                         const totalMin = Math.floor(diffMs / 60_000);

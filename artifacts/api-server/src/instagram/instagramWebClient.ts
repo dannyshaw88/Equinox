@@ -372,6 +372,18 @@ type ApiCallLogger = (op: string, durationMs: number, message?: string, isError?
 //   431.0.0.37.82  → 383708339  ← current (APKMirror arm base variant)
 export const MOBILE_VERSION      = "431.0.0.37.82";
 export const MOBILE_VERSION_CODE = "383708339";
+// The mobile reels-tray endpoint expects this capability list in the form body.
+const MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
+  {
+    name: "SUPPORTED_SDK_VERSIONS",
+    value: "13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0,24.0,25.0,26.0,27.0,28.0,29.0,30.0,31.0,32.0,33.0,34.0,35.0,36.0,37.0,38.0,39.0,40.0,41.0,42.0,43.0,44.0,45.0,46.0,47.0,48.0,49.0,50.0,51.0,52.0,53.0,54.0,55.0,56.0,57.0,58.0,59.0,60.0,61.0,62.0,63.0,64.0,65.0,66.0",
+  },
+  { name: "FACE_TRACKER_VERSION", value: 12 },
+  { name: "segmentation", value: "segmentation_enabled" },
+  { name: "COMPRESSION", value: "ETC2_COMPRESSION" },
+  { name: "world_tracker", value: "world_tracker_enabled" },
+  { name: "gyroscope", value: "gyroscope_enabled" },
+]);
 // Date this version was last confirmed / updated. Warn after 90 days so there
 // is time to update before Instagram starts rejecting the version.
 const MOBILE_VERSION_DATE = "2026-05-24";
@@ -3688,7 +3700,10 @@ export class InstagramWebClient {
       container_module: "clips_viewer_clips_tab",
     }).toString();
     const streamHeaders = {
-      "X-Ig-Client-Endpoint": "feed_timeline",
+      // This is a Clips-tab request.  Advertising feed_timeline here
+      // contradicts container_module=clips_viewer_clips_tab and can make the
+      // discover stream return the generic HTTP 200/status=fail response.
+      "X-Ig-Client-Endpoint": "clips_viewer_clips_tab",
       "X-Fb-Friendly-Name": "IgApi: clips/discover/stream/",
       "x-ig-prefetch-request": "foreground",
     };
@@ -3866,8 +3881,9 @@ export class InstagramWebClient {
   // `count` story reels as seen, simulating a user swiping through stories.
   async viewTimelineStories(count: number = 5): Promise<{ count: number; items: { mediaId: string; userId: string }[] }> {
     return this.timed("ViewTimelineStories", async () => {
-      // surface=2 is required — without it Instagram returns an empty tray even
-      // when followed accounts have active stories (Jarvee always includes this param).
+      // The current mobile client fetches the tray with POST. The old GET
+      // `?surface=2` shape can return HTTP 200/status="fail" with Instagram's
+      // generic "something went wrong" response.
 
       // Check up-front so we can return distinct sentinel values:
       //   count: -1 = no mobile session at all (mobileCookieJar has no sessionid)
@@ -3879,12 +3895,28 @@ export class InstagramWebClient {
         return { count: -1, items: [] };
       }
 
-      const j = await this.mobileSessionGet(
-        `/api/v1/feed/reels_tray/?surface=2`,
-        (json) => { const n = Array.isArray(json?.tray) ? json.tray.length : 0; return `${n} stor${n === 1 ? "y" : "ies"} in tray`; }
+      // Bootstrap first so the form CSRF token matches the header and cookie
+      // token when this is the first mobile call after restoring a session.
+      if (this.mobileCsrf === "missing" || !this.mobileCsrf) {
+        await this._bootstrapMobileCsrf();
+      }
+      let mobileUuid = "";
+      try {
+        mobileUuid = String(JSON.parse(this.igDeviceState ?? "{}")?.uuid ?? "");
+      } catch { /* device state is optional */ }
+      const trayBody = new URLSearchParams({
+        supported_capabilities_new: MOBILE_SUPPORTED_CAPABILITIES,
+        reason: "cold_start",
+        _csrftoken: this.mobileCsrf || "missing",
+        _uuid: mobileUuid,
+      }).toString();
+      this._navChainScreen = "home";
+      const j = await this.mobileSessionPost(
+        `/api/v1/feed/reels_tray/`,
+        trayBody,
       );
       if (j === null) {
-        // mobileSessionGet returned null — the session was present but Instagram
+        // mobileSessionPost returned null — the session was present but Instagram
         // rejected it (HTTP 4xx / expired / checkpoint).  Return -5 so the caller
         // can show a more accurate "session expired" message instead of "no session".
         return { count: -5, items: [] };
