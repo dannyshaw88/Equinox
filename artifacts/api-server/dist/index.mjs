@@ -157067,8 +157067,8 @@ function patchDeviceStringVersionCode(ig, targetVersionCode) {
     ig.state.deviceString = ig.state.deviceString.trimEnd() + `; ${targetVersionCode}`;
   }
 }
-var MOBILE_VERSION = "431.0.0.37.82";
-var MOBILE_VERSION_CODE = "383708339";
+var MOBILE_VERSION = "447.0.0.55.81";
+var MOBILE_VERSION_CODE = "385311921";
 var MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
   {
     name: "SUPPORTED_SDK_VERSIONS",
@@ -157080,7 +157080,20 @@ var MOBILE_SUPPORTED_CAPABILITIES = JSON.stringify([
   { name: "world_tracker", value: "world_tracker_enabled" },
   { name: "gyroscope", value: "gyroscope_enabled" }
 ]);
-var MOBILE_VERSION_DATE = "2026-05-24";
+var MOBILE_VIDEO_DEVICE_STATUS = JSON.stringify({
+  hw_av1_dec: false,
+  hw_vp9_dec: false,
+  hw_avc_dec: false,
+  "10bit_hw_av1_dec": false,
+  "10bit_hw_vp9_dec": false,
+  is_hlg_supported: false,
+  chip_vendor: "others",
+  chip_name: "unknown",
+  core_count: 0,
+  max_ghz_sum: 0,
+  min_ghz_sum: 0
+});
+var MOBILE_VERSION_DATE = "2026-09-19";
 (() => {
   const ageMs = Date.now() - new Date(MOBILE_VERSION_DATE).getTime();
   const ageDays = Math.floor(ageMs / 864e5);
@@ -159678,12 +159691,19 @@ var InstagramWebClient = class {
     }
     this._navChainScreen = "reels";
     const viewerSessionId = randomUUID();
+    let userId = "";
+    try {
+      const cookieParts = (this.igApiCookies ?? "").split(";").map((part) => part.trim());
+      userId = cookieParts.find((part) => part.startsWith("ds_user_id="))?.split("=")[1] ?? "";
+    } catch {
+    }
     const streamBody = new URLSearchParams({
       seen_reels: "[]",
       client_flashcache_size: "0",
       enable_mixed_media_chaining: "true",
-      device_status: "{}",
+      device_status: MOBILE_VIDEO_DEVICE_STATUS,
       should_refetch_chaining_media: "false",
+      _uid: userId,
       _uuid: uuid3,
       prefetch_trigger_type: "cold_start",
       viewer_session_id: viewerSessionId,
@@ -159704,7 +159724,7 @@ var InstagramWebClient = class {
       "X-Fb-Friendly-Name": "IgApi: clips/discover/stream/",
       "x-ig-prefetch-request": "foreground"
     };
-    const j = await this.mobileSessionPost(
+    let j = await this.mobileSessionPost(
       `/api/v1/clips/discover/stream/`,
       streamBody,
       streamHeaders
@@ -159725,7 +159745,35 @@ var InstagramWebClient = class {
     }
     if (j?.status === "fail") {
       console.warn(`[webClient] viewReelsTab: clips/discover/stream failed \u2014 ${j?.message ?? "unknown"}`);
-      return { watched: 0, reelWatches: [] };
+      if (userId) {
+        const fallbackBody = new URLSearchParams({
+          user_id: userId,
+          max_id: "",
+          count: String(Math.max(reelCount, 6)),
+          include_feed_video: "true"
+        }).toString();
+        const fallback = await this.mobileSessionPost(`/api/v1/clips/user/`, fallbackBody);
+        if (fallback && fallback.status !== "fail" && Array.isArray(fallback.items)) {
+          console.log(`[webClient] viewReelsTab: Discover stream rejected; clips/user fallback returned ${fallback.items.length} item(s)`);
+          j = fallback;
+        } else {
+          console.warn(`[webClient] viewReelsTab: clips/user fallback also returned no usable reel data; trying timeline reel fallback`);
+          const timeline = await this.mobileSessionPost(
+            `/api/v1/feed/timeline/`,
+            new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString()
+          );
+          const timelineItems = timeline?.feed_items ?? timeline?.items;
+          if (timeline && timeline.status !== "fail" && Array.isArray(timelineItems)) {
+            console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s)`);
+            j = { ...timeline, items: timelineItems };
+          } else {
+            console.warn(`[webClient] viewReelsTab: timeline fallback also returned no usable data`);
+            return { watched: 0, reelWatches: [] };
+          }
+        }
+      } else {
+        return { watched: 0, reelWatches: [] };
+      }
     }
     const reelWatches = [];
     let watched = 0;
