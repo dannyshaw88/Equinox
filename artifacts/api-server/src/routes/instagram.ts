@@ -2694,6 +2694,16 @@ export async function registerInstagramRoutes(
     // (2) mobile API confirms session works → DB set to "valid"  ← silently wrong
     // Checking the in-memory session challengeUrl here lets (2) yield to (1).
     let finalStatus = result.accountStatus;
+    const inconclusiveApiFailure =
+      !result.ok &&
+      (result.accountStatus === "pending" || result.accountStatus === "logged_out") &&
+      /could not reach|proxy|network|timed?\s*out|http\s*\d+|request failed|connection|out of date|needs_upgrade|unexpected/i.test(result.message ?? "");
+    if (profile.accountStatus === "valid" && inconclusiveApiFailure) {
+      finalStatus = "valid";
+      console.log(
+        `[verify:${profile.id}] inconclusive mobile/API failure (${result.accountStatus}) — preserving pre-verify status=valid`,
+      );
+    }
     if (result.accountStatus === "valid") {
       const ebChallengeUrl = getSessionChallengeUrl(profile.id);
       if (ebChallengeUrl) {
@@ -5346,6 +5356,17 @@ export async function registerInstagramRoutes(
           else if (/human.*verif|confirm.*human|human verification/i.test(msg))     accountStatus = "confirm_human";
           else if (/account.*locked|locked.*account/i.test(msg))                    accountStatus = "locked";
           result = { ok: false, accountStatus, message: `@${profile.username} — ${msg}` };
+        }
+
+        const inconclusiveApiFailure =
+          !result.ok &&
+          (result.accountStatus === "pending" || result.accountStatus === "logged_out") &&
+          /could not reach|proxy|network|timed?\s*out|http\s*\d+|request failed|connection|out of date|needs_upgrade|unexpected/i.test(result.message ?? "");
+        if (profile.accountStatus === "valid" && inconclusiveApiFailure) {
+          console.log(
+            `[bulk-verify] @${profile.username} — inconclusive mobile/API failure (${result.accountStatus}); preserving pre-verify status=valid`,
+          );
+          result = { ...result, accountStatus: "valid" };
         }
 
         await storage.updateProfile(profile.id, {

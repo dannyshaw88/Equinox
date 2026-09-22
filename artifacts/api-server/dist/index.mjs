@@ -172738,6 +172738,13 @@ ${stamp_l}` : stamp_l });
         }
         sendLoginDone(profileId, result.ok, result.message);
         let finalStatus = result.accountStatus;
+        const inconclusiveApiFailure = !result.ok && (result.accountStatus === "pending" || result.accountStatus === "logged_out") && /could not reach|proxy|network|timed?\s*out|http\s*\d+|request failed|connection|out of date|needs_upgrade|unexpected/i.test(result.message ?? "");
+        if (profile.accountStatus === "valid" && inconclusiveApiFailure) {
+          finalStatus = "valid";
+          console.log(
+            `[verify:${profile.id}] inconclusive mobile/API failure (${result.accountStatus}) \u2014 preserving pre-verify status=valid`
+          );
+        }
         if (result.accountStatus === "valid") {
           const ebChallengeUrl = getSessionChallengeUrl(profile.id);
           if (ebChallengeUrl) {
@@ -174967,6 +174974,13 @@ ${stamp}` : stamp;
           else if (/human.*verif|confirm.*human|human verification/i.test(msg)) accountStatus = "confirm_human";
           else if (/account.*locked|locked.*account/i.test(msg)) accountStatus = "locked";
           result = { ok: false, accountStatus, message: `@${profile.username} \u2014 ${msg}` };
+        }
+        const inconclusiveApiFailure = !result.ok && (result.accountStatus === "pending" || result.accountStatus === "logged_out") && /could not reach|proxy|network|timed?\s*out|http\s*\d+|request failed|connection|out of date|needs_upgrade|unexpected/i.test(result.message ?? "");
+        if (profile.accountStatus === "valid" && inconclusiveApiFailure) {
+          console.log(
+            `[bulk-verify] @${profile.username} \u2014 inconclusive mobile/API failure (${result.accountStatus}); preserving pre-verify status=valid`
+          );
+          result = { ...result, accountStatus: "valid" };
         }
         await storage.updateProfile(profile.id, {
           accountStatus: result.accountStatus,
