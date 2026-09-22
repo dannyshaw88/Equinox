@@ -7,11 +7,46 @@ Set-Location -LiteralPath $repoRoot
 
 $rootPackageJson = Join-Path $repoRoot "package.json"
 $electronPackageJson = Join-Path $repoRoot "artifacts\electron\package.json"
+$exploreClientSourcePath = Join-Path $repoRoot "artifacts\api-server\src\instagram\instagramWebClient.ts"
 if (-not (Test-Path -LiteralPath $rootPackageJson -PathType Leaf)) {
     throw "Root package.json was not found at $rootPackageJson."
 }
 if (-not (Test-Path -LiteralPath $electronPackageJson -PathType Leaf)) {
     throw "Electron package.json was not found at $electronPackageJson."
+}
+if (-not (Test-Path -LiteralPath $exploreClientSourcePath -PathType Leaf)) {
+    throw "Explore client source was not found at $exploreClientSourcePath."
+}
+
+function Invoke-GitCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    $output = & git @Arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "git $($Arguments -join ' ') failed with exit code $LASTEXITCODE.`n$($output -join [Environment]::NewLine)"
+    }
+    return ($output -join [Environment]::NewLine)
+}
+
+# Do not package a checkout that failed to sync. The old PowerShell command
+# sequence can continue after `git merge --ff-only` fails and otherwise package
+# whichever stale HEAD was already present on disk.
+$sourceCommit = (Invoke-GitCommand -Arguments @("rev-parse", "HEAD")).Trim()
+$originMainCommit = (Invoke-GitCommand -Arguments @("rev-parse", "origin/main")).Trim()
+& git merge-base --is-ancestor $originMainCommit $sourceCommit
+if ($LASTEXITCODE -ne 0) {
+    throw "This checkout is behind origin/main. Fetch and fast-forward before building. HEAD=$sourceCommit origin/main=$originMainCommit"
+}
+
+$exploreClientSource = Get-Content -LiteralPath $exploreClientSourcePath -Raw
+if (-not $exploreClientSource.Contains("/api/v1/discover/explore/?session_id=")) {
+    throw "This checkout does not contain the corrected discover/explore Explore request. Refusing to build."
+}
+if ($exploreClientSource.Contains("/api/v1/discover/topical_explore/")) {
+    throw "This checkout still contains an active topical_explore Explore request. Refusing to build."
 }
 
 $rootPackage = Get-Content -LiteralPath $rootPackageJson -Raw | ConvertFrom-Json
@@ -25,11 +60,7 @@ if ($rootVersion -ne $expectedVersion) {
     throw "Version mismatch: root package.json is $rootVersion but Electron is $expectedVersion."
 }
 
-try {
-    $sourceCommit = (& git rev-parse --short HEAD).Trim()
-} catch {
-    $sourceCommit = "unknown"
-}
+$sourceCommitShort = $sourceCommit.Substring(0, [Math]::Min(12, $sourceCommit.Length))
 
 function Invoke-PnpmCommand {
     param(
@@ -45,7 +76,7 @@ function Invoke-PnpmCommand {
     }
 }
 
-Write-Host "Building Equinox installer v$expectedVersion from commit $sourceCommit..." -ForegroundColor Green
+Write-Host "Building Equinox installer v$expectedVersion from commit $sourceCommitShort..." -ForegroundColor Green
 
 # Remove stale pnpm virtual-store links from the root and workspace packages.
 # A previous install can retain an old virtual lockfile that omits Rollup's
@@ -179,6 +210,14 @@ Invoke-PnpmCommand -Arguments @("--filter", "@workspace/dannys-bot", "run", "bui
 Invoke-PnpmCommand -Arguments @("--filter", "@workspace/electron", "run", "build")
 
 $electronProjectDirectory = Join-Path $repoRoot "artifacts\electron"
+$bundledServerEntryPoint = Join-Path $electronProjectDirectory "dist\server\index.mjs"
+if (-not (Test-Path -LiteralPath $bundledServerEntryPoint -PathType Leaf)) {
+    throw "Electron build completed without producing the bundled API server: $bundledServerEntryPoint"
+}
+$bundledServer = Get-Content -LiteralPath $bundledServerEntryPoint -Raw
+if (-not $bundledServer.Contains("/api/v1/discover/explore/?session_id=")) {
+    throw "Generated Electron server does not contain the corrected discover/explore request. Refusing to package."
+}
 $electronEntryPoint = Join-Path $electronProjectDirectory "dist\main.js"
 if (-not (Test-Path -LiteralPath $electronEntryPoint -PathType Leaf)) {
     throw "Electron build completed without producing the expected entry file: $electronEntryPoint"
@@ -218,7 +257,7 @@ Write-Host ""
 Write-Host "Installer created:" -ForegroundColor Green
 Write-Host $installer.FullName
 Write-Host "Installer version: $expectedVersion" -ForegroundColor Green
-Write-Host "Source commit: $sourceCommit" -ForegroundColor Green
+Write-Host "Source commit: $sourceCommitShort" -ForegroundColor Green
 Write-Host "Opening the installer directory..." -ForegroundColor Green
 
 Start-Process -FilePath "explorer.exe" -ArgumentList $releaseDirectory
