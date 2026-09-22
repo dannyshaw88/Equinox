@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.565",
+    date: "22 Sep 2026",
+    items: [
+      { category: "Fix", text: "View Reels now sends the correct session identity to Instagram, preventing valid Reels sessions from incorrectly returning zero results; Stories is unchanged." },
+    ],
+  },
+  {
     version: "1.1.558",
     date: "2026-09-21",
     items: [
