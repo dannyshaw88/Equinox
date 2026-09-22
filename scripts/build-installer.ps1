@@ -42,7 +42,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $exploreClientSource = Get-Content -LiteralPath $exploreClientSourcePath -Raw
-if (-not $exploreClientSource.Contains("/api/v1/discover/explore/?session_id=")) {
+if (-not $exploreClientSource.Contains("/api/v1/discover/explore/")) {
     throw "This checkout does not contain the corrected discover/explore Explore request. Refusing to build."
 }
 if ($exploreClientSource.Contains("/api/v1/discover/topical_explore/")) {
@@ -215,7 +215,7 @@ if (-not (Test-Path -LiteralPath $bundledServerEntryPoint -PathType Leaf)) {
     throw "Electron build completed without producing the bundled API server: $bundledServerEntryPoint"
 }
 $bundledServer = Get-Content -LiteralPath $bundledServerEntryPoint -Raw
-if (-not $bundledServer.Contains("/api/v1/discover/explore/?session_id=")) {
+if (-not $bundledServer.Contains("/api/v1/discover/explore/")) {
     throw "Generated Electron server does not contain the corrected discover/explore request. Refusing to package."
 }
 $electronEntryPoint = Join-Path $electronProjectDirectory "dist\main.js"

@@ -6777,8 +6777,23 @@ export class InstagramWebClient {
         // /discover/topical_explore here: that route is for the topic/interest
         // and activity-pill surface, not the Explore post grid.
         const exploreSessionId = randomUUID();
+        // The Explore route still expects the same native feed-shaping
+        // parameters as the current Android client.  A bare session_id can
+        // reach the route but is rejected as an incomplete feed request.
+        const exploreQuery = new URLSearchParams({
+          is_prefetch: "false",
+          is_auto_paginate: "false",
+          omit_cover_media: "false",
+          module: "explore_popular",
+          reels_configuration: "default",
+          use_sectional_payload: "true",
+          timezone_offset: this._tzOffset,
+          cluster_id: "explore_all:0",
+          session_id: exploreSessionId,
+          include_fixed_destinations: "true",
+        }).toString();
         const j = await this.mobileSessionGet(
-          `/api/v1/discover/explore/?session_id=${encodeURIComponent(exploreSessionId)}`,
+          `/api/v1/discover/explore/?${exploreQuery}`,
           (json) => {
             const n = [
               ...(json?.sectional_items ?? []).flatMap((s: any) => s?.layout_content?.medias ?? s?.layout_content?.fill_items ?? []),
@@ -6787,6 +6802,11 @@ export class InstagramWebClient {
             return `Explore feed loaded${n > 0 ? ` (${n} posts)` : ""}`;
           }
         );
+        if (j?.status === "fail" || j?.status === "error") {
+          throw new Error(
+            `Explore API returned status=${j.status}${j?.message ? `: ${String(j.message).slice(0, 180)}` : ""}`,
+          );
+        }
         const sectionItems = (j?.sectional_items ?? []).flatMap((section: any) =>
           section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? []);
         const feedItems: any[] = [...sectionItems, ...(j?.items ?? [])];
