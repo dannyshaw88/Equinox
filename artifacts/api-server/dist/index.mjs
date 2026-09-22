@@ -165972,6 +165972,7 @@ ${err?.stack ?? ""}`);
     if (client.isMobileLoggedIn()) {
       console.log(`[engine] @${profile.username}: resuming mobile API session from stored cookies`);
       client.loadBrowserCookies();
+      client.syncWebCookiesToMobileJar();
       return client;
     }
     const browserOk = client.loadBrowserCookies();
