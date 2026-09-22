@@ -6807,6 +6807,9 @@ export class InstagramWebClient {
             `Explore API returned status=${j.status}${j?.message ? `: ${String(j.message).slice(0, 180)}` : ""}`,
           );
         }
+        if (!j) {
+          throw new Error("Explore API returned no response");
+        }
         const sectionItems = (j?.sectional_items ?? []).flatMap((section: any) =>
           section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? []);
         const feedItems: any[] = [...sectionItems, ...(j?.items ?? [])];
@@ -6821,6 +6824,7 @@ export class InstagramWebClient {
         }
       } catch (e: any) {
         console.warn(`[webClient] visitExplorePage discover/explore failed: ${e?.message}`);
+        throw e;
       }
       return items.slice(0, scrollCount);
     }, `Visit explore page (scroll ${scrollCount})`));

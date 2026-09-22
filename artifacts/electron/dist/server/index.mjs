@@ -162243,6 +162243,9 @@ Content-Disposition: form-data; name="${part.name}"`;
             `Explore API returned status=${j.status}${j?.message ? `: ${String(j.message).slice(0, 180)}` : ""}`
           );
         }
+        if (!j) {
+          throw new Error("Explore API returned no response");
+        }
         const sectionItems = (j?.sectional_items ?? []).flatMap((section) => section?.layout_content?.medias ?? section?.layout_content?.fill_items ?? []);
         const feedItems = [...sectionItems, ...j?.items ?? []];
         for (const m2 of feedItems) {
@@ -162256,6 +162259,7 @@ Content-Disposition: form-data; name="${part.name}"`;
         }
       } catch (e) {
         console.warn(`[webClient] visitExplorePage discover/explore failed: ${e?.message}`);
+        throw e;
       }
       return items.slice(0, scrollCount);
     }, `Visit explore page (scroll ${scrollCount})`));
@@ -169069,6 +169073,7 @@ ${err?.stack ?? ""}`);
           }
         } catch (se) {
           console.warn(`[engine] @${profile.username}: visit explore page error: ${se?.message}`);
+          this.logAction(profile.id, tool.id, "visit_explore_page", "", "", "", "fail", se?.message ?? "Explore request failed");
         }
       }
     );

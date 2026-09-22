@@ -5787,6 +5787,7 @@ class AutomationEngine {
           }
         } catch (se: any) {
           console.warn(`[engine] @${profile.username}: visit explore page error: ${se?.message}`);
+          this.logAction(profile.id, tool.id, "visit_explore_page", "", "", "", "fail", se?.message ?? "Explore request failed");
         }
       },
     );
