@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.567",
+    date: "22 Sep 2026",
+    items: [
+      { category: "Fix", text: "Accounts that have not been validated yet now show 0m in the Alive For column instead of 0mins." },
+    ],
+  },
+  {
     version: "1.1.566",
     date: "22 Sep 2026",
     items: [
