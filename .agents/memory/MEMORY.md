@@ -43,3 +43,4 @@
 - [Reels endpoint account blocker](reels-endpoint-account-blocker.md) — a valid imported session can pass settings/notifications while Clips endpoints fail; distinguish endpoint/proxy rejection from session expiry.
 - [Browser transport status classification](browser-transport-status-classification.md) — Chrome/proxy/network failures are inconclusive; preserve the pre-operation status, including valid.
 - [API source versus packaged build](api-source-packaging.md) — Windows can run stale API code after source fixes; rebuild the installer artifacts and bump the version before validating.
+- [Standalone API runner gates](standalone-api-runner-gates.md) — a disabled Human Sessions row must not suppress enabled standalone tools; incomplete browser cookies must not erase mobile CSRF state.

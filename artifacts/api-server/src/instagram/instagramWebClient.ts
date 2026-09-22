@@ -1058,18 +1058,24 @@ export class InstagramWebClient {
   // ensures the mobile API always runs with the most current sessionid Chrome
   // has, not a potentially stale copy that was last written when the EB panel
   // was manually opened.
+  //
+  // The browser cookie file is often incomplete (for example, an imported API
+  // session may have sessionid/ds_user_id/mid but no csrftoken in Chrome).
+  // Never delete a real mobile csrftoken merely because Chrome omitted it.
   syncWebCookiesToMobileJar(): void {
     const sessionCookie = this.cookieJar.find(c => c.startsWith("sessionid="));
     const csrfCookie    = this.cookieJar.find(c => c.startsWith("csrftoken="));
     if (!sessionCookie) return;
+    const existingCsrf  = this.mobileCookieJar.find(c => c.startsWith("csrftoken="));
     this.mobileCookieJar = [
       ...this.mobileCookieJar.filter(c => !c.startsWith("sessionid=") && !c.startsWith("csrftoken=")),
       sessionCookie,
-      ...(csrfCookie ? [csrfCookie] : []),
+      ...(csrfCookie ? [csrfCookie] : existingCsrf ? [existingCsrf] : []),
     ];
     if (csrfCookie) this.mobileCsrf = csrfCookie.split("=").slice(1).join("=");
+    else if (existingCsrf) this.mobileCsrf = existingCsrf.split("=").slice(1).join("=");
     const snip = sessionCookie.split("=")[1]?.slice(0, 8) ?? "?";
-    console.log(`[webClient:${this.profileId}] syncWebCookiesToMobileJar: refreshed sessionid=...${snip}, csrf=${!!csrfCookie}`);
+    console.log(`[webClient:${this.profileId}] syncWebCookiesToMobileJar: refreshed sessionid=...${snip}, csrf=${!!csrfCookie || !!existingCsrf}`);
   }
 
   // Build a fresh igApiCookies string from the current web jar + stored device
@@ -2322,9 +2328,26 @@ export class InstagramWebClient {
       if (bodyPleaseWait)  return { ok: false, status: "follow_blocked", reason: String(body.message) };
       if (/login_required|Not authorized|401/i.test(msg)) return { ok: false, status: "follow_blocked", reason: "session expired — re-verify account" };
       // "something went wrong" without confirmed block signals = technical/transient rejection.
-      // Tag with api_error: prefix so the engine does NOT apply a 24h suspension.
+      // Retry once with the hand-rolled signed mobile request. The native
+      // repository does not include the newer nav_chain/surface context that
+      // _followViaMobileSession sends, and Instagram sometimes answers that
+      // older request shape with only a generic HTTP 200 failure.
       if (/something went wrong|sorry/i.test(msg)) {
-        return { ok: false, status: "follow_blocked", reason: `api_error: ${msg}` };
+        try {
+          console.warn(`[webClient] follow ${userId}: native request was generically rejected; retrying signed mobile request with nav context`);
+          const fallback = await this._followViaMobileSession(userId);
+          if (fallback.ok) return fallback;
+          return {
+            ...fallback,
+            reason: `api_error: native=${msg}; signed=${fallback.reason ?? "no usable response"}`,
+          };
+        } catch (fallbackErr: any) {
+          return {
+            ok: false,
+            status: "follow_blocked",
+            reason: `api_error: native=${msg}; signed=${fallbackErr?.message ?? String(fallbackErr)}`,
+          };
+        }
       }
       return { ok: false, status: "follow_blocked", reason: msg || "IgApiClient follow failed" };
     }

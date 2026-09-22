@@ -677,7 +677,11 @@ class AutomationEngine {
         // runners — those run inside the HS loop only. The standalone gate uses existence,
         // not the enabled flag, so turning HS OFF doesn't accidentally re-activate them.
         const humanSessionTool = tools.find(t => t.type === "human_sessions" && t.enabled);
-        const hasHumanSessionTool = tools.some(t => t.type === "human_sessions");
+        // A disabled Human Sessions tool must not suppress the standalone
+        // Follow/Unfollow runners. Profiles are created with the Human
+        // Sessions row present but disabled, and the enabled standalone tools
+        // are still expected to run through the mobile API.
+        const hasHumanSessionTool = !!humanSessionTool;
 
         const alreadyRunning = currentlyRunning.has(profile.id);
 
@@ -693,10 +697,8 @@ class AutomationEngine {
           }
         }
 
-        // Standalone runners are PERMANENTLY blocked for any profile that has an HS tool
-        // configured, regardless of whether HS is currently enabled or disabled.
-        // This ensures that toggling the HS master toggle OFF does not re-activate
-        // the standalone runners — the HS tool is the only execution path for this profile.
+        // When Human Sessions is enabled it is the sole execution path for
+        // action tools. When it is disabled, standalone runners are allowed.
         if (!hasHumanSessionTool) {
           const followTool = tools.find(t => t.type === "follow" && t.enabled);
           if (followTool && profile.accountStatus === "valid") {

@@ -157628,18 +157628,24 @@ var InstagramWebClient = class {
   // ensures the mobile API always runs with the most current sessionid Chrome
   // has, not a potentially stale copy that was last written when the EB panel
   // was manually opened.
+  //
+  // The browser cookie file is often incomplete (for example, an imported API
+  // session may have sessionid/ds_user_id/mid but no csrftoken in Chrome).
+  // Never delete a real mobile csrftoken merely because Chrome omitted it.
   syncWebCookiesToMobileJar() {
     const sessionCookie = this.cookieJar.find((c3) => c3.startsWith("sessionid="));
     const csrfCookie = this.cookieJar.find((c3) => c3.startsWith("csrftoken="));
     if (!sessionCookie) return;
+    const existingCsrf = this.mobileCookieJar.find((c3) => c3.startsWith("csrftoken="));
     this.mobileCookieJar = [
       ...this.mobileCookieJar.filter((c3) => !c3.startsWith("sessionid=") && !c3.startsWith("csrftoken=")),
       sessionCookie,
-      ...csrfCookie ? [csrfCookie] : []
+      ...csrfCookie ? [csrfCookie] : existingCsrf ? [existingCsrf] : []
     ];
     if (csrfCookie) this.mobileCsrf = csrfCookie.split("=").slice(1).join("=");
+    else if (existingCsrf) this.mobileCsrf = existingCsrf.split("=").slice(1).join("=");
     const snip = sessionCookie.split("=")[1]?.slice(0, 8) ?? "?";
-    console.log(`[webClient:${this.profileId}] syncWebCookiesToMobileJar: refreshed sessionid=...${snip}, csrf=${!!csrfCookie}`);
+    console.log(`[webClient:${this.profileId}] syncWebCookiesToMobileJar: refreshed sessionid=...${snip}, csrf=${!!csrfCookie || !!existingCsrf}`);
   }
   // Build a fresh igApiCookies string from the current web jar + stored device
   // tokens so the DB can be kept in sync even when the EB panel is not open.
@@ -158695,7 +158701,21 @@ var InstagramWebClient = class {
       if (bodyPleaseWait) return { ok: false, status: "follow_blocked", reason: String(body.message) };
       if (/login_required|Not authorized|401/i.test(msg)) return { ok: false, status: "follow_blocked", reason: "session expired \u2014 re-verify account" };
       if (/something went wrong|sorry/i.test(msg)) {
-        return { ok: false, status: "follow_blocked", reason: `api_error: ${msg}` };
+        try {
+          console.warn(`[webClient] follow ${userId}: native request was generically rejected; retrying signed mobile request with nav context`);
+          const fallback = await this._followViaMobileSession(userId);
+          if (fallback.ok) return fallback;
+          return {
+            ...fallback,
+            reason: `api_error: native=${msg}; signed=${fallback.reason ?? "no usable response"}`
+          };
+        } catch (fallbackErr) {
+          return {
+            ok: false,
+            status: "follow_blocked",
+            reason: `api_error: native=${msg}; signed=${fallbackErr?.message ?? String(fallbackErr)}`
+          };
+        }
       }
       return { ok: false, status: "follow_blocked", reason: msg || "IgApiClient follow failed" };
     }
@@ -164662,7 +164682,7 @@ var AutomationEngine = class _AutomationEngine {
         if (wasCrashed) this.runnerCrashedIds.delete(profile.id);
         const profileRunImmediately = runImmediately && !wasCrashed;
         const humanSessionTool = tools2.find((t2) => t2.type === "human_sessions" && t2.enabled);
-        const hasHumanSessionTool = tools2.some((t2) => t2.type === "human_sessions");
+        const hasHumanSessionTool = !!humanSessionTool;
         const alreadyRunning = currentlyRunning.has(profile.id);
         if (humanSessionTool && profile.accountStatus === "valid") {
           activeHumanSession.add(profile.id);
