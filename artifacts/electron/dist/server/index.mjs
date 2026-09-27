@@ -159674,7 +159674,7 @@ var InstagramWebClient = class {
         }
         const userId = String(media?.user?.pk ?? media?.user_id ?? "");
         const username = String(media?.user?.username ?? "");
-        if (userId) viewedItems.push({ mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel });
+        if (mediaId) viewedItems.push({ mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel });
       }
       for (let i2 = 0; i2 < seenEntries.length; i2 += 4) {
         const batch = seenEntries.slice(i2, i2 + 4);
@@ -160376,7 +160376,7 @@ var InstagramWebClient = class {
     const j = await this.mobileSessionPost(`/api/v1/feed/timeline/`, new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString());
     if (!j) {
       console.warn(`[webClient] likeTimelinePosts: mobileSessionPost returned null \u2014 no mobile session`);
-      return { liked: 0, watched: 0, likedPosts: [] };
+      return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [] };
     }
     if (j?.message === "login_required" || j?.require_login || j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? "")) {
       const sessionExpiredReason = [
@@ -160386,7 +160386,7 @@ var InstagramWebClient = class {
       ].filter(Boolean).join(" | ") || "login_required";
       console.warn(`[webClient] likeTimelinePosts: session expired \u2014 ${sessionExpiredReason}`);
       this.mobileSessionReady = false;
-      return { liked: 0, watched: 0, likedPosts: [], sessionExpired: true, sessionExpiredReason };
+      return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [], sessionExpired: true, sessionExpiredReason };
     }
     if (j?.status === "fail") {
       const failMsg = j?.message ?? "unknown";
@@ -160394,16 +160394,21 @@ var InstagramWebClient = class {
       if (/challenge_required|checkpoint_required|checkpoint required|login_required|not authorized|session expired|logged.?out|suspended|disabled/i.test(failMsg)) {
         throw new Error(failMsg);
       }
-      return { liked: 0, watched: 0, likedPosts: [] };
+      return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [] };
     }
     const rawItems = j?.feed_items ?? j?.items ?? [];
     console.log(`[webClient] likeTimelinePosts: timeline returned ${rawItems.length} raw items`);
-    if (!rawItems.length) return { liked: 0, watched: 0, likedPosts: [] };
+    if (!rawItems.length) return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [] };
     const items = rawItems.map((raw) => raw?.media_or_ad ?? raw?.media ?? raw).filter((m2) => m2?.id || m2?.pk);
     const toProcess = items.slice(0, count);
     let liked = 0;
     let watched = 0;
     const likedPosts = [];
+    const candidatePosts = toProcess.map((media) => ({
+      shortcode: String(media?.code ?? ""),
+      ownerUsername: String(media?.user?.username ?? ""),
+      mediaId: String(media?.id ?? media?.pk ?? "")
+    })).filter((post) => !!post.mediaId);
     const reelSeenEntries = [];
     for (const media of toProcess) {
       const isReel = media?.media_type === 2 || media?.product_type === "clips";
@@ -160452,7 +160457,7 @@ var InstagramWebClient = class {
         likedPosts.push({ shortcode, ownerUsername, mediaId });
       }
     }
-    return { liked, watched, likedPosts };
+    return { liked, watched, likedPosts, candidatePosts };
   }
   // ── Unfollow a user ───────────────────────────────────────────────────────
   // Returns true on success, "blocked" on Instagram action-block, false otherwise.
@@ -168299,25 +168304,40 @@ ${err?.stack ?? ""}`);
               } else {
                 this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "", "ok", summary);
               }
-              const saveEnabled = !!s.saveMediaEnabled;
-              const savePct = Number(s.saveMediaPercent ?? 0);
-              if (saveEnabled && savePct > 0 && likedPosts.length > 0) {
-                for (const post of likedPosts) {
-                  if (!post.mediaId) continue;
-                  if (Math.random() * 100 < savePct) {
-                    try {
-                      await client.saveMedia(post.mediaId);
-                      console.log(`[engine] @${profile.username}: \u{1F516} saved post ${post.shortcode} by @${post.ownerUsername}`);
-                      this.logAction(profile.id, tool.id, "save_media", post.ownerUsername, post.shortcode, "post", "ok", "Saved liked timeline post");
-                    } catch (se) {
-                      console.warn(`[engine] @${profile.username}: save media error: ${se?.message}`);
-                    }
-                  }
-                }
-              }
             } catch (e) {
               if (await checkSessionErr(e, "like_timeline_posts")) return;
               console.warn(`[engine] @${profile.username}: like timeline posts error: ${e?.message}`);
+            }
+          }
+        }
+        const saveEnabled = !!s.saveMediaEnabled;
+        const legacySavePct = Number(s.saveMediaPercent ?? 20);
+        const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
+        const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
+        if (saveEnabled && savePctMax > 0 && vtfResult?.items?.length) {
+          for (const item of vtfResult.items) {
+            if (!item.mediaId) continue;
+            const saveChancePct = randInt2(savePctMin, savePctMax);
+            if (Math.random() * 100 >= saveChancePct) continue;
+            try {
+              const saved = await client.saveMedia(item.mediaId);
+              this.logAction(
+                profile.id,
+                tool.id,
+                "save_media",
+                item.username,
+                item.shortcode,
+                "post",
+                saved ? "ok" : "fail",
+                saved ? "Saved viewed timeline post" : "Instagram did not confirm saving timeline post"
+              );
+              if (saved) {
+                console.log(`[engine] @${profile.username}: \u{1F516} saved viewed post ${item.shortcode} by @${item.username}`);
+              }
+            } catch (se) {
+              if (await checkSessionErr(se, "save_timeline_media")) return;
+              console.warn(`[engine] @${profile.username}: save timeline media error: ${se?.message}`);
+              this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
             }
           }
         }
@@ -168599,7 +168619,7 @@ ${err?.stack ?? ""}`);
         const likeDelayMin = Number(s.likeTimelinePostsDelayMin ?? 3);
         const likeDelayMax = Number(s.likeTimelinePostsDelayMax ?? 8);
         try {
-          const { liked, watched, likedPosts, sessionExpired, sessionExpiredReason } = await client.likeTimelinePosts(likeCount, likeDelayMin, likeDelayMax);
+          const { liked, watched, likedPosts, candidatePosts, sessionExpired, sessionExpiredReason } = await client.likeTimelinePosts(likeCount, likeDelayMin, likeDelayMax);
           if (sessionExpired) {
             const expReason = sessionExpiredReason ?? "session expired (login_required) \u2014 likeTimelinePosts";
             console.warn(`[engine] @${profile.username}: likeTimelinePosts \u2014 session expired (login_required), marking logged_out`);
@@ -168619,17 +168639,31 @@ ${err?.stack ?? ""}`);
             this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "", "ok", summary);
           }
           const saveEnabled = !!s.saveMediaEnabled;
-          const savePct = Number(s.saveMediaPercent ?? 0);
-          if (saveEnabled && savePct > 0 && likedPosts.length > 0) {
-            for (const post of likedPosts) {
+          const legacySavePct = Number(s.saveMediaPercent ?? 20);
+          const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
+          const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
+          if (saveEnabled && savePctMax > 0 && candidatePosts.length > 0) {
+            for (const post of candidatePosts) {
               if (!post.mediaId) continue;
-              if (Math.random() * 100 < savePct) {
+              const saveChancePct = randInt2(savePctMin, savePctMax);
+              if (Math.random() * 100 < saveChancePct) {
                 try {
-                  await client.saveMedia(post.mediaId);
-                  console.log(`[engine] @${profile.username}: \u{1F516} saved post ${post.shortcode} by @${post.ownerUsername}`);
-                  this.logAction(profile.id, tool.id, "save_media", post.ownerUsername, post.shortcode, "post", "ok", "Saved liked timeline post");
+                  const saved = await client.saveMedia(post.mediaId);
+                  console.log(`[engine] @${profile.username}: \u{1F516} saved timeline post ${post.shortcode} by @${post.ownerUsername}`);
+                  this.logAction(
+                    profile.id,
+                    tool.id,
+                    "save_media",
+                    post.ownerUsername,
+                    post.shortcode,
+                    "post",
+                    saved ? "ok" : "fail",
+                    saved ? "Saved timeline post" : "Instagram did not confirm saving timeline post"
+                  );
                 } catch (se) {
+                  if (await checkSessionErr(se, "save_timeline_media_standalone")) return;
                   console.warn(`[engine] @${profile.username}: save media error: ${se?.message}`);
+                  this.logAction(profile.id, tool.id, "save_media", post.ownerUsername, post.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
                 }
               }
             }

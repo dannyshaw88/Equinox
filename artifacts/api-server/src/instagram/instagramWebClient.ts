@@ -3655,7 +3655,7 @@ export class InstagramWebClient {
         }
         const userId   = String(media?.user?.pk ?? media?.user_id ?? "");
         const username = String(media?.user?.username ?? "");
-        if (userId) viewedItems.push({ mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel });
+        if (mediaId) viewedItems.push({ mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel });
       }
 
       // Instagram's real mobile app sends at most 4 posts per media/seen/ call.
@@ -4530,7 +4530,7 @@ export class InstagramWebClient {
     }, `Like DM thread=${threadId} item=${itemId}`);
   }
 
-  async likeTimelinePosts(count: number = 3, delayMinSec: number = 3, delayMaxSec: number = 8, reelWatchPercentMin: number = 0, reelWatchPercentMax: number = 0): Promise<{ liked: number; watched: number; likedPosts: Array<{ shortcode: string; ownerUsername: string; mediaId: string }>; sessionExpired?: boolean; sessionExpiredReason?: string }> {
+  async likeTimelinePosts(count: number = 3, delayMinSec: number = 3, delayMaxSec: number = 8, reelWatchPercentMin: number = 0, reelWatchPercentMax: number = 0): Promise<{ liked: number; watched: number; likedPosts: Array<{ shortcode: string; ownerUsername: string; mediaId: string }>; candidatePosts: Array<{ shortcode: string; ownerUsername: string; mediaId: string }>; sessionExpired?: boolean; sessionExpiredReason?: string }> {
     // No timed() wrapper here — individual likeMedia() calls each produce their
     // own LikeMedia log entry. A LikeTimelinePosts summary on top would cause
     // two entries at the same timestamp and make rate-limit audits confusing.
@@ -4542,7 +4542,7 @@ export class InstagramWebClient {
     const j = await this.mobileSessionPost(`/api/v1/feed/timeline/`, new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString());
     if (!j) {
       console.warn(`[webClient] likeTimelinePosts: mobileSessionPost returned null — no mobile session`);
-      return { liked: 0, watched: 0, likedPosts: [] };
+      return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [] };
     }
     if (j?.message === "login_required" || j?.require_login || (j?.status === "fail" && /login|logged.?out|logout/i.test(j?.message ?? ""))) {
       const sessionExpiredReason = [
@@ -4552,7 +4552,7 @@ export class InstagramWebClient {
       ].filter(Boolean).join(" | ") || "login_required";
       console.warn(`[webClient] likeTimelinePosts: session expired — ${sessionExpiredReason}`);
       this.mobileSessionReady = false;
-      return { liked: 0, watched: 0, likedPosts: [], sessionExpired: true, sessionExpiredReason };
+      return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [], sessionExpired: true, sessionExpiredReason };
     }
     if (j?.status === "fail") {
       const failMsg = j?.message ?? "unknown";
@@ -4560,11 +4560,11 @@ export class InstagramWebClient {
       if (/challenge_required|checkpoint_required|checkpoint required|login_required|not authorized|session expired|logged.?out|suspended|disabled/i.test(failMsg)) {
         throw new Error(failMsg);
       }
-      return { liked: 0, watched: 0, likedPosts: [] };
+      return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [] };
     }
     const rawItems: any[] = j?.feed_items ?? j?.items ?? [];
     console.log(`[webClient] likeTimelinePosts: timeline returned ${rawItems.length} raw items`);
-    if (!rawItems.length) return { liked: 0, watched: 0, likedPosts: [] };
+    if (!rawItems.length) return { liked: 0, watched: 0, likedPosts: [], candidatePosts: [] };
 
     const items = rawItems
       .map((raw: any) => raw?.media_or_ad ?? raw?.media ?? raw)
@@ -4574,6 +4574,13 @@ export class InstagramWebClient {
     let liked = 0;
     let watched = 0;
     const likedPosts: Array<{ shortcode: string; ownerUsername: string; mediaId: string }> = [];
+    const candidatePosts = toProcess
+      .map((media: any) => ({
+        shortcode: String(media?.code ?? ""),
+        ownerUsername: String(media?.user?.username ?? ""),
+        mediaId: String(media?.id ?? media?.pk ?? ""),
+      }))
+      .filter((post: { mediaId: string }) => !!post.mediaId);
 
     // Batch all reel seen marks into 1 call upfront — 1 throttle instead of N.
     // Instagram's home feed is now predominantly Reels, so we must mark them seen
@@ -4629,7 +4636,7 @@ export class InstagramWebClient {
       }
     }
 
-    return { liked, watched, likedPosts };
+    return { liked, watched, likedPosts, candidatePosts };
   }
 
   // ── Unfollow a user ───────────────────────────────────────────────────────

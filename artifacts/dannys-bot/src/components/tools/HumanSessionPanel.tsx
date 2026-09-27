@@ -41,6 +41,16 @@ function withoutRemovedActivitySettings(settings: Record<string, any>): Record<s
   const cleaned = { ...settings };
   delete cleaned.viewActivityRunChanceMin;
   delete cleaned.viewActivityRunChanceMax;
+  const legacySavePercent = cleaned.saveMediaPercent == null ? 20 : Number(cleaned.saveMediaPercent);
+  const savePercentFallback = Number.isFinite(legacySavePercent) ? legacySavePercent : 20;
+  if (cleaned.saveMediaPercentMin == null && cleaned.saveMediaPercentMax == null) {
+    cleaned.saveMediaPercentMin = savePercentFallback;
+    cleaned.saveMediaPercentMax = savePercentFallback;
+  } else {
+    cleaned.saveMediaPercentMin ??= cleaned.saveMediaPercentMax ?? savePercentFallback;
+    cleaned.saveMediaPercentMax ??= cleaned.saveMediaPercentMin ?? savePercentFallback;
+  }
+  delete cleaned.saveMediaPercent;
   return cleaned;
 }
 
@@ -82,7 +92,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vtf_chance",     label: "Skip chance %",       settingKeys: ["viewTimelineFeedNotUsedMin","viewTimelineFeedNotUsedMax"] },
         { key: "vtf_like_pct",    label: "% posts to like",                  settingKeys: ["likeTimelinePostsPercentMin","likeTimelinePostsPercentMax"] },
         { key: "vtf_like_delay",  label: "Delay between likes in sec",       settingKeys: ["likeTimelinePostsDelayMin","likeTimelinePostsDelayMax"] },
-        { key: "vtf_save_media",  label: "Save liked media",               settingKeys: ["saveMediaEnabled","saveMediaPercent"] },
+        { key: "vtf_save_media",  label: "Save media",                     settingKeys: ["saveMediaEnabled","saveMediaPercentMin","saveMediaPercentMax"] },
         { key: "vtf_share_post",  label: "Share % (chance to share viewed posts to feed)", settingKeys: ["sharePostPercentMin","sharePostPercentMax"] },
         { key: "vtf_expand_caption", label: "Expand Caption %",             settingKeys: ["expandCaptionPercentMin","expandCaptionPercentMax"] },
         { key: "vtf_view_profile",     label: "Visit profile %",             settingKeys: ["viewPostProfilePercentMin","viewPostProfilePercentMax"] },
@@ -539,7 +549,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       likeTimelinePostsNotUsedMin: 0,
       likeTimelinePostsNotUsedMax: 0,
       saveMediaEnabled: false,
-      saveMediaPercent: 20,
+      saveMediaPercentMin: 20,
+      saveMediaPercentMax: 20,
       sharePostPercentMin: 0,
       sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0,
@@ -676,7 +687,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       likeTimelinePostsDelayMin: 3, likeTimelinePostsDelayMax: 8,
       likeTimelinePostsOrderMin: 0, likeTimelinePostsOrderMax: 0,
       likeTimelinePostsNotUsedMin: 0, likeTimelinePostsNotUsedMax: 0,
-      saveMediaEnabled: false, saveMediaPercent: 20,
+      saveMediaEnabled: false, saveMediaPercentMin: 20, saveMediaPercentMax: 20,
       sharePostPercentMin: 0, sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0, likeTimelinePostsPercentMax: 0,
       expandCaptionPercentMin: 0, expandCaptionPercentMax: 0,
@@ -978,7 +989,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Expand Caption%</span>
                 </div>
               </div>
-              {/* ROW 2: Like Delay | Save Liked | Like% — left-aligned */}
+              {/* ROW 2: Like Delay | Save Media | Like% — left-aligned */}
               <div className={`flex items-center gap-3 flex-wrap pt-1.5 border-t border-border/40 transition-opacity ${!settings.viewTimelineFeedEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                 <div className="flex items-center gap-1.5">
                   {pctInputs("likeTimelinePostsPercentMin", "likeTimelinePostsPercentMax")}
@@ -1005,22 +1016,16 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Save Liked</span>
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Save Media</span>
                   <input type="checkbox" id="saveMediaEnabled"
                     checked={!!settings.saveMediaEnabled}
                     onChange={(e) => setSettings({ ...settings, saveMediaEnabled: e.target.checked })}
                     className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0"
                   />
                   <div className={`flex items-center gap-1.5 transition-opacity ${!settings.saveMediaEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
-                    <div className="relative">
-                      <NumField min={1} max={100} className="w-14 h-7 text-xs pr-5"
-                        value={settings.saveMediaPercent ?? 20}
-                        onChange={(v) => setSettings({ ...settings, saveMediaPercent: v })}
-                      />
-                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground">of liked saved</span>
+                    {pctInputs("saveMediaPercentMin", "saveMediaPercentMax")}
                   </div>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">chance per viewed post</span>
                 </div>
                 <div className="h-4 w-px bg-border/60 shrink-0" />
                 <div className="flex items-center gap-1.5">
@@ -1113,117 +1118,80 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   </div>
                 </div>
               </div>
-              {/* Sub-settings */}
+              {/* Sub-settings, grouped into compact rows to match the timeline controls */}
               {!!(settings as any).followSuggestedUsersIfEmptyEnabled && (
-                <div className="space-y-1.5 pl-5">
-                  {/* Row 1: Posts to scroll on Explore */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <Label className="text-xs text-muted-foreground uppercase">Min</Label>
-                    <NumField min={1} max={100} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreScrollMin ?? 5}
-                      onChange={(v) => setSettings({ ...settings, exploreScrollMin: v } as any)}
-                    />
-                    <Label className="text-xs text-muted-foreground uppercase">Max</Label>
-                    <NumField min={1} max={100} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreScrollMax ?? 15}
-                      onChange={(v) => setSettings({ ...settings, exploreScrollMax: v } as any)}
-                    />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Scroll on Explore</span>
-                  </div>
-                  {/* Row 2: Percentage of Explore posts to click */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {pctInputs("exploreClickMin", "exploreClickMax")}
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Click %</span>
-                  </div>
-                  {/* Row 3: Like % */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="space-y-2 pt-1.5 border-t border-border/40">
+                  {/* Row 1: Explore scroll volume and post-open percentage */}
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground uppercase">Min</Label>
-                      <div className="relative">
-                        <NumField min={0} max={100} className="w-14 h-7 text-xs pr-5"
-                          value={(settings as any).exploreLikePctMin ?? 0}
-                          onChange={(v) => setSettings({ ...settings, exploreLikePctMin: v } as any)}
-                        />
-                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
-                      </div>
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Scroll</span>
+                      <Label className="text-xs text-muted-foreground">Min</Label>
+                      <NumField min={1} max={100} className="w-14 h-7 text-xs"
+                        value={(settings as any).exploreScrollMin ?? 5}
+                        onChange={(v) => setSettings({ ...settings, exploreScrollMin: v } as any)}
+                      />
+                      <Label className="text-xs text-muted-foreground">Max</Label>
+                      <NumField min={1} max={100} className="w-14 h-7 text-xs"
+                        value={(settings as any).exploreScrollMax ?? 15}
+                        onChange={(v) => setSettings({ ...settings, exploreScrollMax: v } as any)}
+                      />
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground uppercase">Max</Label>
-                      <div className="relative">
-                        <NumField min={0} max={100} className="w-14 h-7 text-xs pr-5"
-                          value={(settings as any).exploreLikePctMax ?? 30}
-                          onChange={(v) => setSettings({ ...settings, exploreLikePctMax: v } as any)}
-                        />
-                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
-                      </div>
+                      {pctInputs("exploreClickMin", "exploreClickMax")}
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Click</span>
                     </div>
-                    <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500 shrink-0" />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like%</span>
                   </div>
-                  {/* Row 4: Share selected Explore posts to own feed */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {pctInputs("exploreShareToFeedPctMin", "exploreShareToFeedPctMax")}
-                    <Repeat2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Share to Feed%</span>
-                  </div>
-                  {/* Row 5: Save selected Explore posts */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {pctInputs("exploreSaveMediaPctMin", "exploreSaveMediaPctMax")}
-                    <BookOpen className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Save Media%</span>
-                  </div>
-                  {/* Row 4: Visit Author's Profile % */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Row 2: Post actions */}
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground uppercase">Min</Label>
-                      <div className="relative">
-                        <NumField min={0} max={100} className="w-14 h-7 text-xs pr-5"
-                          value={(settings as any).exploreVisitProfilePctMin ?? 0}
-                          onChange={(v) => setSettings({ ...settings, exploreVisitProfilePctMin: v } as any)}
-                        />
-                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
-                      </div>
+                      {pctInputs("exploreLikePctMin", "exploreLikePctMax")}
+                      <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500 shrink-0" />
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground uppercase">Max</Label>
-                      <div className="relative">
-                        <NumField min={0} max={100} className="w-14 h-7 text-xs pr-5"
-                          value={(settings as any).exploreVisitProfilePctMax ?? 20}
-                          onChange={(v) => setSettings({ ...settings, exploreVisitProfilePctMax: v } as any)}
-                        />
-                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
-                      </div>
+                      {pctInputs("exploreShareToFeedPctMin", "exploreShareToFeedPctMax")}
+                      <Repeat2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Share to Feed</span>
                     </div>
-                    <User className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Visit Author's Profile%</span>
+                    <div className="flex items-center gap-1.5">
+                      {pctInputs("exploreSaveMediaPctMin", "exploreSaveMediaPctMax")}
+                      <BookOpen className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Save Media</span>
+                    </div>
                   </div>
-                  {/* Row 5: Posts to scroll on profile */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <Label className="text-xs text-muted-foreground uppercase">Min</Label>
-                    <NumField min={0} max={50} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreProfileScrollMin ?? 3}
-                      onChange={(v) => setSettings({ ...settings, exploreProfileScrollMin: v } as any)}
-                    />
-                    <Label className="text-xs text-muted-foreground uppercase">Max</Label>
-                    <NumField min={0} max={50} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreProfileScrollMax ?? 8}
-                      onChange={(v) => setSettings({ ...settings, exploreProfileScrollMax: v } as any)}
-                    />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Scroll on Profile</span>
-                  </div>
-                  {/* Row 6: Posts to click on profile */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <Label className="text-xs text-muted-foreground uppercase">Min</Label>
-                    <NumField min={0} max={20} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreProfileClickMin ?? 1}
-                      onChange={(v) => setSettings({ ...settings, exploreProfileClickMin: v } as any)}
-                    />
-                    <Label className="text-xs text-muted-foreground uppercase">Max</Label>
-                    <NumField min={0} max={20} className="w-14 h-7 text-xs"
-                      value={(settings as any).exploreProfileClickMax ?? 3}
-                      onChange={(v) => setSettings({ ...settings, exploreProfileClickMax: v } as any)}
-                    />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Click on Profile</span>
+                  {/* Row 3: Author and profile-feed actions */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      {pctInputs("exploreVisitProfilePctMin", "exploreVisitProfilePctMax")}
+                      <User className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Visit Author Profile</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Profile Posts to Scroll</span>
+                      <Label className="text-xs text-muted-foreground">Min</Label>
+                      <NumField min={0} max={50} className="w-14 h-7 text-xs"
+                        value={(settings as any).exploreProfileScrollMin ?? 3}
+                        onChange={(v) => setSettings({ ...settings, exploreProfileScrollMin: v } as any)}
+                      />
+                      <Label className="text-xs text-muted-foreground">Max</Label>
+                      <NumField min={0} max={50} className="w-14 h-7 text-xs"
+                        value={(settings as any).exploreProfileScrollMax ?? 8}
+                        onChange={(v) => setSettings({ ...settings, exploreProfileScrollMax: v } as any)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Profile Posts to Click</span>
+                      <Label className="text-xs text-muted-foreground">Min</Label>
+                      <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                        value={(settings as any).exploreProfileClickMin ?? 1}
+                        onChange={(v) => setSettings({ ...settings, exploreProfileClickMin: v } as any)}
+                      />
+                      <Label className="text-xs text-muted-foreground">Max</Label>
+                      <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                        value={(settings as any).exploreProfileClickMax ?? 3}
+                        onChange={(v) => setSettings({ ...settings, exploreProfileClickMax: v } as any)}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

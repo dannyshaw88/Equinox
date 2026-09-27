@@ -4837,28 +4837,39 @@ class AutomationEngine {
             } else {
               this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "", "ok", summary);
             }
-            // Save media from liked posts at the configured percentage
-            const saveEnabled = !!s.saveMediaEnabled;
-            const savePct = Number(s.saveMediaPercent ?? 0);
-            if (saveEnabled && savePct > 0 && likedPosts.length > 0) {
-              for (const post of likedPosts) {
-                if (!post.mediaId) continue;
-                if (Math.random() * 100 < savePct) {
-                  try {
-                    await client.saveMedia(post.mediaId);
-                    console.log(`[engine] @${profile.username}: 🔖 saved post ${post.shortcode} by @${post.ownerUsername}`);
-                    this.logAction(profile.id, tool.id, "save_media", post.ownerUsername, post.shortcode, "post", "ok", "Saved liked timeline post");
-                  } catch (se: any) {
-                    console.warn(`[engine] @${profile.username}: save media error: ${se?.message}`);
-                  }
-                }
-              }
-            }
           } catch (e: any) {
             if (await checkSessionErr(e, "like_timeline_posts")) return;
             console.warn(`[engine] @${profile.username}: like timeline posts error: ${e?.message}`);
           }
           } // end likeCount > 0
+        }
+
+        // ── Save a % of viewed timeline posts, independently of liking ────────
+        const saveEnabled = !!s.saveMediaEnabled;
+        const legacySavePct = Number(s.saveMediaPercent ?? 20);
+        const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
+        const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
+        if (saveEnabled && savePctMax > 0 && vtfResult?.items?.length) {
+          for (const item of vtfResult.items) {
+            if (!item.mediaId) continue;
+            const saveChancePct = randInt(savePctMin, savePctMax);
+            if (Math.random() * 100 >= saveChancePct) continue;
+            try {
+              const saved = await client.saveMedia(item.mediaId);
+              this.logAction(
+                profile.id, tool.id, "save_media", item.username, item.shortcode, "post",
+                saved ? "ok" : "fail",
+                saved ? "Saved viewed timeline post" : "Instagram did not confirm saving timeline post",
+              );
+              if (saved) {
+                console.log(`[engine] @${profile.username}: 🔖 saved viewed post ${item.shortcode} by @${item.username}`);
+              }
+            } catch (se: any) {
+              if (await checkSessionErr(se, "save_timeline_media")) return;
+              console.warn(`[engine] @${profile.username}: save timeline media error: ${se?.message}`);
+              this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
+            }
+          }
         }
 
         // ── Share a % of viewed feed posts to the user's feed ────────────────
@@ -5180,7 +5191,7 @@ class AutomationEngine {
         const likeDelayMin = Number(s.likeTimelinePostsDelayMin ?? 3);
         const likeDelayMax = Number(s.likeTimelinePostsDelayMax ?? 8);
         try {
-          const { liked, watched, likedPosts, sessionExpired, sessionExpiredReason } = await client.likeTimelinePosts(likeCount, likeDelayMin, likeDelayMax);
+          const { liked, watched, likedPosts, candidatePosts, sessionExpired, sessionExpiredReason } = await client.likeTimelinePosts(likeCount, likeDelayMin, likeDelayMax);
           if (sessionExpired) {
             const expReason = sessionExpiredReason ?? "session expired (login_required) — likeTimelinePosts";
             console.warn(`[engine] @${profile.username}: likeTimelinePosts — session expired (login_required), marking logged_out`);
@@ -5202,19 +5213,28 @@ class AutomationEngine {
           } else {
             this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "", "ok", summary);
           }
-          // Save media from liked posts at the configured percentage
+          // Save candidate timeline posts independently of whether liking succeeded.
           const saveEnabled = !!s.saveMediaEnabled;
-          const savePct = Number(s.saveMediaPercent ?? 0);
-          if (saveEnabled && savePct > 0 && likedPosts.length > 0) {
-            for (const post of likedPosts) {
+          const legacySavePct = Number(s.saveMediaPercent ?? 20);
+          const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
+          const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
+          if (saveEnabled && savePctMax > 0 && candidatePosts.length > 0) {
+            for (const post of candidatePosts) {
               if (!post.mediaId) continue;
-              if (Math.random() * 100 < savePct) {
+              const saveChancePct = randInt(savePctMin, savePctMax);
+              if (Math.random() * 100 < saveChancePct) {
                 try {
-                  await client.saveMedia(post.mediaId);
-                  console.log(`[engine] @${profile.username}: 🔖 saved post ${post.shortcode} by @${post.ownerUsername}`);
-                  this.logAction(profile.id, tool.id, "save_media", post.ownerUsername, post.shortcode, "post", "ok", "Saved liked timeline post");
+                  const saved = await client.saveMedia(post.mediaId);
+                  console.log(`[engine] @${profile.username}: 🔖 saved timeline post ${post.shortcode} by @${post.ownerUsername}`);
+                  this.logAction(
+                    profile.id, tool.id, "save_media", post.ownerUsername, post.shortcode, "post",
+                    saved ? "ok" : "fail",
+                    saved ? "Saved timeline post" : "Instagram did not confirm saving timeline post",
+                  );
                 } catch (se: any) {
+                  if (await checkSessionErr(se, "save_timeline_media_standalone")) return;
                   console.warn(`[engine] @${profile.username}: save media error: ${se?.message}`);
+                  this.logAction(profile.id, tool.id, "save_media", post.ownerUsername, post.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
                 }
               }
             }
