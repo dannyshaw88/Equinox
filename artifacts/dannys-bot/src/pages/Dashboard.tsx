@@ -78,6 +78,15 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.577",
+    date: "27 Sep 2026",
+    items: [
+      { category: "New", text: "Timeline Save Media can now save viewed posts whether or not they were liked, with separate minimum and maximum percentages." },
+      { category: "New", text: "Explore now has separate minimum and maximum percentages for sharing selected posts to your feed and saving media." },
+      { category: "UI", text: "Explore settings are grouped into compact rows, matching the View Timeline Feed layout." },
+    ],
+  },
+  {
     version: "1.1.567",
     date: "22 Sep 2026",
     items: [
