@@ -274,6 +274,8 @@ function extractOperationName(rawUrl: string): string {
     // Media
     "media/like":                              "LikeMedia",
     "media/unlike":                            "UnlikeMedia",
+    "media/save":                              "SaveMedia",
+    "media/re_share_to_feed":                  "SharePostToFeed",
     "media/configure":                         "PostPhoto",
     "media/configure_sidecar":                 "PostCarousel",
     "media/upload_finish":                     "UploadMedia",

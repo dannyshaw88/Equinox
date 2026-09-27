@@ -5700,6 +5700,10 @@ class AutomationEngine {
              ? Math.max(1, Math.round(exploreItems.length * exploreClickPct / 100))
              : 0;
           const toClick = [...exploreItems].sort(() => 0.5 - Math.random()).slice(0, exploreClickCount);
+           const exploreSharePctMin = Math.min(100, Math.max(0, Number((s as any).exploreShareToFeedPctMin ?? 0)));
+           const exploreSharePctMax = Math.min(100, Math.max(exploreSharePctMin, Number((s as any).exploreShareToFeedPctMax ?? 0)));
+           const exploreSavePctMin = Math.min(100, Math.max(0, Number((s as any).exploreSaveMediaPctMin ?? 0)));
+           const exploreSavePctMax = Math.min(100, Math.max(exploreSavePctMin, Number((s as any).exploreSaveMediaPctMax ?? 0)));
 
           for (const item of toClick) {
             try {
@@ -5725,6 +5729,44 @@ class AutomationEngine {
                   this.logAction(profile.id, tool.id, "like_post", item.username, item.shortcode, "post", "ok", "Liked explore post");
                 } catch (e: any) {
                   console.warn(`[engine] @${profile.username}: explore like post error: ${e?.message}`);
+                }
+              }
+            }
+
+            // Share this opened Explore post to the account's own feed?
+            if (exploreSharePctMax > 0 && item.mediaId) {
+              const sharePct = randInt(exploreSharePctMin, exploreSharePctMax);
+              if (Math.random() * 100 < sharePct) {
+                try {
+                  const shared = await c.sharePostToFeed(item.mediaId);
+                  this.logAction(
+                    profile.id, tool.id, "share_post", item.username, item.shortcode, "post",
+                    shared ? "ok" : "fail",
+                    shared ? "Shared Explore post to feed" : "Instagram did not confirm sharing Explore post to feed",
+                  );
+                } catch (e: any) {
+                  if (await checkSessionErr(e, "explore_share_post")) return;
+                  console.warn(`[engine] @${profile.username}: explore share post error: ${e?.message}`);
+                  this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "fail", e?.message ?? "Explore share failed");
+                }
+              }
+            }
+
+            // Save this opened Explore post?
+            if (exploreSavePctMax > 0 && item.mediaId) {
+              const savePct = randInt(exploreSavePctMin, exploreSavePctMax);
+              if (Math.random() * 100 < savePct) {
+                try {
+                  const saved = await c.saveMedia(item.mediaId);
+                  this.logAction(
+                    profile.id, tool.id, "save_media", item.username, item.shortcode, "post",
+                    saved ? "ok" : "fail",
+                    saved ? "Saved Explore post" : "Instagram did not confirm saving Explore post",
+                  );
+                } catch (e: any) {
+                  if (await checkSessionErr(e, "explore_save_media")) return;
+                  console.warn(`[engine] @${profile.username}: explore save media error: ${e?.message}`);
+                  this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", e?.message ?? "Explore save failed");
                 }
               }
             }

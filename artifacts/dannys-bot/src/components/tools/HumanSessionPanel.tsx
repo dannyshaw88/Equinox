@@ -96,6 +96,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "ep_scroll",  label: "Posts to scroll",  settingKeys: ["exploreScrollMin","exploreScrollMax"] },
          { key: "ep_click",   label: "Posts to click %", settingKeys: ["exploreClickMin","exploreClickMax"] },
         { key: "ep_like",    label: "Like %",           settingKeys: ["exploreLikePctMin","exploreLikePctMax"] },
+         { key: "ep_share",   label: "Share to Feed %",  settingKeys: ["exploreShareToFeedPctMin","exploreShareToFeedPctMax"] },
+         { key: "ep_save",    label: "Save Media %",     settingKeys: ["exploreSaveMediaPctMin","exploreSaveMediaPctMax"] },
         { key: "ep_profile", label: "Visit author profile %", settingKeys: ["exploreVisitProfilePctMin","exploreVisitProfilePctMax"] },
         { key: "ep_prof_scroll", label: "Posts to scroll on profile", settingKeys: ["exploreProfileScrollMin","exploreProfileScrollMax"] },
         { key: "ep_prof_click",  label: "Posts to click on profile",  settingKeys: ["exploreProfileClickMin","exploreProfileClickMax"] },
@@ -584,6 +586,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       exploreClickMax: 30,
       exploreLikePctMin: 0,
       exploreLikePctMax: 30,
+      exploreShareToFeedPctMin: 0,
+      exploreShareToFeedPctMax: 0,
+      exploreSaveMediaPctMin: 0,
+      exploreSaveMediaPctMax: 0,
       exploreVisitProfilePctMin: 0,
       exploreVisitProfilePctMax: 20,
       exploreProfileScrollMin: 3,
@@ -690,6 +696,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       exploreScrollMin: 5, exploreScrollMax: 15,
        exploreClickMin: 10, exploreClickMax: 30,
       exploreLikePctMin: 0, exploreLikePctMax: 30,
+       exploreShareToFeedPctMin: 0, exploreShareToFeedPctMax: 0,
+       exploreSaveMediaPctMin: 0, exploreSaveMediaPctMax: 0,
       exploreVisitProfilePctMin: 0, exploreVisitProfilePctMax: 20,
       exploreProfileScrollMin: 3, exploreProfileScrollMax: 8,
       exploreProfileClickMin: 1, exploreProfileClickMax: 3,
@@ -1151,6 +1159,18 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     </div>
                     <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500 shrink-0" />
                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like%</span>
+                  </div>
+                  {/* Row 4: Share selected Explore posts to own feed */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {pctInputs("exploreShareToFeedPctMin", "exploreShareToFeedPctMax")}
+                    <Repeat2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Share to Feed%</span>
+                  </div>
+                  {/* Row 5: Save selected Explore posts */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {pctInputs("exploreSaveMediaPctMin", "exploreSaveMediaPctMax")}
+                    <BookOpen className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Save Media%</span>
                   </div>
                   {/* Row 4: Visit Author's Profile % */}
                   <div className="flex items-center gap-1.5 flex-wrap">

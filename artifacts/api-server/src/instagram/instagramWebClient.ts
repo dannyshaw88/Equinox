@@ -1231,6 +1231,8 @@ export class InstagramWebClient {
         "/api/v1/media/seen":                       ["Marking media as seen",           "Mark seen failed"],
         "/api/v1/media/*/like":                     ["Liked post",                      "Like failed"],
         "/api/v1/media/*/unlike":                   ["Unliked post",                    "Unlike failed"],
+        "/api/v1/media/*/save":                     ["Saved media",                     "Save media failed"],
+        "/api/v1/media/*/re_share_to_feed":         ["Shared post to feed",              "Share to feed failed"],
         "/api/v1/media/*/comment":                  ["Comment posted",                  "Comment failed"],
         "/api/v1/friendships/destroy":              ["Unfollowed",                      "Unfollow failed"],
         "/api/v1/friendships/destroy/*":            ["Unfollowed",                      "Unfollow failed"],

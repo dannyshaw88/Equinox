@@ -157769,6 +157769,8 @@ var InstagramWebClient = class {
         "/api/v1/media/seen": ["Marking media as seen", "Mark seen failed"],
         "/api/v1/media/*/like": ["Liked post", "Like failed"],
         "/api/v1/media/*/unlike": ["Unliked post", "Unlike failed"],
+        "/api/v1/media/*/save": ["Saved media", "Save media failed"],
+        "/api/v1/media/*/re_share_to_feed": ["Shared post to feed", "Share to feed failed"],
         "/api/v1/media/*/comment": ["Comment posted", "Comment failed"],
         "/api/v1/friendships/destroy": ["Unfollowed", "Unfollow failed"],
         "/api/v1/friendships/destroy/*": ["Unfollowed", "Unfollow failed"],
@@ -163049,6 +163051,8 @@ function extractOperationName(rawUrl) {
     // Media
     "media/like": "LikeMedia",
     "media/unlike": "UnlikeMedia",
+    "media/save": "SaveMedia",
+    "media/re_share_to_feed": "SharePostToFeed",
     "media/configure": "PostPhoto",
     "media/configure_sidecar": "PostCarousel",
     "media/upload_finish": "UploadMedia",
@@ -163827,6 +163831,7 @@ var SESSION_OPS = /* @__PURE__ */ new Set([
   "ViewFeedPost",
   "LikeMedia",
   "SaveMedia",
+  "SharePostToFeed",
   "feed/timeline",
   "discover/topical_explore",
   "feed/user",
@@ -169051,6 +169056,10 @@ ${err?.stack ?? ""}`);
           const exploreClickPct = randInt2(exploreClickPctMin, exploreClickPctMax);
           const exploreClickCount = exploreClickPct > 0 && exploreItems.length > 0 ? Math.max(1, Math.round(exploreItems.length * exploreClickPct / 100)) : 0;
           const toClick = [...exploreItems].sort(() => 0.5 - Math.random()).slice(0, exploreClickCount);
+          const exploreSharePctMin = Math.min(100, Math.max(0, Number(s.exploreShareToFeedPctMin ?? 0)));
+          const exploreSharePctMax = Math.min(100, Math.max(exploreSharePctMin, Number(s.exploreShareToFeedPctMax ?? 0)));
+          const exploreSavePctMin = Math.min(100, Math.max(0, Number(s.exploreSaveMediaPctMin ?? 0)));
+          const exploreSavePctMax = Math.min(100, Math.max(exploreSavePctMin, Number(s.exploreSaveMediaPctMax ?? 0)));
           for (const item of toClick) {
             try {
               await c3.viewFeedPost(item.mediaId);
@@ -169073,6 +169082,50 @@ ${err?.stack ?? ""}`);
                   this.logAction(profile.id, tool.id, "like_post", item.username, item.shortcode, "post", "ok", "Liked explore post");
                 } catch (e) {
                   console.warn(`[engine] @${profile.username}: explore like post error: ${e?.message}`);
+                }
+              }
+            }
+            if (exploreSharePctMax > 0 && item.mediaId) {
+              const sharePct = randInt2(exploreSharePctMin, exploreSharePctMax);
+              if (Math.random() * 100 < sharePct) {
+                try {
+                  const shared = await c3.sharePostToFeed(item.mediaId);
+                  this.logAction(
+                    profile.id,
+                    tool.id,
+                    "share_post",
+                    item.username,
+                    item.shortcode,
+                    "post",
+                    shared ? "ok" : "fail",
+                    shared ? "Shared Explore post to feed" : "Instagram did not confirm sharing Explore post to feed"
+                  );
+                } catch (e) {
+                  if (await checkSessionErr(e, "explore_share_post")) return;
+                  console.warn(`[engine] @${profile.username}: explore share post error: ${e?.message}`);
+                  this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "fail", e?.message ?? "Explore share failed");
+                }
+              }
+            }
+            if (exploreSavePctMax > 0 && item.mediaId) {
+              const savePct = randInt2(exploreSavePctMin, exploreSavePctMax);
+              if (Math.random() * 100 < savePct) {
+                try {
+                  const saved = await c3.saveMedia(item.mediaId);
+                  this.logAction(
+                    profile.id,
+                    tool.id,
+                    "save_media",
+                    item.username,
+                    item.shortcode,
+                    "post",
+                    saved ? "ok" : "fail",
+                    saved ? "Saved Explore post" : "Instagram did not confirm saving Explore post"
+                  );
+                } catch (e) {
+                  if (await checkSessionErr(e, "explore_save_media")) return;
+                  console.warn(`[engine] @${profile.username}: explore save media error: ${e?.message}`);
+                  this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", e?.message ?? "Explore save failed");
                 }
               }
             }
