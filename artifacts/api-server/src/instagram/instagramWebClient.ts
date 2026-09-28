@@ -6773,35 +6773,25 @@ export class InstagramWebClient {
     }, "Get suggested users");
   }
 
-  // ── Visit the Explore page and return up to `scrollCount` post items ───────
-  // Used by the Human Session engine when the timeline returns 0 posts.
-  // The installed instagram-private-api client implements the current mobile
-  // Explore media feed as topical_explore. Keep the response diagnostics below:
-  // the route name is misleading, so we must verify that Instagram returned
-  // media sections rather than only fixed destinations/topic-style sections.
-  async visitExplorePage(scrollCount: number): Promise<Array<{ mediaId: string; shortcode: string; username: string; userId: string }>> {
+  // ── Visit Explore and gather up to `postCount` distinct posts ─────────────
+  // The Human Session setting is a target post count, not an API-call count.
+  // Instagram returns one page per topical_explore request; follow next_max_id
+  // with the same session_id until the target is reached or the feed is exhausted.
+  async visitExplorePage(postCount: number): Promise<Array<{ mediaId: string; shortcode: string; username: string; userId: string }>> {
     return this.withActionContext("visitExplorePage", async () => this.timed("VisitExplorePage", async () => {
       // Nav chain: user navigated Home → Explore tab.
       this._navChainScreen = "explore";
+      const requestedCount = Math.max(1, Math.floor(Number.isFinite(postCount) ? postCount : 1));
+      const maxPages = Math.min(100, requestedCount);
       const items: Array<{ mediaId: string; shortcode: string; username: string; userId: string }> = [];
+      const seenMediaIds = new Set<string>();
+      const requestedCursors = new Set<string>();
+      const exploreSessionId = randomUUID();
+      let nextMaxId: string | undefined;
+      let pageCount = 0;
+      let consecutiveNoProgressPages = 0;
+      let stopReason = "page_limit";
       try {
-        const exploreSessionId = randomUUID();
-        // Match TopicalExploreFeed from instagram-private-api@1.46.1.  Its
-        // response is sectional_items containing the Explore media grid; the
-        // name "topical" does not mean this request is limited to interest
-        // pills. Do not add max_id on the first page.
-        const exploreQuery = new URLSearchParams({
-          is_prefetch: "false",
-          omit_cover_media: "true",
-          module: "explore_popular",
-          reels_configuration: "hide_hero",
-          use_sectional_payload: "true",
-          timezone_offset: this._tzOffset,
-          cluster_id: "explore_all:0",
-          session_id: exploreSessionId,
-          include_fixed_destinations: "true",
-        }).toString();
-
         const classifyExploreResponse = (json: any) => {
           const sections: any[] = Array.isArray(json?.sectional_items) ? json.sectional_items : [];
           const entries: any[] = [
@@ -6863,52 +6853,133 @@ export class InstagramWebClient {
           };
         };
 
-        const j = await this.mobileSessionGet(
-          `/api/v1/discover/topical_explore/?${exploreQuery}`,
-          (json) => {
-            const shape = classifyExploreResponse(json);
-            return `Explore feed loaded [surface=${shape.surface}, sections=${shape.sections}, media=${shape.mediaItems}, fixed=${shape.fixedDestinations}, topic_pill_sections=${shape.topicOrPillSections}]`;
+        while (items.length < requestedCount && pageCount < maxPages) {
+          const requestCursor = nextMaxId;
+          if (requestCursor) {
+            if (requestedCursors.has(requestCursor)) {
+              stopReason = "cursor_repeated";
+              break;
+            }
+            requestedCursors.add(requestCursor);
           }
-        );
-        if (j?.status === "fail" || j?.status === "error") {
-          throw new Error(
-            `Explore API returned status=${j.status}${j?.message ? `: ${String(j.message).slice(0, 180)}` : ""}`,
+
+          pageCount++;
+          // Keep the same Explore session across pages. The first request has no
+          // max_id; subsequent requests use Instagram's next_max_id cursor.
+          const exploreParams = new URLSearchParams({
+            is_prefetch: "false",
+            omit_cover_media: "true",
+            module: "explore_popular",
+            reels_configuration: "hide_hero",
+            use_sectional_payload: "true",
+            timezone_offset: this._tzOffset,
+            cluster_id: "explore_all:0",
+            session_id: exploreSessionId,
+            include_fixed_destinations: "true",
+          });
+          if (requestCursor) exploreParams.set("max_id", requestCursor);
+
+          const j = await this.mobileSessionGet(
+            `/api/v1/discover/topical_explore/?${exploreParams.toString()}`,
+            (json) => {
+              const shape = classifyExploreResponse(json);
+              return `Explore feed loaded [page=${pageCount}, surface=${shape.surface}, sections=${shape.sections}, media=${shape.mediaItems}, fixed=${shape.fixedDestinations}, topic_pill_sections=${shape.topicOrPillSections}]`;
+            }
           );
-        }
-        if (!j) {
-          throw new Error("Explore API returned no response");
-        }
-        const shape = classifyExploreResponse(j);
-        console.log(
-          `[webClient] topical_explore response: surface=${shape.surface} ` +
-          `sections=${shape.sections} media=${shape.mediaItems} ` +
-          `fixed_destinations=${shape.fixedDestinations} ` +
-          `topic_pill_sections=${shape.topicOrPillSections} entries=${shape.entries}`,
-        );
-        const sectionItems = (j?.sectional_items ?? []).flatMap((section: any) => {
-          const content = section?.layout_content ?? {};
-          return [
-            ...(Array.isArray(content.medias) ? content.medias : []),
-            ...(Array.isArray(content.fill_items) ? content.fill_items : []),
-            ...(Array.isArray(content.items) ? content.items : []),
+          if (j?.status === "fail" || j?.status === "error") {
+            throw new Error(
+              `Explore API page ${pageCount} returned status=${j.status}${j?.message ? `: ${String(j.message).slice(0, 180)}` : ""}`,
+            );
+          }
+          if (!j) {
+            throw new Error(`Explore API page ${pageCount} returned no response`);
+          }
+
+          const shape = classifyExploreResponse(j);
+          const sectionItems = (Array.isArray(j.sectional_items) ? j.sectional_items : []).flatMap((section: any) => {
+            const content = section?.layout_content ?? {};
+            return [
+              ...(Array.isArray(content.medias) ? content.medias : []),
+              ...(Array.isArray(content.fill_items) ? content.fill_items : []),
+              ...(Array.isArray(content.items) ? content.items : []),
+            ];
+          });
+          const feedItems: any[] = [
+            ...sectionItems,
+            ...(Array.isArray(j.items) ? j.items : []),
           ];
-        });
-        const feedItems: any[] = [...sectionItems, ...(j?.items ?? [])];
-        for (const m of feedItems) {
-          const media = m?.media ?? m;
-          const mediaId = String(media?.pk ?? media?.id ?? "");
-          const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
-          const owner = media?.user ?? media?.owner ?? {};
-          const username = String(owner?.username ?? "");
-          const userId = String(owner?.pk ?? owner?.id ?? "");
-          if (mediaId) items.push({ mediaId, shortcode, username, userId });
+          let newItemsOnPage = 0;
+          for (const entry of feedItems) {
+            const media = entry?.media ?? entry;
+            const mediaId = String(media?.pk ?? media?.id ?? "");
+            if (!mediaId || seenMediaIds.has(mediaId)) continue;
+            seenMediaIds.add(mediaId);
+            const shortcode = String(media?.code ?? media?.shortcode ?? mediaId);
+            const owner = media?.user ?? media?.owner ?? {};
+            const username = String(owner?.username ?? "");
+            const userId = String(owner?.pk ?? owner?.id ?? "");
+            items.push({ mediaId, shortcode, username, userId });
+            newItemsOnPage++;
+            if (items.length >= requestedCount) break;
+          }
+
+          console.log(
+            `[webClient] topical_explore response: page=${pageCount} surface=${shape.surface} ` +
+            `sections=${shape.sections} media=${shape.mediaItems} ` +
+            `fixed_destinations=${shape.fixedDestinations} ` +
+            `topic_pill_sections=${shape.topicOrPillSections} ` +
+            `gathered=${items.length}/${requestedCount}`,
+          );
+
+          if (items.length >= requestedCount) {
+            stopReason = "target_reached";
+            break;
+          }
+
+          consecutiveNoProgressPages = newItemsOnPage === 0
+            ? consecutiveNoProgressPages + 1
+            : 0;
+          if (consecutiveNoProgressPages >= 3) {
+            stopReason = "no_new_media";
+            break;
+          }
+
+          if (j.more_available !== true) {
+            stopReason = "feed_exhausted";
+            break;
+          }
+          const responseCursor = String(j.next_max_id ?? "").trim();
+          if (!responseCursor) {
+            stopReason = "missing_next_cursor";
+            break;
+          }
+          if (requestedCursors.has(responseCursor)) {
+            stopReason = "cursor_repeated";
+            break;
+          }
+          nextMaxId = responseCursor;
         }
       } catch (e: any) {
-        console.warn(`[webClient] visitExplorePage topical_explore failed: ${e?.message}`);
+        console.warn(
+          `[webClient] visitExplorePage topical_explore failed after ${pageCount} page(s), ` +
+          `gathered ${items.length}/${requestedCount}: ${e?.message}`,
+        );
         throw e;
       }
-      return items.slice(0, scrollCount);
-    }, `Visit explore page (scroll ${scrollCount})`));
+
+      if (items.length < requestedCount) {
+        console.warn(
+          `[webClient] topical_explore gathered ${items.length}/${requestedCount} requested post(s) ` +
+          `across ${pageCount} page(s); stopped=${stopReason}`,
+        );
+      } else {
+        console.log(
+          `[webClient] topical_explore gathered ${items.length}/${requestedCount} requested post(s) ` +
+          `across ${pageCount} page(s); stopped=${stopReason}`,
+        );
+      }
+      return items;
+    }, `Visit explore page (posts ${Math.max(1, Math.floor(Number.isFinite(postCount) ? postCount : 1))})`));
   }
 
   // ── Follow X users from the Suggested Users page ──────────────────────────

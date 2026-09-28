@@ -5706,12 +5706,15 @@ class AutomationEngine {
         const c = await this.ensureClient(profile, state);
         if (!c) return;
         try {
-          const scrollMin = Math.max(1, Number((s as any).exploreScrollMin ?? 5));
-          const scrollMax = Math.max(scrollMin, Number((s as any).exploreScrollMax ?? 15));
-          const exploreScrollCount = randInt(scrollMin, scrollMax);
-          const exploreItems = await c.visitExplorePage(exploreScrollCount);
-          console.log(`[engine] @${profile.username}: 🔭 explore page — fetched ${exploreItems.length} item(s)`);
-          this.logAction(profile.id, tool.id, "visit_explore_page", "", "", "", "ok", `Visited explore page, fetched ${exploreItems.length} posts`);
+          const explorePostMin = Math.max(1, Number((s as any).exploreScrollMin ?? 5));
+          const explorePostMax = Math.max(explorePostMin, Number((s as any).exploreScrollMax ?? 15));
+          const explorePostTarget = randInt(explorePostMin, explorePostMax);
+          const exploreItems = await c.visitExplorePage(explorePostTarget);
+          console.log(`[engine] @${profile.username}: 🔭 explore page — fetched ${exploreItems.length}/${explorePostTarget} requested post(s)`);
+          this.logAction(
+            profile.id, tool.id, "visit_explore_page", "", "", "", "ok",
+            `Visited explore page, fetched ${exploreItems.length}/${explorePostTarget} requested posts`,
+          );
 
            const exploreClickPctMin = Math.min(100, Math.max(0, Number((s as any).exploreClickMin ?? 10)));
            const exploreClickPctMax = Math.min(100, Math.max(exploreClickPctMin, Number((s as any).exploreClickMax ?? 30)));
