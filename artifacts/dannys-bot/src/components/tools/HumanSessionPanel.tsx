@@ -90,6 +90,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vtf_count",      label: "Posts per session",                 settingKeys: ["viewTimelineFeedMin","viewTimelineFeedMax"] },
         { key: "vtf_order",      label: "Execution order",                   settingKeys: ["viewTimelineFeedOrderMin","viewTimelineFeedOrderMax"] },
         { key: "vtf_chance",     label: "Skip chance %",       settingKeys: ["viewTimelineFeedNotUsedMin","viewTimelineFeedNotUsedMax"] },
+        { key: "vtf_rerun",      label: "Re-run chance %",      settingKeys: ["viewTimelineFeedRerunChanceMin","viewTimelineFeedRerunChanceMax"] },
         { key: "vtf_like_pct",    label: "% posts to like",                  settingKeys: ["likeTimelinePostsPercentMin","likeTimelinePostsPercentMax"] },
         { key: "vtf_like_delay",  label: "Delay between likes in sec",       settingKeys: ["likeTimelinePostsDelayMin","likeTimelinePostsDelayMax"] },
         { key: "vtf_save_media",  label: "Save media",                     settingKeys: ["saveMediaEnabled","saveMediaPercentMin","saveMediaPercentMax"] },
@@ -103,6 +104,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "ep_enabled", label: "Enabled",          settingKeys: ["followSuggestedUsersIfEmptyEnabled"] },
         { key: "ep_order",   label: "Execution order",  settingKeys: ["explorePageOrderMin","explorePageOrderMax"] },
         { key: "ep_chance",  label: "Skip chance %",    settingKeys: ["explorePageSkipMin","explorePageSkipMax"] },
+        { key: "ep_rerun",   label: "Re-run chance %",  settingKeys: ["explorePageRerunChanceMin","explorePageRerunChanceMax"] },
         { key: "ep_scroll",  label: "Posts to scroll",  settingKeys: ["exploreScrollMin","exploreScrollMax"] },
          { key: "ep_click",   label: "Posts to click %", settingKeys: ["exploreClickMin","exploreClickMax"] },
         { key: "ep_like",    label: "Like %",           settingKeys: ["exploreLikePctMin","exploreLikePctMax"] },
@@ -119,11 +121,13 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vr_view_pct", label: "% of each reel to watch", settingKeys: ["reelWatchPercentMin","reelWatchPercentMax"] },
         { key: "vr_like_pct", label: "% of reels to like",      settingKeys: ["reelLikePercentMin","reelLikePercentMax"] },
         { key: "vr_skip",     label: "Skip chance %",     settingKeys: ["viewReelsNotUsedMin","viewReelsNotUsedMax"] },
+        { key: "vr_rerun",    label: "Re-run chance %",   settingKeys: ["viewReelsRerunChanceMin","viewReelsRerunChanceMax"] },
       ]},
       { key: "humanSession", label: "Human Jitter", description: "Core session order and cool-down", subOptions: [
         { key: "hs_enabled",      label: "Enabled",                                      settingKeys: ["humanSessionEnabled"] },
         { key: "hs_order",        label: "Execution order",                  settingKeys: ["humanSessionOrderMin","humanSessionOrderMax"] },
         { key: "hs_chance",       label: "Skip chance %",      settingKeys: ["humanSessionNotUsedMin","humanSessionNotUsedMax"] },
+        { key: "hs_rerun",        label: "Re-run chance %",    settingKeys: ["humanSessionRerunChanceMin","humanSessionRerunChanceMax"] },
         { key: "hs_notif",        label: "Notifications run chance %",       settingKeys: ["notificationsRunChanceMin","notificationsRunChanceMax"] },
         { key: "hs_ownprofile",   label: "Own Profile run chance %",         settingKeys: ["ownProfileRunChanceMin","ownProfileRunChanceMax"] },
         { key: "hs_settings",     label: "Settings run chance %",            settingKeys: ["settingsActivityRunChanceMin","settingsActivityRunChanceMax"] },
@@ -134,6 +138,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "cs_count",   label: "Stories per session",    settingKeys: ["checkTimelineStoriesMin","checkTimelineStoriesMax"] },
         { key: "cs_order",   label: "Execution order",        settingKeys: ["checkTimelineStoriesOrderMin","checkTimelineStoriesOrderMax"] },
         { key: "cs_chance",  label: "Skip chance %", settingKeys: ["checkTimelineStoriesNotUsedMin","checkTimelineStoriesNotUsedMax"] },
+        { key: "cs_rerun",   label: "Re-run chance %", settingKeys: ["checkTimelineStoriesRerunChanceMin","checkTimelineStoriesRerunChanceMax"] },
         { key: "cs_like",    label: "Like %",        settingKeys: ["storyLikePctMin","storyLikePctMax"] },
          { key: "cs_share",   label: "Share %",       settingKeys: ["storySharePctMin","storySharePctMax"] },
       ]},
@@ -142,6 +147,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "dm_count",   label: "DMs per session",        settingKeys: ["checkDmMin","checkDmMax"] },
         { key: "dm_order",   label: "Execution order",        settingKeys: ["checkDmOrderMin","checkDmOrderMax"] },
         { key: "dm_chance",  label: "Skip chance %", settingKeys: ["checkDmNotUsedMin","checkDmNotUsedMax"] },
+        { key: "dm_rerun",   label: "Re-run chance %", settingKeys: ["checkDmRerunChanceMin","checkDmRerunChanceMax"] },
       ]},
       { key: "repost", label: "Repost", description: "Repost settings for source account, local folder, alteration, caption and stop conditions", subOptions: [
         { key: "rp_enabled",         label: "Enabled",                          settingKeys: ["repostEnabled"] },
@@ -158,14 +164,16 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "rp_comments",        label: "Disable comments",                 settingKeys: ["repostDisableComments"] },
         { key: "rp_order",           label: "Execution order",                  settingKeys: ["repostOrderMin","repostOrderMax"] },
         { key: "rp_chance",          label: "Skip chance %",                    settingKeys: ["repostNotUsedMin","repostNotUsedMax"] },
+        { key: "rp_rerun",           label: "Re-run chance %",                  settingKeys: ["repostRerunChanceMin","repostRerunChanceMax"] },
         { key: "rp_stop",            label: "Stop conditions",                  settingKeys: ["repostDisableAtPostCount","repostDisableWhenExhausted"] },
       ]},
     ]},
     { label: "Follow Tool Settings", options: [
       { key: "hs_followEnabled", label: "Follow Tool Start / Stop", description: "Copy the Follow Tool enabled checkbox to other profiles" },
-      { key: "hs_followOrder", label: "Follow Tool Execution Order & Skip", description: "Copy execution order and skip chance for the embedded Follow Tool", subOptions: [
+      { key: "hs_followOrder", label: "Follow Tool Order, Skip & Re-run", description: "Copy execution order, skip chance and re-run chance for the embedded Follow Tool", subOptions: [
         { key: "fo_orderRange", label: "Execution order", settingKeys: ["followOrderMin","followOrderMax"] },
         { key: "fo_skipRange",  label: "Skip chance %",   settingKeys: ["followSkipMin","followSkipMax"] },
+        { key: "fo_rerunRange", label: "Re-run chance %", settingKeys: ["followRerunChanceMin","followRerunChanceMax"] },
       ]},
       { key: "hs_followTiming", label: "Timing", description: "Delays between each follow action", subOptions: [
         { key: "hf_delayAfterFollow", label: "Delay after each follow", settingKeys: ["follow:delayAfterFollowMin","follow:delayAfterFollowMax"] },
@@ -223,9 +231,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
     ]},
     { label: "Unfollow Tool Settings", options: [
       { key: "hs_unfollowEnabled", label: "Unfollow Tool Start / Stop", description: "Copy the Unfollow Tool enabled checkbox to other profiles" },
-      { key: "hs_unfollowOrder", label: "Unfollow Tool Execution Order & Skip", description: "Copy execution order and skip chance for the embedded Unfollow Tool", subOptions: [
+      { key: "hs_unfollowOrder", label: "Unfollow Tool Order, Skip & Re-run", description: "Copy execution order, skip chance and re-run chance for the embedded Unfollow Tool", subOptions: [
         { key: "ufo_orderRange", label: "Execution order", settingKeys: ["unfollowOrderMin","unfollowOrderMax"] },
         { key: "ufo_skipRange",  label: "Skip chance %",   settingKeys: ["unfollowSkipMin","unfollowSkipMax"] },
+        { key: "ufo_rerunRange", label: "Re-run chance %", settingKeys: ["unfollowRerunChanceMin","unfollowRerunChanceMax"] },
       ]},
       { key: "hs_unfollowSettings", label: "Settings", description: "Unfollow timing, limits and age filters", subOptions: [
         { key: "uf_h_age",   label: "Unfollow after min days since follow",           settingKeys: ["unfollow:minFollowAgeDays"] },
@@ -247,9 +256,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "hs_cnfEnabled",          label: "Contact New Followers Start / Stop",   description: "Copy the Contact New Followers enabled checkbox" },
       { key: "hs_autoReplyEnabled",    label: "Auto Reply Start / Stop",              description: "Copy the Auto Reply enabled checkbox" },
       { key: "hs_contactUsersEnabled", label: "Contact Users Sending Start / Stop",   description: "Copy the Contact Users Sending enabled checkbox" },
-      { key: "hs_contactOrder", label: "Contact Tool Execution Order & Skip", description: "Copy execution order and skip chance for the embedded Contact Tool", subOptions: [
+      { key: "hs_contactOrder", label: "Contact Tool Order, Skip & Re-run", description: "Copy execution order, skip chance and re-run chance for the embedded Contact Tool", subOptions: [
         { key: "co_orderRange", label: "Execution order", settingKeys: ["contactOrderMin","contactOrderMax"] },
         { key: "co_skipRange",  label: "Skip chance %",   settingKeys: ["contactSkipMin","contactSkipMax"] },
+        { key: "co_rerunRange", label: "Re-run chance %", settingKeys: ["contactRerunChanceMin","contactRerunChanceMax"] },
       ]},
       { key: "hs_contactNewFollowers", label: "Contact New Followers", description: "Auto-messaging settings for new followers", subOptions: [
         { key: "ct_h_onlyApp",   label: "Only app-followed users",              settingKeys: ["contact:contactOnlyAppFollowed"] },
@@ -278,6 +288,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "wb_enabled",     label: "Enabled",                                          settingKeys: ["webBrowsingEnabled"] },
         { key: "wb_order",       label: "Execution order",                                  settingKeys: ["webBrowsingOrderMin","webBrowsingOrderMax"] },
         { key: "wb_skip",        label: "Skip chance %",                                    settingKeys: ["webBrowsingSkipMin","webBrowsingSkipMax"] },
+        { key: "wb_rerun",       label: "Re-run chance %",                                  settingKeys: ["webBrowsingRerunChanceMin","webBrowsingRerunChanceMax"] },
         { key: "wb_visitRandom", label: "Visit websites at random",                        settingKeys: ["webBrowsingVisitRandom"] },
         { key: "wb_sites",       label: "Website URLs (tick to copy URLs to other accounts)", settingKeys: ["webBrowsingSites"] },
         { key: "wb_sitesRange",  label: "Sites to visit range",                            settingKeys: ["webBrowsingSitesMin","webBrowsingSitesMax"] },
@@ -504,11 +515,15 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewTimelineFeedOrderMax: 10,
       viewTimelineFeedNotUsedMin: 0,
       viewTimelineFeedNotUsedMax: 0,
+      viewTimelineFeedRerunChanceMin: 0,
+      viewTimelineFeedRerunChanceMax: 0,
       humanSessionEnabled: true,
       humanSessionOrderMin: 0,
       humanSessionOrderMax: 0,
       humanSessionNotUsedMin: 0,
       humanSessionNotUsedMax: 0,
+      humanSessionRerunChanceMin: 0,
+      humanSessionRerunChanceMax: 0,
       notificationsRunChanceMin: 100,
       notificationsRunChanceMax: 100,
       ownProfileRunChanceMin: 100,
@@ -528,6 +543,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkTimelineStoriesOrderMax: 0,
       checkTimelineStoriesNotUsedMin: 0,
       checkTimelineStoriesNotUsedMax: 0,
+      checkTimelineStoriesRerunChanceMin: 0,
+      checkTimelineStoriesRerunChanceMax: 0,
       storyLikePctMin: 0,
       storyLikePctMax: 0,
       storySharePctMin: 0,
@@ -539,6 +556,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkDmOrderMax: 0,
       checkDmNotUsedMin: 0,
       checkDmNotUsedMax: 0,
+      checkDmRerunChanceMin: 0,
+      checkDmRerunChanceMax: 0,
       likeTimelinePostsEnabled: false,
       likeTimelinePostsMin: 2,
       likeTimelinePostsMax: 5,
@@ -562,6 +581,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewReelsOrderMax: 0,
       viewReelsNotUsedMin: 0,
       viewReelsNotUsedMax: 0,
+      viewReelsRerunChanceMin: 0,
+      viewReelsRerunChanceMax: 0,
       viewPostProfilePercentMin: 0,
       viewPostProfilePercentMax: 0,
       viewProfileFeedPercentMin: 0,
@@ -576,14 +597,20 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       followOrderMax: 0,
       followSkipMin: 0,
       followSkipMax: 0,
+      followRerunChanceMin: 0,
+      followRerunChanceMax: 0,
       unfollowOrderMin: 0,
       unfollowOrderMax: 0,
       unfollowSkipMin: 0,
       unfollowSkipMax: 0,
+      unfollowRerunChanceMin: 0,
+      unfollowRerunChanceMax: 0,
       contactOrderMin: 0,
       contactOrderMax: 0,
       contactSkipMin: 0,
       contactSkipMax: 0,
+      contactRerunChanceMin: 0,
+      contactRerunChanceMax: 0,
       followSuggestedUsersIfEmptyEnabled: false,
       followSuggestedUsersIfEmptyMin: 1,
       followSuggestedUsersIfEmptyMax: 3,
@@ -591,6 +618,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       explorePageOrderMax: 0,
       explorePageSkipMin: 0,
       explorePageSkipMax: 0,
+      explorePageRerunChanceMin: 0,
+      explorePageRerunChanceMax: 0,
       exploreScrollMin: 5,
       exploreScrollMax: 15,
       exploreClickMin: 10,
@@ -629,6 +658,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       repostOrderMax: 0,
       repostNotUsedMin: 0,
       repostNotUsedMax: 0,
+      repostRerunChanceMin: 0,
+      repostRerunChanceMax: 0,
       repostDisableComments: false,
       repostDisableAtPostCount: 0,
       repostDisableWhenExhausted: true,
@@ -645,6 +676,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       webBrowsingOrderMax: 0,
       webBrowsingSkipMin: 0,
       webBrowsingSkipMax: 0,
+      webBrowsingRerunChanceMin: 0,
+      webBrowsingRerunChanceMax: 0,
       webBrowsingVisitRandom: true,
       webBrowsingSites: "",
       webBrowsingSitesMin: 3,
@@ -669,8 +702,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewTimelineFeedEnabled: true, viewTimelineFeedMin: 3, viewTimelineFeedMax: 8,
       viewTimelineFeedOrderMin: 5, viewTimelineFeedOrderMax: 10,
       viewTimelineFeedNotUsedMin: 0, viewTimelineFeedNotUsedMax: 0,
+      viewTimelineFeedRerunChanceMin: 0, viewTimelineFeedRerunChanceMax: 0,
       humanSessionEnabled: true, humanSessionOrderMin: 0, humanSessionOrderMax: 0,
       humanSessionNotUsedMin: 0, humanSessionNotUsedMax: 0,
+      humanSessionRerunChanceMin: 0, humanSessionRerunChanceMax: 0,
       notificationsRunChanceMin: 100, notificationsRunChanceMax: 100,
       ownProfileRunChanceMin: 100, ownProfileRunChanceMax: 100,
       settingsActivityRunChanceMin: 50, settingsActivityRunChanceMax: 100,
@@ -680,9 +715,11 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkTimelineStoriesWatchPctMin: 0, checkTimelineStoriesWatchPctMax: 0,
       checkTimelineStoriesOrderMin: 0, checkTimelineStoriesOrderMax: 0,
       checkTimelineStoriesNotUsedMin: 0, checkTimelineStoriesNotUsedMax: 0,
+      checkTimelineStoriesRerunChanceMin: 0, checkTimelineStoriesRerunChanceMax: 0,
       storyLikePctMin: 0, storyLikePctMax: 0, storySharePctMin: 0, storySharePctMax: 0,
       checkDmEnabled: true, checkDmMin: 5, checkDmMax: 15,
       checkDmOrderMin: 0, checkDmOrderMax: 0, checkDmNotUsedMin: 0, checkDmNotUsedMax: 0,
+      checkDmRerunChanceMin: 0, checkDmRerunChanceMax: 0,
       likeTimelinePostsEnabled: false, likeTimelinePostsMin: 2, likeTimelinePostsMax: 5,
       likeTimelinePostsDelayMin: 3, likeTimelinePostsDelayMax: 8,
       likeTimelinePostsOrderMin: 0, likeTimelinePostsOrderMax: 0,
@@ -693,17 +730,22 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       expandCaptionPercentMin: 0, expandCaptionPercentMax: 0,
       viewReelsEnabled: false, viewReelsOrderMin: 0, viewReelsOrderMax: 0,
       viewReelsNotUsedMin: 0, viewReelsNotUsedMax: 0,
+      viewReelsRerunChanceMin: 0, viewReelsRerunChanceMax: 0,
       viewPostProfilePercentMin: 0, viewPostProfilePercentMax: 0,
       viewProfileFeedPercentMin: 0, viewProfileFeedPercentMax: 0,
       viewProfileFeedCountMin: 3, viewProfileFeedCountMax: 8,
       viewProfilePostsPercentMin: 0, viewProfilePostsPercentMax: 0,
       viewProfilePostsCountMin: 1, viewProfilePostsCountMax: 3,
       followOrderMin: 0, followOrderMax: 0, followSkipMin: 0, followSkipMax: 0,
+      followRerunChanceMin: 0, followRerunChanceMax: 0,
       unfollowOrderMin: 0, unfollowOrderMax: 0, unfollowSkipMin: 0, unfollowSkipMax: 0,
+      unfollowRerunChanceMin: 0, unfollowRerunChanceMax: 0,
       contactOrderMin: 0, contactOrderMax: 0, contactSkipMin: 0, contactSkipMax: 0,
+      contactRerunChanceMin: 0, contactRerunChanceMax: 0,
       followSuggestedUsersIfEmptyEnabled: false, followSuggestedUsersIfEmptyMin: 1, followSuggestedUsersIfEmptyMax: 3,
       explorePageOrderMin: 0, explorePageOrderMax: 0,
       explorePageSkipMin: 0, explorePageSkipMax: 0,
+      explorePageRerunChanceMin: 0, explorePageRerunChanceMax: 0,
       exploreScrollMin: 5, exploreScrollMax: 15,
        exploreClickMin: 10, exploreClickMax: 30,
       exploreLikePctMin: 0, exploreLikePctMax: 30,
@@ -723,6 +765,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         pixelate: { enabled: true, min: 0.9, max: 2.1 },
       },
       repostOrderMin: 0, repostOrderMax: 0, repostNotUsedMin: 0, repostNotUsedMax: 0,
+      repostRerunChanceMin: 0, repostRerunChanceMax: 0,
       repostDisableComments: false, repostDisableAtPostCount: 0, repostDisableWhenExhausted: true,
       reelWatchPercentMin: 0, reelWatchPercentMax: 100,
       reelWatchCountMin: 1, reelWatchCountMax: 3,
@@ -731,6 +774,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       webBrowsingEnabled: false,
       webBrowsingOrderMin: 0, webBrowsingOrderMax: 0,
       webBrowsingSkipMin: 0, webBrowsingSkipMax: 0,
+      webBrowsingRerunChanceMin: 0, webBrowsingRerunChanceMax: 0,
       webBrowsingVisitRandom: true,
       webBrowsingSites: "",
       webBrowsingSitesMin: 3, webBrowsingSitesMax: 5,
@@ -798,6 +842,25 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       </div>
     </>
   );
+
+  const rerunChanceInputs = (toolKey: string) => {
+    const minKey = `${toolKey}RerunChanceMin`;
+    const maxKey = `${toolKey}RerunChanceMax`;
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap w-[116px] text-right">Re-run Chance %</span>
+        <NumField min={0} max={100} className="w-14 h-7 text-xs"
+          value={settings[minKey] ?? 0}
+          onChange={(v) => setSettings({ ...settings, [minKey]: v })}
+        />
+        <span className="text-[10px] text-muted-foreground">–</span>
+        <NumField min={0} max={100} className="w-14 h-7 text-xs"
+          value={settings[maxKey] ?? 0}
+          onChange={(v) => setSettings({ ...settings, [maxKey]: v })}
+        />
+      </div>
+    );
+  };
 
   const { data: sessionActions } = useQuery<SessionAction[]>({
     queryKey: [`/api/profiles/${tool.profileId}/session-actions`],
@@ -979,6 +1042,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                       onChange={(v) => setSettings({ ...settings, viewTimelineFeedNotUsedMax: v })}
                     />
                   </div>
+                  {rerunChanceInputs("viewTimelineFeed")}
                 </div>
               </div>
               {/* Expand Caption% — click "more" on a % of viewed posts */}
@@ -1116,6 +1180,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                       onChange={(v) => setSettings({ ...settings, explorePageSkipMax: v } as any)}
                     />
                   </div>
+                  {rerunChanceInputs("explorePage")}
                 </div>
               </div>
               {/* Sub-settings, grouped into compact rows to match the timeline controls */}
@@ -1236,6 +1301,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                       onChange={(v) => setSettings({ ...settings, humanSessionNotUsedMax: v })}
                     />
                   </div>
+                  {rerunChanceInputs("humanSession")}
                 </div>
               </div>
               {/* Sub-row — all 4 jitter action chances on one row */}
@@ -1312,6 +1378,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                       onChange={(v) => setSettings({ ...settings, viewReelsNotUsedMax: v } as any)}
                     />
                   </div>
+                  {rerunChanceInputs("viewReels")}
                 </div>
               </div>
               {/* Sub-row — settings below title */}
@@ -1384,6 +1451,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                       onChange={(v) => setSettings({ ...settings, checkTimelineStoriesNotUsedMax: v })}
                     />
                   </div>
+                  {rerunChanceInputs("checkTimelineStories")}
                 </div>
               </div>
               {/* Single settings row — Users to Watch | Slides per User | Watch % | Like % | Share % */}
@@ -1476,6 +1544,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                       onChange={(v) => setSettings({ ...settings, checkDmNotUsedMax: v })}
                     />
                   </div>
+                  {rerunChanceInputs("checkDm")}
                 </div>
               </div>
               {/* Sub-row — Check X/Y settings */}
@@ -1544,6 +1613,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                       onChange={(v) => setSettings({ ...settings, repostNotUsedMax: v })}
                     />
                   </div>
+                  {rerunChanceInputs("repost")}
                 </div>
               </div>
 
@@ -2057,6 +2127,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     onChange={(v) => setSettings({ ...settings, followSkipMax: v } as any)}
                   />
                 </div>
+                {rerunChanceInputs("follow")}
               </div>
             </div>
             {followTool.enabled && <div className="p-4">
@@ -2110,6 +2181,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     onChange={(v) => setSettings({ ...settings, unfollowSkipMax: v } as any)}
                   />
                 </div>
+                {rerunChanceInputs("unfollow")}
               </div>
             </div>
             {unfollowTool.enabled && <div className="p-4">
@@ -2163,6 +2235,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     onChange={(v) => setSettings({ ...settings, contactSkipMax: v } as any)}
                   />
                 </div>
+                {rerunChanceInputs("contact")}
               </div>
             </div>
             {contactTool.enabled && <div className="p-4">
@@ -2215,6 +2288,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   onChange={(v) => setSettings({ ...settings, webBrowsingSkipMax: v } as any)}
                 />
               </div>
+              {rerunChanceInputs("webBrowsing")}
             </div>
           </div>
           {/* Tab bar — only shown when enabled */}

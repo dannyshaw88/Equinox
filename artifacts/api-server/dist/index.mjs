@@ -166722,9 +166722,27 @@ ${err?.stack ?? ""}`);
         return false;
       };
       const ebQueue = [];
+      const ebRerunQueue = [];
+      const ebRerunSettingKey = (key) => key === "humanJitter" ? "humanSession" : key;
+      const ebShouldRerun = (key) => {
+        const prefix = ebRerunSettingKey(key);
+        const rawMin = Number(s[`${prefix}RerunChanceMin`] ?? 0);
+        const rawMax = Number(s[`${prefix}RerunChanceMax`] ?? 0);
+        const min = Math.max(0, Math.min(100, Number.isFinite(rawMin) ? rawMin : 0));
+        const max = Math.max(0, Math.min(100, Number.isFinite(rawMax) ? rawMax : 0));
+        const low = Math.min(min, max);
+        const high = Math.max(min, max);
+        if (high <= 0) return false;
+        const chance2 = randInt2(low, high);
+        const roll = Math.random() * 100;
+        const selected = roll < chance2;
+        console.log(`[engine] @${profile.username}: [EB-only] ${key} re-run roll ${roll.toFixed(1)}% against ${chance2}% \u2192 ${selected ? "queued" : "not selected"}`);
+        return selected;
+      };
       const ebEnqueue = (key, orderMinKey, orderMaxKey, fn) => {
         const order = randInt2(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
-        ebQueue.push({ key, run: fn, order });
+        const rerunKey = key === "likeTimelinePosts" ? "viewTimelineFeed" : key;
+        ebQueue.push({ key, rerunKey, run: fn, order });
       };
       console.log(`[engine] @${profile.username}: [EB-only] Human Jitter skip settings \u2014 humanSessionNotUsedMin=${JSON.stringify(s.humanSessionNotUsedMin)}, humanSessionNotUsedMax=${JSON.stringify(s.humanSessionNotUsedMax)}`);
       const _jitterSkipped = this.shouldSkipDueToChance(s, "humanSessionNotUsedMin", "humanSessionNotUsedMax");
@@ -167534,6 +167552,9 @@ ${err?.stack ?? ""}`);
       for (const entry of ebQueue) {
         if (state.stop.stopped) break;
         await entry.run();
+        if (!state.stop.stopped && ebShouldRerun(entry.rerunKey)) {
+          ebRerunQueue.push(entry);
+        }
       }
       if (!!s.saveMediaEnabled && !state.stop.stopped) {
         const savePct = Number(s.saveMediaPercent ?? 0);
@@ -167610,6 +167631,14 @@ ${err?.stack ?? ""}`);
             console.warn(`[engine] @${profile.username}: [EB-only] shareTimelinePosts error: ${e?.message}`);
             this.logGhostBrowserCall(profile.id, profile.username, "share_timeline_post", e?.message ?? "error", true);
           }
+        }
+      }
+      if (!state.stop.stopped && ebRerunQueue.length > 0) {
+        console.log(`[engine] @${profile.username}: [EB-only] deferred re-runs: ${ebRerunQueue.map((e) => e.key).join(" \u2192 ")}`);
+        for (const entry of ebRerunQueue) {
+          if (state.stop.stopped) break;
+          console.log(`[engine] @${profile.username}: [EB-only] re-running ${entry.key} once`);
+          await entry.run();
         }
       }
       console.log(`[engine] @${profile.username}: \u2705 [EB-only] browser human session complete`);
@@ -168206,6 +168235,21 @@ ${err?.stack ?? ""}`);
       return false;
     };
     const queue = [];
+    const rerunQueue = [];
+    const shouldRerun = (key) => {
+      const rawMin = Number(s[`${key}RerunChanceMin`] ?? 0);
+      const rawMax = Number(s[`${key}RerunChanceMax`] ?? 0);
+      const min = Math.max(0, Math.min(100, Number.isFinite(rawMin) ? rawMin : 0));
+      const max = Math.max(0, Math.min(100, Number.isFinite(rawMax) ? rawMax : 0));
+      const low = Math.min(min, max);
+      const high = Math.max(min, max);
+      if (high <= 0) return false;
+      const chance2 = randInt2(low, high);
+      const roll = Math.random() * 100;
+      const selected = roll < chance2;
+      console.log(`[engine] @${profile.username}: ${key} re-run roll ${roll.toFixed(1)}% against ${chance2}% \u2192 ${selected ? "queued" : "not selected"}`);
+      return selected;
+    };
     const enqueue = (label, enabled, notUsedMinKey, notUsedMaxKey, orderMinKey, orderMaxKey, fn) => {
       if (!enabled) {
         console.log(`[engine] @${profile.username}: HS queue \u2014 ${label} skipped (disabled)`);
@@ -168216,7 +168260,8 @@ ${err?.stack ?? ""}`);
         return;
       }
       const order = randInt2(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
-      queue.push({ order, label, run: fn });
+      const rerunKey = label === "likeTimelinePosts" ? "viewTimelineFeed" : label.replace(/Tool$/, "");
+      queue.push({ order, label, rerunKey, run: fn });
     };
     enqueue(
       "humanSession",
@@ -169293,6 +169338,17 @@ ${err?.stack ?? ""}`);
     for (const entry of queue) {
       if (sessionError) break;
       await entry.run();
+      if (!sessionError && shouldRerun(entry.rerunKey)) {
+        rerunQueue.push(entry);
+      }
+    }
+    if (!sessionError && rerunQueue.length > 0) {
+      console.log(`[engine] @${profile.username}: deferred re-runs: ${rerunQueue.map((e) => e.label).join(" \u2192 ")}`);
+      for (const entry of rerunQueue) {
+        if (sessionError) break;
+        console.log(`[engine] @${profile.username}: re-running ${entry.label} once`);
+        await entry.run();
+      }
     }
   }
   // ── Follow session ────────────────────────────────────────────────────────

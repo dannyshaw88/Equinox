@@ -2872,11 +2872,29 @@ class AutomationEngine {
       // execute sequentially. saveTimelinePosts / shareTimelinePosts / explorePage are
       // NOT queued — they depend on feedCount / feedHadPosts set by viewTimelineFeed
       // and must always run after the queue finishes.
-      type EbQueueEntry = { key: string; run: () => Promise<void>; order: number };
+      type EbQueueEntry = { key: string; rerunKey: string; run: () => Promise<void>; order: number };
       const ebQueue: EbQueueEntry[] = [];
+      const ebRerunQueue: EbQueueEntry[] = [];
+      const ebRerunSettingKey = (key: string) => key === "humanJitter" ? "humanSession" : key;
+      const ebShouldRerun = (key: string) => {
+        const prefix = ebRerunSettingKey(key);
+        const rawMin = Number(s[`${prefix}RerunChanceMin`] ?? 0);
+        const rawMax = Number(s[`${prefix}RerunChanceMax`] ?? 0);
+        const min = Math.max(0, Math.min(100, Number.isFinite(rawMin) ? rawMin : 0));
+        const max = Math.max(0, Math.min(100, Number.isFinite(rawMax) ? rawMax : 0));
+        const low = Math.min(min, max);
+        const high = Math.max(min, max);
+        if (high <= 0) return false;
+        const chance = randInt(low, high);
+        const roll = Math.random() * 100;
+        const selected = roll < chance;
+        console.log(`[engine] @${profile.username}: [EB-only] ${key} re-run roll ${roll.toFixed(1)}% against ${chance}% → ${selected ? "queued" : "not selected"}`);
+        return selected;
+      };
       const ebEnqueue = (key: string, orderMinKey: string, orderMaxKey: string, fn: () => Promise<void>) => {
         const order = randInt(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
-        ebQueue.push({ key, run: fn, order });
+        const rerunKey = key === "likeTimelinePosts" ? "viewTimelineFeed" : key;
+        ebQueue.push({ key, rerunKey, run: fn, order });
       };
 
       // ── Human Jitter — home + own profile audit (respects skip chance) ──────
@@ -3833,6 +3851,9 @@ class AutomationEngine {
       for (const entry of ebQueue) {
         if (state.stop.stopped) break;
         await entry.run();
+        if (!state.stop.stopped && ebShouldRerun(entry.rerunKey)) {
+          ebRerunQueue.push(entry);
+        }
       }
 
       // ── saveTimelinePosts — scroll feed, click the bookmark/Save icon ─────
@@ -3917,6 +3938,17 @@ class AutomationEngine {
             console.warn(`[engine] @${profile.username}: [EB-only] shareTimelinePosts error: ${e?.message}`);
             this.logGhostBrowserCall(profile.id, profile.username, "share_timeline_post", e?.message ?? "error", true);
           }
+        }
+      }
+
+      // Deferred re-runs happen only after every normal queue action and its
+      // dependent timeline save/share behavior have completed.
+      if (!state.stop.stopped && ebRerunQueue.length > 0) {
+        console.log(`[engine] @${profile.username}: [EB-only] deferred re-runs: ${ebRerunQueue.map(e => e.key).join(" → ")}`);
+        for (const entry of ebRerunQueue) {
+          if (state.stop.stopped) break;
+          console.log(`[engine] @${profile.username}: [EB-only] re-running ${entry.key} once`);
+          await entry.run();
         }
       }
 
@@ -4640,8 +4672,23 @@ class AutomationEngine {
     // Actions are sorted descending by order before executing, so higher numbers
     // run first. Ties preserve insertion order (stable sort).
     // Actions that are disabled or skipped by the NotUsed chance are excluded.
-    type QueueEntry = { order: number; label: string; run: () => Promise<void> };
+    type QueueEntry = { order: number; label: string; rerunKey: string; run: () => Promise<void> };
     const queue: QueueEntry[] = [];
+    const rerunQueue: QueueEntry[] = [];
+    const shouldRerun = (key: string) => {
+      const rawMin = Number(s[`${key}RerunChanceMin`] ?? 0);
+      const rawMax = Number(s[`${key}RerunChanceMax`] ?? 0);
+      const min = Math.max(0, Math.min(100, Number.isFinite(rawMin) ? rawMin : 0));
+      const max = Math.max(0, Math.min(100, Number.isFinite(rawMax) ? rawMax : 0));
+      const low = Math.min(min, max);
+      const high = Math.max(min, max);
+      if (high <= 0) return false;
+      const chance = randInt(low, high);
+      const roll = Math.random() * 100;
+      const selected = roll < chance;
+      console.log(`[engine] @${profile.username}: ${key} re-run roll ${roll.toFixed(1)}% against ${chance}% → ${selected ? "queued" : "not selected"}`);
+      return selected;
+    };
 
     // helper — add action to queue if enabled and not skipped by chance
     const enqueue = (
@@ -4660,7 +4707,10 @@ class AutomationEngine {
         return;
       }
       const order = randInt(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
-      queue.push({ order, label, run: fn });
+      const rerunKey = label === "likeTimelinePosts"
+        ? "viewTimelineFeed"
+        : label.replace(/Tool$/, "");
+      queue.push({ order, label, rerunKey, run: fn });
     };
 
     // ── Human Session ────────────────────────────────────────────────────────
@@ -5867,6 +5917,18 @@ class AutomationEngine {
     for (const entry of queue) {
       if (sessionError) break;
       await entry.run();
+      if (!sessionError && shouldRerun(entry.rerunKey)) {
+        rerunQueue.push(entry);
+      }
+    }
+
+    if (!sessionError && rerunQueue.length > 0) {
+      console.log(`[engine] @${profile.username}: deferred re-runs: ${rerunQueue.map(e => e.label).join(" → ")}`);
+      for (const entry of rerunQueue) {
+        if (sessionError) break;
+        console.log(`[engine] @${profile.username}: re-running ${entry.label} once`);
+        await entry.run();
+      }
     }
   }
 
