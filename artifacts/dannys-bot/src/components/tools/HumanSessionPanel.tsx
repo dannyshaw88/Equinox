@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Bell, User, RefreshCw, Settings, PlaySquare, BookOpen, Bookmark,
   MessageSquare, Repeat2, AtSign, Clock, ExternalLink, Image as ImageIcon,
-  ChevronDown, ChevronUp, Heart, Copy, FolderOpen, UserPlus, UserMinus, Zap, Film, Percent, AlignLeft, Trash2, Globe, Compass,
+  ChevronDown, ChevronUp, Heart, Copy, FolderOpen, UserPlus, UserMinus, Zap, Film, Percent, Trash2, Globe, Compass,
 } from "lucide-react";
 import { format } from "date-fns";
 import { type Tool, type Profile, type RepostedPost, type SessionAction } from "@shared/schema";
@@ -95,7 +95,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vtf_like_delay",  label: "Delay between likes in sec",       settingKeys: ["likeTimelinePostsDelayMin","likeTimelinePostsDelayMax"] },
         { key: "vtf_save_media",  label: "Save media",                     settingKeys: ["saveMediaEnabled","saveMediaPercentMin","saveMediaPercentMax"] },
         { key: "vtf_share_post",  label: "Share % (chance to share viewed posts to feed)", settingKeys: ["sharePostPercentMin","sharePostPercentMax"] },
-        { key: "vtf_expand_caption", label: "Expand Caption %",             settingKeys: ["expandCaptionPercentMin","expandCaptionPercentMax"] },
         { key: "vtf_view_profile",     label: "Visit profile %",             settingKeys: ["viewPostProfilePercentMin","viewPostProfilePercentMax"] },
         { key: "vtf_profile_feed",     label: "View profile feed % + count", settingKeys: ["viewProfileFeedPercentMin","viewProfileFeedPercentMax","viewProfileFeedCountMin","viewProfileFeedCountMax"] },
         { key: "vtf_profile_posts",    label: "Open profile posts count + %",settingKeys: ["viewProfilePostsCountMin","viewProfilePostsCountMax","viewProfilePostsPercentMin","viewProfilePostsPercentMax"] },
@@ -574,8 +573,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0,
       likeTimelinePostsPercentMax: 0,
-      expandCaptionPercentMin: 0,
-      expandCaptionPercentMax: 0,
       viewReelsEnabled: false,
       viewReelsOrderMin: 0,
       viewReelsOrderMax: 0,
@@ -727,7 +724,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       saveMediaEnabled: false, saveMediaPercentMin: 20, saveMediaPercentMax: 20,
       sharePostPercentMin: 0, sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0, likeTimelinePostsPercentMax: 0,
-      expandCaptionPercentMin: 0, expandCaptionPercentMax: 0,
       viewReelsEnabled: false, viewReelsOrderMin: 0, viewReelsOrderMax: 0,
       viewReelsNotUsedMin: 0, viewReelsNotUsedMax: 0,
       viewReelsRerunChanceMin: 0, viewReelsRerunChanceMax: 0,
@@ -1030,7 +1026,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   {rerunChanceInputs("viewTimelineFeed")}
                 </div>
               </div>
-              {/* Posts per session and Expand Caption% on one row */}
+              {/* Posts per session */}
               <div className={`flex items-center gap-3 flex-wrap pt-1.5 border-t border-border/40 transition-opacity ${!settings.viewTimelineFeedEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                 <div className="flex items-center gap-1.5">
                   <Label className="text-xs text-muted-foreground uppercase">Min</Label>
@@ -1044,11 +1040,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     onChange={(v) => setSettings({ ...settings, viewTimelineFeedMax: v })}
                   />
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to View</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {pctInputs("expandCaptionPercentMin", "expandCaptionPercentMax")}
-                  <AlignLeft className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Expand Caption%</span>
                 </div>
               </div>
               {/* ROW 2: Like Delay | Save Media | Like% — left-aligned */}

@@ -3026,21 +3026,9 @@ class AutomationEngine {
             }
           }
 
-          // ── Expand Caption% + Like% — resolved ONCE here, then applied INLINE
-          // during the single forward scroll pass below. Previously each
-          // sub-setting ran as its OWN separate loop that reset scrollTo(0, 0)
-          // and re-walked the whole feed from the top — this looked like the
-          // homepage "refreshing" mid-session, which is not how a real user
-          // scrolls. A real user likes/expands captions on posts as they pass
-          // by, never jumping back to the top. Posts are marked with
-          // data-eb-caption-done / data-eb-liked attributes so the same post
-          // is never double-processed as we scroll forward.
-          const ecPctRaw0 = Math.min(100, Math.max(0, Number((s as any).expandCaptionPercentMin ?? 0)));
-          const ecPctRaw1 = Math.min(100, Math.max(0, Number((s as any).expandCaptionPercentMax ?? 0)));
-          const ecPctMin = Math.min(ecPctRaw0, ecPctRaw1);
-          const ecPctMax = Math.max(ecPctRaw0, ecPctRaw1);
-          const ecPct = ecPctMax > 0 ? ecPctMin + Math.random() * (ecPctMax - ecPctMin) : 0;
-
+          // ── Like% — resolved once here, then applied inline during the single
+          // forward scroll pass. Posts are marked with data-eb-liked so they are
+          // never processed twice as the feed scrolls forward.
           const likePctRaw0 = Math.min(100, Math.max(0, Number(s.likeTimelinePostsPercentMin ?? 0)));
           const likePctRaw1 = Math.min(100, Math.max(0, Number(s.likeTimelinePostsPercentMax ?? 0)));
           const likePctMin = Math.min(likePctRaw0, likePctRaw1);
@@ -3051,39 +3039,11 @@ class AutomationEngine {
           const likeDelayMinMs = Math.max(0, Number(s.likeTimelinePostsDelayMin ?? 3)) * 1000;
           const likeDelayMaxMs = Math.max(likeDelayMinMs, Number(s.likeTimelinePostsDelayMax ?? 8) * 1000);
 
-          let expanded = 0;
           let liked = 0;
 
           for (let i = 0; i < feedCount && !state.stop.stopped; i++) {
             await page.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {});
             await sleep(actionDelay());
-
-            // Inline caption expand — acts on the post currently in/near view,
-            // never resets scroll. Marks the post so it's not expanded twice.
-            if (ecPctMax > 0 && Math.random() * 100 < ecPct) {
-              const clicked: boolean = await page.evaluate(() => {
-                const articles = Array.from(document.querySelectorAll('article:not([data-eb-caption-done])'));
-                const target = (articles.find(a => {
-                  const rect = a.getBoundingClientRect();
-                  return rect.bottom > 0 && rect.top < window.innerHeight;
-                }) ?? articles[0]) as HTMLElement | undefined;
-                if (!target) return false;
-                target.setAttribute('data-eb-caption-done', '1');
-                // The "more" expand button contains the word "more" — Instagram
-                // uses plain ASCII ellipsis "..." or Unicode "…" depending on
-                // locale/version, so check for "more" anywhere in the trimmed text.
-                const moreBtn = Array.from(target.querySelectorAll(
-                  'div[role="button"], span[role="button"], button'
-                )).find(el => {
-                  const text = (el.textContent ?? '').trim().toLowerCase();
-                  return text.endsWith('more') && text.length < 20;
-                }) as HTMLElement | null;
-                if (!moreBtn) return false;
-                moreBtn.click();
-                return true;
-              }).catch(() => false);
-              if (clicked) { expanded++; await sleep(randInt(600, 1200)); }
-            }
 
             // Inline like — likes the post currently being scrolled past, on the
             // fly, in the SAME forward pass. No scrollTo(0,0), no second walk
@@ -3143,12 +3103,6 @@ class AutomationEngine {
           this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `EB scrolled feed (${feedCount} scrolls)`);
           this.logGhostBrowserCall(profile.id, profile.username, "view_timeline_feed", `EB scrolled feed (${feedCount} scrolls)`);
           console.log(`[engine] @${profile.username}: [EB-only] 📰 scrolled feed ${feedCount}× — feed had posts: ${feedHadPosts}`);
-
-          if (expanded > 0) {
-            this.logAction(profile.id, tool.id, "expand_caption", "", "", "", "ok", `EB expanded caption on ${expanded} post(s) inline while scrolling`);
-            this.logGhostBrowserCall(profile.id, profile.username, "expand_caption", `EB expanded caption on ${expanded} post(s) inline while scrolling`);
-            console.log(`[engine] @${profile.username}: [EB-only] 📖 expanded ${expanded} caption(s) inline`);
-          }
 
           if (liked > 0) {
             this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "", "ok", `EB liked ${liked} post(s) inline while scrolling`);
