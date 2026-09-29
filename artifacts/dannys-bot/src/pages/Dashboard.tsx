@@ -78,7 +78,7 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
-    version: "1.1.580",
+    version: "1.1.581",
     date: "29 Sep 2026",
     items: [
       { category: "Fix", text: "Check DMs presence and ranked-recipient Min/Max settings now mean a 0–100% chance of making one request per DM check, not a request count. 0% never calls the endpoint; 100% always does." },
