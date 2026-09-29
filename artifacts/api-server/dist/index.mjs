@@ -160296,6 +160296,25 @@ var InstagramWebClient = class {
     console.log(`[webClient] getDirectMessagesInternal: opened ${opened}/${toOpen.length} thread(s)`);
     return { count: opened, ok: true, threads: mappedThreads };
   }
+  async syncDirectMessagePresence() {
+    return this.timed("GetDirectMessagePresence", async () => {
+      const response = await this.mobileSessionGet("/api/v1/direct_v2/get_presence/");
+      const status = String(response?.status ?? "").toLowerCase();
+      if (!response || status === "fail" || status === "error") {
+        throw new Error(`Direct-message presence request failed${response?.message ? `: ${response.message}` : ""}`);
+      }
+    }, "Synced direct-message active status");
+  }
+  async getRankedDirectMessageRecipients() {
+    return this.timed("GetRankedDirectMessageRecipients", async () => {
+      const query = new URLSearchParams({ mode: "reshare", query: "", show_threads: "true" });
+      const response = await this.mobileSessionGet(`/api/v1/direct_v2/ranked_recipients/?${query.toString()}`);
+      const status = String(response?.status ?? "").toLowerCase();
+      if (!response || status === "fail" || status === "error" || !Array.isArray(response?.ranked_recipients)) {
+        throw new Error(`Ranked direct-message recipients request failed${response?.message ? `: ${response.message}` : ""}`);
+      }
+    }, "Loaded ranked direct-message recipients");
+  }
   // Like getDirectMessages but returns thread content for auto-reply scanning.
   // Uses _buildWarmedIgClient (Jarvee cold-start) so Instagram doesn't gate
   // direct_v2/inbox/ with 4415001 "Prompt has contribution".
@@ -168670,6 +168689,41 @@ ${err?.stack ?? ""}`);
           if (await checkSessionErr(e, "auto_reply")) return;
           console.warn(`[engine] @${profile.username}: auto-reply scan error: ${e?.message}`);
         }
+        const runDmReadRange = async (minKey, maxKey, actionName, label, request3) => {
+          const readCountSetting = (key) => {
+            const value = Number(s[key] ?? 0);
+            return Number.isFinite(value) ? Math.max(0, Math.min(20, Math.floor(value))) : 0;
+          };
+          const first = readCountSetting(minKey);
+          const last = readCountSetting(maxKey);
+          const callCount = randInt2(Math.min(first, last), Math.max(first, last));
+          for (let i2 = 0; i2 < callCount; i2++) {
+            try {
+              await request3();
+              this.logAction(profile.id, tool.id, actionName, "", "", "", "ok", `${label} (${i2 + 1}/${callCount})`);
+            } catch (e) {
+              if (await checkSessionErr(e, actionName)) return true;
+              console.warn(`[engine] @${profile.username}: ${label} request failed: ${e?.message}`);
+              this.logAction(profile.id, tool.id, actionName, "", "", "", "error", e?.message ?? `${label} request failed`);
+              break;
+            }
+          }
+          return false;
+        };
+        if (await runDmReadRange(
+          "checkDmPresenceMin",
+          "checkDmPresenceMax",
+          "get_presence",
+          "Synced active-status presence",
+          () => client.syncDirectMessagePresence()
+        )) return;
+        if (await runDmReadRange(
+          "checkDmRankedRecipientsMin",
+          "checkDmRankedRecipientsMax",
+          "ranked_recipients",
+          "Loaded ranked recipients",
+          () => client.getRankedDirectMessageRecipients()
+        )) return;
         const rawSuggestedChanceMin = Number(s.checkDmSuggestedUsersChanceMin ?? 0);
         const rawSuggestedChanceMax = Number(s.checkDmSuggestedUsersChanceMax ?? 0);
         const suggestedChanceMin = Math.max(0, Math.min(100, Number.isFinite(rawSuggestedChanceMin) ? rawSuggestedChanceMin : 0));

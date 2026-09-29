@@ -146,6 +146,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "checkDm", label: "Check DMs", description: "Read direct messages", subOptions: [
         { key: "dm_enabled", label: "Enabled",                            settingKeys: ["checkDmEnabled"] },
         { key: "dm_count",   label: "DMs per session",        settingKeys: ["checkDmMin","checkDmMax"] },
+        { key: "dm_presence", label: "Active-status presence calls", settingKeys: ["checkDmPresenceMin","checkDmPresenceMax"] },
+        { key: "dm_ranked_recipients", label: "Ranked-recipient calls", settingKeys: ["checkDmRankedRecipientsMin","checkDmRankedRecipientsMax"] },
         { key: "dm_suggested_users", label: "View suggested users chance", settingKeys: ["checkDmSuggestedUsersChanceMin","checkDmSuggestedUsersChanceMax"] },
         { key: "dm_order",   label: "Execution order",        settingKeys: ["checkDmOrderMin","checkDmOrderMax"] },
         { key: "dm_chance",  label: "Skip chance %", settingKeys: ["checkDmNotUsedMin","checkDmNotUsedMax"] },
@@ -554,6 +556,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkDmEnabled: true,
       checkDmMin: 5,
       checkDmMax: 15,
+      checkDmPresenceMin: 0,
+      checkDmPresenceMax: 0,
+      checkDmRankedRecipientsMin: 0,
+      checkDmRankedRecipientsMax: 0,
       checkDmOrderMin: 0,
       checkDmOrderMax: 0,
       checkDmNotUsedMin: 0,
@@ -720,6 +726,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkTimelineStoriesRerunChanceMin: 0, checkTimelineStoriesRerunChanceMax: 0,
       storyLikePctMin: 0, storyLikePctMax: 0, storySharePctMin: 0, storySharePctMax: 0,
       checkDmEnabled: true, checkDmMin: 5, checkDmMax: 15,
+      checkDmPresenceMin: 0, checkDmPresenceMax: 0,
+      checkDmRankedRecipientsMin: 0, checkDmRankedRecipientsMax: 0,
       checkDmOrderMin: 0, checkDmOrderMax: 0, checkDmNotUsedMin: 0, checkDmNotUsedMax: 0,
       checkDmRerunChanceMin: 0, checkDmRerunChanceMax: 0,
       checkDmSuggestedUsersChanceMin: 0, checkDmSuggestedUsersChanceMax: 0,
@@ -1572,6 +1580,58 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 <NumField min={0} max={100} className="w-14 h-7 text-xs"
                   value={settings.checkDmSuggestedUsersChanceMax ?? 0}
                   onChange={(v) => setSettings({ ...settings, checkDmSuggestedUsersChanceMax: v })}
+                />
+                <div className="h-4 w-px bg-border/60 shrink-0 mx-1" />
+                <span
+                  className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                  title="Number of GET /api/v1/direct_v2/get_presence/ requests during each DM check. 0–0 disables it."
+                >
+                  Presence GETs
+                </span>
+                <Label className="text-xs text-muted-foreground">Min</Label>
+                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                  value={settings.checkDmPresenceMin ?? 0}
+                  onChange={(v) => setSettings({
+                    ...settings,
+                    checkDmPresenceMin: v,
+                    checkDmPresenceMax: Math.max(v, settings.checkDmPresenceMax ?? 0),
+                  })}
+                />
+                <span className="text-[10px] text-muted-foreground">–</span>
+                <Label className="text-xs text-muted-foreground">Max</Label>
+                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                  value={settings.checkDmPresenceMax ?? 0}
+                  onChange={(v) => setSettings({
+                    ...settings,
+                    checkDmPresenceMax: v,
+                    checkDmPresenceMin: Math.min(v, settings.checkDmPresenceMin ?? 0),
+                  })}
+                />
+                <div className="h-4 w-px bg-border/60 shrink-0 mx-1" />
+                <span
+                  className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                  title="Number of GET /api/v1/direct_v2/ranked_recipients/ requests during each DM check. 0–0 disables it."
+                >
+                  Ranked recipients GETs
+                </span>
+                <Label className="text-xs text-muted-foreground">Min</Label>
+                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                  value={settings.checkDmRankedRecipientsMin ?? 0}
+                  onChange={(v) => setSettings({
+                    ...settings,
+                    checkDmRankedRecipientsMin: v,
+                    checkDmRankedRecipientsMax: Math.max(v, settings.checkDmRankedRecipientsMax ?? 0),
+                  })}
+                />
+                <span className="text-[10px] text-muted-foreground">–</span>
+                <Label className="text-xs text-muted-foreground">Max</Label>
+                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                  value={settings.checkDmRankedRecipientsMax ?? 0}
+                  onChange={(v) => setSettings({
+                    ...settings,
+                    checkDmRankedRecipientsMax: v,
+                    checkDmRankedRecipientsMin: Math.min(v, settings.checkDmRankedRecipientsMin ?? 0),
+                  })}
                 />
               </div>
             </div>

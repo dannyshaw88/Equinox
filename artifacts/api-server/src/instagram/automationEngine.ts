@@ -5162,6 +5162,47 @@ class AutomationEngine {
           if (await checkSessionErr(e, "auto_reply")) return;
           console.warn(`[engine] @${profile.username}: auto-reply scan error: ${e?.message}`);
         }
+        const runDmReadRange = async (
+          minKey: string,
+          maxKey: string,
+          actionName: string,
+          label: string,
+          request: () => Promise<void>,
+        ): Promise<boolean> => {
+          const readCountSetting = (key: string) => {
+            const value = Number((s as any)[key] ?? 0);
+            return Number.isFinite(value) ? Math.max(0, Math.min(20, Math.floor(value))) : 0;
+          };
+          const first = readCountSetting(minKey);
+          const last = readCountSetting(maxKey);
+          const callCount = randInt(Math.min(first, last), Math.max(first, last));
+          for (let i = 0; i < callCount; i++) {
+            try {
+              await request();
+              this.logAction(profile.id, tool.id, actionName, "", "", "", "ok", `${label} (${i + 1}/${callCount})`);
+            } catch (e: any) {
+              if (await checkSessionErr(e, actionName)) return true;
+              console.warn(`[engine] @${profile.username}: ${label} request failed: ${e?.message}`);
+              this.logAction(profile.id, tool.id, actionName, "", "", "", "error", e?.message ?? `${label} request failed`);
+              break;
+            }
+          }
+          return false;
+        };
+        if (await runDmReadRange(
+          "checkDmPresenceMin",
+          "checkDmPresenceMax",
+          "get_presence",
+          "Synced active-status presence",
+          () => client.syncDirectMessagePresence(),
+        )) return;
+        if (await runDmReadRange(
+          "checkDmRankedRecipientsMin",
+          "checkDmRankedRecipientsMax",
+          "ranked_recipients",
+          "Loaded ranked recipients",
+          () => client.getRankedDirectMessageRecipients(),
+        )) return;
         // Fetch suggested accounts independently of inbox contents. A non-empty
         // inbox must not suppress this Discover/AYML request.
         const rawSuggestedChanceMin = Number(s.checkDmSuggestedUsersChanceMin ?? 0);

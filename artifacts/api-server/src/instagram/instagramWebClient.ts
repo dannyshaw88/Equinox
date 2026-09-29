@@ -4426,6 +4426,27 @@ export class InstagramWebClient {
     return { count: opened, ok: true, threads: mappedThreads };
   }
 
+  async syncDirectMessagePresence(): Promise<void> {
+    return this.timed("GetDirectMessagePresence", async () => {
+      const response = await this.mobileSessionGet("/api/v1/direct_v2/get_presence/");
+      const status = String(response?.status ?? "").toLowerCase();
+      if (!response || status === "fail" || status === "error") {
+        throw new Error(`Direct-message presence request failed${response?.message ? `: ${response.message}` : ""}`);
+      }
+    }, "Synced direct-message active status");
+  }
+
+  async getRankedDirectMessageRecipients(): Promise<void> {
+    return this.timed("GetRankedDirectMessageRecipients", async () => {
+      const query = new URLSearchParams({ mode: "reshare", query: "", show_threads: "true" });
+      const response = await this.mobileSessionGet(`/api/v1/direct_v2/ranked_recipients/?${query.toString()}`);
+      const status = String(response?.status ?? "").toLowerCase();
+      if (!response || status === "fail" || status === "error" || !Array.isArray(response?.ranked_recipients)) {
+        throw new Error(`Ranked direct-message recipients request failed${response?.message ? `: ${response.message}` : ""}`);
+      }
+    }, "Loaded ranked direct-message recipients");
+  }
+
   // Like getDirectMessages but returns thread content for auto-reply scanning.
   // Uses _buildWarmedIgClient (Jarvee cold-start) so Instagram doesn't gate
   // direct_v2/inbox/ with 4415001 "Prompt has contribution".

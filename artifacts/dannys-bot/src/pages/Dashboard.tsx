@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.579",
+    date: "29 Sep 2026",
+    items: [
+      { category: "New", text: "Check Direct Messages now supports independent min/max request counts for active-status sync and ranked recipients. Both ranges are on the same settings row and can be included in Copy Settings." },
+    ],
+  },
+  {
     version: "1.1.577",
     date: "27 Sep 2026",
     items: [
