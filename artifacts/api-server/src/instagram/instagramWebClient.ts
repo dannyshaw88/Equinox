@@ -6769,7 +6769,12 @@ export class InstagramWebClient {
   // Called between follows to add natural API variety.
   async getSuggestedUsers(): Promise<void> {
     return this.timed("GetSuggestedUsers", async () => {
-      await this.mobileSessionPost(`/api/v1/discover/ayml/`);
+      const response = await this.mobileSessionPost(`/api/v1/discover/ayml/`);
+      const status = String(response?.status ?? "").toLowerCase();
+      if (!response || status === "fail" || status === "error") {
+        const detail = response?.message ?? response?.error_type ?? "";
+        throw new Error(`Suggested users request failed${detail ? `: ${detail}` : ""}`);
+      }
     }, "Get suggested users");
   }
 

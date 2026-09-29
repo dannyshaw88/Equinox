@@ -5162,6 +5162,30 @@ class AutomationEngine {
           if (await checkSessionErr(e, "auto_reply")) return;
           console.warn(`[engine] @${profile.username}: auto-reply scan error: ${e?.message}`);
         }
+        // Fetch suggested accounts independently of inbox contents. A non-empty
+        // inbox must not suppress this Discover/AYML request.
+        const rawSuggestedChanceMin = Number(s.checkDmSuggestedUsersChanceMin ?? 0);
+        const rawSuggestedChanceMax = Number(s.checkDmSuggestedUsersChanceMax ?? 0);
+        const suggestedChanceMin = Math.max(0, Math.min(100, Number.isFinite(rawSuggestedChanceMin) ? rawSuggestedChanceMin : 0));
+        const suggestedChanceMax = Math.max(0, Math.min(100, Number.isFinite(rawSuggestedChanceMax) ? rawSuggestedChanceMax : 0));
+        const suggestedChanceLow = Math.min(suggestedChanceMin, suggestedChanceMax);
+        const suggestedChanceHigh = Math.max(suggestedChanceMin, suggestedChanceMax);
+        if (suggestedChanceHigh > 0) {
+          const chance = randInt(suggestedChanceLow, suggestedChanceHigh);
+          const roll = Math.random() * 100;
+          const selected = roll < chance;
+          console.log(`[engine] @${profile.username}: suggested-users call roll ${roll.toFixed(1)}% against ${chance}% → ${selected ? "calling" : "not selected"}`);
+          if (selected) {
+            try {
+              await client.getSuggestedUsers();
+              this.logAction(profile.id, tool.id, "get_suggested_users", "", "", "", "ok", "Viewed suggested accounts to follow after DM check");
+            } catch (e: any) {
+              if (await checkSessionErr(e, "get_suggested_users")) return;
+              console.warn(`[engine] @${profile.username}: get suggested users after DM check failed: ${e?.message}`);
+              this.logAction(profile.id, tool.id, "get_suggested_users", "", "", "", "error", e?.message ?? "Suggested users request failed");
+            }
+          }
+        }
         // Log combined result — appends auto-reply count only when triggers were found.
         // dmGated = 4415001 "Prompt has contribution" — Instagram mobile-API gate,
         // not a tool failure. Log as skipped so the dashboard doesn't show red.

@@ -162211,7 +162211,12 @@ Content-Disposition: form-data; name="${part.name}"`;
   // Called between follows to add natural API variety.
   async getSuggestedUsers() {
     return this.timed("GetSuggestedUsers", async () => {
-      await this.mobileSessionPost(`/api/v1/discover/ayml/`);
+      const response = await this.mobileSessionPost(`/api/v1/discover/ayml/`);
+      const status = String(response?.status ?? "").toLowerCase();
+      if (!response || status === "fail" || status === "error") {
+        const detail = response?.message ?? response?.error_type ?? "";
+        throw new Error(`Suggested users request failed${detail ? `: ${detail}` : ""}`);
+      }
     }, "Get suggested users");
   }
   // ── Visit Explore and gather up to `postCount` distinct posts ─────────────
@@ -168664,6 +168669,28 @@ ${err?.stack ?? ""}`);
         } catch (e) {
           if (await checkSessionErr(e, "auto_reply")) return;
           console.warn(`[engine] @${profile.username}: auto-reply scan error: ${e?.message}`);
+        }
+        const rawSuggestedChanceMin = Number(s.checkDmSuggestedUsersChanceMin ?? 0);
+        const rawSuggestedChanceMax = Number(s.checkDmSuggestedUsersChanceMax ?? 0);
+        const suggestedChanceMin = Math.max(0, Math.min(100, Number.isFinite(rawSuggestedChanceMin) ? rawSuggestedChanceMin : 0));
+        const suggestedChanceMax = Math.max(0, Math.min(100, Number.isFinite(rawSuggestedChanceMax) ? rawSuggestedChanceMax : 0));
+        const suggestedChanceLow = Math.min(suggestedChanceMin, suggestedChanceMax);
+        const suggestedChanceHigh = Math.max(suggestedChanceMin, suggestedChanceMax);
+        if (suggestedChanceHigh > 0) {
+          const chance2 = randInt2(suggestedChanceLow, suggestedChanceHigh);
+          const roll = Math.random() * 100;
+          const selected = roll < chance2;
+          console.log(`[engine] @${profile.username}: suggested-users call roll ${roll.toFixed(1)}% against ${chance2}% \u2192 ${selected ? "calling" : "not selected"}`);
+          if (selected) {
+            try {
+              await client.getSuggestedUsers();
+              this.logAction(profile.id, tool.id, "get_suggested_users", "", "", "", "ok", "Viewed suggested accounts to follow after DM check");
+            } catch (e) {
+              if (await checkSessionErr(e, "get_suggested_users")) return;
+              console.warn(`[engine] @${profile.username}: get suggested users after DM check failed: ${e?.message}`);
+              this.logAction(profile.id, tool.id, "get_suggested_users", "", "", "", "error", e?.message ?? "Suggested users request failed");
+            }
+          }
         }
         const dmStatus = dmOk ? "ok" : dmGated ? "skipped" : "error";
         const dmLabel = dmOk ? `Checked ${dmCount} direct message${dmCount === 1 ? "" : "s"}` : dmGated ? "DM inbox temporarily gated by Instagram" : "DM check failed";

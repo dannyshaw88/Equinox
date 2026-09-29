@@ -189,6 +189,8 @@ export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyO
       stopOnBlockMinutes: 60,
       checkDmNotUsedMin: 0,
       checkDmNotUsedMax: 0,
+      checkDmSuggestedUsersChanceMin: 0,
+      checkDmSuggestedUsersChanceMax: 0,
       contextualActionsEnabled: false,
       contextualActionsMin: 5,
       contextualActionsMax: 5,

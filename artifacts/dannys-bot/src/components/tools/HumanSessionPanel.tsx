@@ -146,6 +146,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "checkDm", label: "Check DMs", description: "Read direct messages", subOptions: [
         { key: "dm_enabled", label: "Enabled",                            settingKeys: ["checkDmEnabled"] },
         { key: "dm_count",   label: "DMs per session",        settingKeys: ["checkDmMin","checkDmMax"] },
+        { key: "dm_suggested_users", label: "View suggested users chance", settingKeys: ["checkDmSuggestedUsersChanceMin","checkDmSuggestedUsersChanceMax"] },
         { key: "dm_order",   label: "Execution order",        settingKeys: ["checkDmOrderMin","checkDmOrderMax"] },
         { key: "dm_chance",  label: "Skip chance %", settingKeys: ["checkDmNotUsedMin","checkDmNotUsedMax"] },
         { key: "dm_rerun",   label: "Re-run chance %", settingKeys: ["checkDmRerunChanceMin","checkDmRerunChanceMax"] },
@@ -559,6 +560,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkDmNotUsedMax: 0,
       checkDmRerunChanceMin: 0,
       checkDmRerunChanceMax: 0,
+      checkDmSuggestedUsersChanceMin: 0,
+      checkDmSuggestedUsersChanceMax: 0,
       likeTimelinePostsEnabled: false,
       likeTimelinePostsMin: 2,
       likeTimelinePostsMax: 5,
@@ -719,6 +722,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkDmEnabled: true, checkDmMin: 5, checkDmMax: 15,
       checkDmOrderMin: 0, checkDmOrderMax: 0, checkDmNotUsedMin: 0, checkDmNotUsedMax: 0,
       checkDmRerunChanceMin: 0, checkDmRerunChanceMax: 0,
+      checkDmSuggestedUsersChanceMin: 0, checkDmSuggestedUsersChanceMax: 0,
       likeTimelinePostsEnabled: false, likeTimelinePostsMin: 2, likeTimelinePostsMax: 5,
       likeTimelinePostsDelayMin: 3, likeTimelinePostsDelayMax: 8,
       likeTimelinePostsOrderMin: 0, likeTimelinePostsOrderMax: 0,
@@ -1550,6 +1554,23 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 <NumField min={1} max={100} className="w-14 h-7 text-xs"
                   value={settings.checkDmMax ?? 15}
                   onChange={(v) => setSettings({ ...settings, checkDmMax: v })}
+                />
+              </div>
+              <div
+                className={`flex items-center gap-1.5 flex-wrap transition-opacity ${!settings.checkDmEnabled ? 'opacity-40 pointer-events-none' : ''}`}
+                title="Chance to call the suggested-accounts endpoint after each Check Direct Messages run. It does not follow anyone; 0–0 disables the call."
+              >
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">View suggested users %</span>
+                <Label className="text-xs text-muted-foreground">Min</Label>
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
+                  value={settings.checkDmSuggestedUsersChanceMin ?? 0}
+                  onChange={(v) => setSettings({ ...settings, checkDmSuggestedUsersChanceMin: v })}
+                />
+                <span className="text-[10px] text-muted-foreground">–</span>
+                <Label className="text-xs text-muted-foreground">Max</Label>
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
+                  value={settings.checkDmSuggestedUsersChanceMax ?? 0}
+                  onChange={(v) => setSettings({ ...settings, checkDmSuggestedUsersChanceMax: v })}
                 />
               </div>
             </div>
