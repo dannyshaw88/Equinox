@@ -1555,12 +1555,13 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   value={settings.checkDmMax ?? 15}
                   onChange={(v) => setSettings({ ...settings, checkDmMax: v })}
                 />
-              </div>
-              <div
-                className={`flex items-center gap-1.5 flex-wrap transition-opacity ${!settings.checkDmEnabled ? 'opacity-40 pointer-events-none' : ''}`}
-                title="Chance to call the suggested-accounts endpoint after each Check Direct Messages run. It does not follow anyone; 0–0 disables the call."
-              >
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">View suggested users %</span>
+                <div className="h-4 w-px bg-border/60 shrink-0 mx-1" />
+                <span
+                  className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                  title="Chance to call the suggested-accounts endpoint after each Check Direct Messages run. It does not follow anyone; 0–0 disables the call."
+                >
+                  View suggested users %
+                </span>
                 <Label className="text-xs text-muted-foreground">Min</Label>
                 <NumField min={0} max={100} className="w-14 h-7 text-xs"
                   value={settings.checkDmSuggestedUsersChanceMin ?? 0}
