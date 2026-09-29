@@ -5162,41 +5162,42 @@ class AutomationEngine {
           if (await checkSessionErr(e, "auto_reply")) return;
           console.warn(`[engine] @${profile.username}: auto-reply scan error: ${e?.message}`);
         }
-        const runDmReadRange = async (
+        const runDmReadChance = async (
           minKey: string,
           maxKey: string,
           actionName: string,
           label: string,
           request: () => Promise<void>,
         ): Promise<boolean> => {
-          const readCountSetting = (key: string) => {
+          const readChanceSetting = (key: string) => {
             const value = Number((s as any)[key] ?? 0);
-            return Number.isFinite(value) ? Math.max(0, Math.min(20, Math.floor(value))) : 0;
+            return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.floor(value))) : 0;
           };
-          const first = readCountSetting(minKey);
-          const last = readCountSetting(maxKey);
-          const callCount = randInt(Math.min(first, last), Math.max(first, last));
-          for (let i = 0; i < callCount; i++) {
-            try {
-              await request();
-              this.logAction(profile.id, tool.id, actionName, "", "", "", "ok", `${label} (${i + 1}/${callCount})`);
-            } catch (e: any) {
-              if (await checkSessionErr(e, actionName)) return true;
-              console.warn(`[engine] @${profile.username}: ${label} request failed: ${e?.message}`);
-              this.logAction(profile.id, tool.id, actionName, "", "", "", "error", e?.message ?? `${label} request failed`);
-              break;
-            }
+          const first = readChanceSetting(minKey);
+          const last = readChanceSetting(maxKey);
+          const chance = randInt(Math.min(first, last), Math.max(first, last));
+          const roll = Math.random() * 100;
+          const selected = roll < chance;
+          console.log(`[engine] @${profile.username}: ${label} chance roll ${roll.toFixed(1)}% against ${chance}% → ${selected ? "calling once" : "not selected"}`);
+          if (!selected) return false;
+          try {
+            await request();
+            this.logAction(profile.id, tool.id, actionName, "", "", "", "ok", `${label} (${chance}% chance)`);
+          } catch (e: any) {
+            if (await checkSessionErr(e, actionName)) return true;
+            console.warn(`[engine] @${profile.username}: ${label} request failed: ${e?.message}`);
+            this.logAction(profile.id, tool.id, actionName, "", "", "", "error", e?.message ?? `${label} request failed`);
           }
           return false;
         };
-        if (await runDmReadRange(
+        if (await runDmReadChance(
           "checkDmPresenceMin",
           "checkDmPresenceMax",
           "get_presence",
           "Synced active-status presence",
           () => client.syncDirectMessagePresence(),
         )) return;
-        if (await runDmReadRange(
+        if (await runDmReadChance(
           "checkDmRankedRecipientsMin",
           "checkDmRankedRecipientsMax",
           "ranked_recipients",

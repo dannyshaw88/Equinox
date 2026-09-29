@@ -168689,35 +168689,36 @@ ${err?.stack ?? ""}`);
           if (await checkSessionErr(e, "auto_reply")) return;
           console.warn(`[engine] @${profile.username}: auto-reply scan error: ${e?.message}`);
         }
-        const runDmReadRange = async (minKey, maxKey, actionName, label, request3) => {
-          const readCountSetting = (key) => {
+        const runDmReadChance = async (minKey, maxKey, actionName, label, request3) => {
+          const readChanceSetting = (key) => {
             const value = Number(s[key] ?? 0);
-            return Number.isFinite(value) ? Math.max(0, Math.min(20, Math.floor(value))) : 0;
+            return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.floor(value))) : 0;
           };
-          const first = readCountSetting(minKey);
-          const last = readCountSetting(maxKey);
-          const callCount = randInt2(Math.min(first, last), Math.max(first, last));
-          for (let i2 = 0; i2 < callCount; i2++) {
-            try {
-              await request3();
-              this.logAction(profile.id, tool.id, actionName, "", "", "", "ok", `${label} (${i2 + 1}/${callCount})`);
-            } catch (e) {
-              if (await checkSessionErr(e, actionName)) return true;
-              console.warn(`[engine] @${profile.username}: ${label} request failed: ${e?.message}`);
-              this.logAction(profile.id, tool.id, actionName, "", "", "", "error", e?.message ?? `${label} request failed`);
-              break;
-            }
+          const first = readChanceSetting(minKey);
+          const last = readChanceSetting(maxKey);
+          const chance2 = randInt2(Math.min(first, last), Math.max(first, last));
+          const roll = Math.random() * 100;
+          const selected = roll < chance2;
+          console.log(`[engine] @${profile.username}: ${label} chance roll ${roll.toFixed(1)}% against ${chance2}% \u2192 ${selected ? "calling once" : "not selected"}`);
+          if (!selected) return false;
+          try {
+            await request3();
+            this.logAction(profile.id, tool.id, actionName, "", "", "", "ok", `${label} (${chance2}% chance)`);
+          } catch (e) {
+            if (await checkSessionErr(e, actionName)) return true;
+            console.warn(`[engine] @${profile.username}: ${label} request failed: ${e?.message}`);
+            this.logAction(profile.id, tool.id, actionName, "", "", "", "error", e?.message ?? `${label} request failed`);
           }
           return false;
         };
-        if (await runDmReadRange(
+        if (await runDmReadChance(
           "checkDmPresenceMin",
           "checkDmPresenceMax",
           "get_presence",
           "Synced active-status presence",
           () => client.syncDirectMessagePresence()
         )) return;
-        if (await runDmReadRange(
+        if (await runDmReadChance(
           "checkDmRankedRecipientsMin",
           "checkDmRankedRecipientsMax",
           "ranked_recipients",

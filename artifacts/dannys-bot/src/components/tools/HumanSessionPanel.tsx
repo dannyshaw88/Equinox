@@ -146,8 +146,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "checkDm", label: "Check DMs", description: "Read direct messages", subOptions: [
         { key: "dm_enabled", label: "Enabled",                            settingKeys: ["checkDmEnabled"] },
         { key: "dm_count",   label: "DMs per session",        settingKeys: ["checkDmMin","checkDmMax"] },
-        { key: "dm_presence", label: "Active-status presence calls", settingKeys: ["checkDmPresenceMin","checkDmPresenceMax"] },
-        { key: "dm_ranked_recipients", label: "Ranked-recipient calls", settingKeys: ["checkDmRankedRecipientsMin","checkDmRankedRecipientsMax"] },
+        { key: "dm_presence", label: "Active-status presence chance (%)", settingKeys: ["checkDmPresenceMin","checkDmPresenceMax"] },
+        { key: "dm_ranked_recipients", label: "Ranked-recipient chance (%)", settingKeys: ["checkDmRankedRecipientsMin","checkDmRankedRecipientsMax"] },
         { key: "dm_suggested_users", label: "View suggested users chance", settingKeys: ["checkDmSuggestedUsersChanceMin","checkDmSuggestedUsersChanceMax"] },
         { key: "dm_order",   label: "Execution order",        settingKeys: ["checkDmOrderMin","checkDmOrderMax"] },
         { key: "dm_chance",  label: "Skip chance %", settingKeys: ["checkDmNotUsedMin","checkDmNotUsedMax"] },
@@ -1584,12 +1584,12 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 <div className="h-4 w-px bg-border/60 shrink-0 mx-1" />
                 <span
                   className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
-                  title="Number of GET /api/v1/direct_v2/get_presence/ requests during each DM check. 0–0 disables it."
+                  title="Chance of sending one GET /api/v1/direct_v2/get_presence/ request per DM check, randomly selected between Min and Max. 0% never; 100% always."
                 >
-                  Presence GETs
+                  Presence chance %
                 </span>
                 <Label className="text-xs text-muted-foreground">Min</Label>
-                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
                   value={settings.checkDmPresenceMin ?? 0}
                   onChange={(v) => setSettings({
                     ...settings,
@@ -1599,7 +1599,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 />
                 <span className="text-[10px] text-muted-foreground">–</span>
                 <Label className="text-xs text-muted-foreground">Max</Label>
-                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
                   value={settings.checkDmPresenceMax ?? 0}
                   onChange={(v) => setSettings({
                     ...settings,
@@ -1610,12 +1610,12 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 <div className="h-4 w-px bg-border/60 shrink-0 mx-1" />
                 <span
                   className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
-                  title="Number of GET /api/v1/direct_v2/ranked_recipients/ requests during each DM check. 0–0 disables it."
+                  title="Chance of sending one GET /api/v1/direct_v2/ranked_recipients/ request per DM check, randomly selected between Min and Max. 0% never; 100% always."
                 >
-                  Ranked recipients GETs
+                  Ranked recipients chance %
                 </span>
                 <Label className="text-xs text-muted-foreground">Min</Label>
-                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
                   value={settings.checkDmRankedRecipientsMin ?? 0}
                   onChange={(v) => setSettings({
                     ...settings,
@@ -1625,7 +1625,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 />
                 <span className="text-[10px] text-muted-foreground">–</span>
                 <Label className="text-xs text-muted-foreground">Max</Label>
-                <NumField min={0} max={20} className="w-14 h-7 text-xs"
+                <NumField min={0} max={100} className="w-14 h-7 text-xs"
                   value={settings.checkDmRankedRecipientsMax ?? 0}
                   onChange={(v) => setSettings({
                     ...settings,

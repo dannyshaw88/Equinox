@@ -78,10 +78,17 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.580",
+    date: "29 Sep 2026",
+    items: [
+      { category: "Fix", text: "Check DMs presence and ranked-recipient Min/Max settings now mean a 0–100% chance of making one request per DM check, not a request count. 0% never calls the endpoint; 100% always does." },
+    ],
+  },
+  {
     version: "1.1.579",
     date: "29 Sep 2026",
     items: [
-      { category: "New", text: "Check Direct Messages now supports independent min/max request counts for active-status sync and ranked recipients. Both ranges are on the same settings row and can be included in Copy Settings." },
+      { category: "New", text: "Check Direct Messages now has independent Min/Max controls for active-status presence and ranked recipients on the same settings row, available in Copy Settings." },
     ],
   },
   {
