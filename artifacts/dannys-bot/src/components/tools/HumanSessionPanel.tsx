@@ -989,7 +989,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
 
             {/* ── View Timeline Feed ── */}
             <div className="px-4 py-3 space-y-1.5">
-              {/* ROW 1: [✓] View Timeline Feed | Expand Caption%  ——  Order % / Skip Chance on right */}
+              {/* ROW 1: [✓] View Timeline Feed  ——  Order % / Skip Chance on right */}
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 flex-wrap">
                   <input type="checkbox" id="viewTimelineFeedEnabled"
@@ -1001,11 +1001,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />
                     View Timeline Feed
                   </label>
-                  <div className={`flex items-center gap-1.5 transition-opacity ${!settings.viewTimelineFeedEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
-                    {pctInputs("expandCaptionPercentMin", "expandCaptionPercentMax")}
-                    <AlignLeft className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Expand Caption%</span>
-                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0">
                   <div className="flex items-center gap-2">
@@ -1035,20 +1030,25 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   {rerunChanceInputs("viewTimelineFeed")}
                 </div>
               </div>
-              {/* Posts per session — moved to the former Expand Caption% position */}
+              {/* Posts per session and Expand Caption% on one row */}
               <div className={`flex items-center gap-3 flex-wrap pt-1.5 border-t border-border/40 transition-opacity ${!settings.viewTimelineFeedEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts</span>
-                  <Label className="text-xs text-muted-foreground">Min</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Min</Label>
                   <NumField min={1} max={100} className="w-14 h-7 text-xs"
                     value={settings.viewTimelineFeedMin ?? 3}
                     onChange={(v) => setSettings({ ...settings, viewTimelineFeedMin: v })}
                   />
-                  <Label className="text-xs text-muted-foreground">Max</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Max</Label>
                   <NumField min={1} max={100} className="w-14 h-7 text-xs"
                     value={settings.viewTimelineFeedMax ?? 8}
                     onChange={(v) => setSettings({ ...settings, viewTimelineFeedMax: v })}
                   />
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to View</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {pctInputs("expandCaptionPercentMin", "expandCaptionPercentMax")}
+                  <AlignLeft className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Expand Caption%</span>
                 </div>
               </div>
               {/* ROW 2: Like Delay | Save Media | Like% — left-aligned */}
@@ -1059,8 +1059,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like%</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like Delay</span>
-                  <Label className="text-xs text-muted-foreground">Min</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Min</Label>
                   <div className="relative">
                     <NumField min={0} max={300} className="w-14 h-7 text-xs pr-4"
                       value={settings.likeTimelinePostsDelayMin ?? 3}
@@ -1068,7 +1067,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     />
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">s</span>
                   </div>
-                  <Label className="text-xs text-muted-foreground">Max</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Max</Label>
                   <div className="relative">
                     <NumField min={0} max={300} className="w-14 h-7 text-xs pr-4"
                       value={settings.likeTimelinePostsDelayMax ?? 8}
@@ -1076,6 +1075,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     />
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">s</span>
                   </div>
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like Delay</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Save Media</span>
@@ -1187,12 +1187,12 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   {/* Row 1: Explore scroll volume and post-open percentage */}
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Min</Label>
+                      <Label className="text-xs text-muted-foreground uppercase">Min</Label>
                       <NumField min={1} max={100} className="w-14 h-7 text-xs"
                         value={(settings as any).exploreScrollMin ?? 5}
                         onChange={(v) => setSettings({ ...settings, exploreScrollMin: v } as any)}
                       />
-                      <Label className="text-xs text-muted-foreground">Max</Label>
+                      <Label className="text-xs text-muted-foreground uppercase">Max</Label>
                       <NumField min={1} max={100} className="w-14 h-7 text-xs"
                         value={(settings as any).exploreScrollMax ?? 15}
                         onChange={(v) => setSettings({ ...settings, exploreScrollMax: v } as any)}
