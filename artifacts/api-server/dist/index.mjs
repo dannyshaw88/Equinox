@@ -166828,11 +166828,6 @@ ${err?.stack ?? ""}`);
                 _ebSuggestionsPageDetected = true;
               }
             }
-            const ecPctRaw0 = Math.min(100, Math.max(0, Number(s.expandCaptionPercentMin ?? 0)));
-            const ecPctRaw1 = Math.min(100, Math.max(0, Number(s.expandCaptionPercentMax ?? 0)));
-            const ecPctMin = Math.min(ecPctRaw0, ecPctRaw1);
-            const ecPctMax = Math.max(ecPctRaw0, ecPctRaw1);
-            const ecPct = ecPctMax > 0 ? ecPctMin + Math.random() * (ecPctMax - ecPctMin) : 0;
             const likePctRaw0 = Math.min(100, Math.max(0, Number(s.likeTimelinePostsPercentMin ?? 0)));
             const likePctRaw1 = Math.min(100, Math.max(0, Number(s.likeTimelinePostsPercentMax ?? 0)));
             const likePctMin = Math.min(likePctRaw0, likePctRaw1);
@@ -166841,36 +166836,11 @@ ${err?.stack ?? ""}`);
             const likeCount = likePctMax > 0 ? Math.round(feedCount * likePct / 100) : 0;
             const likeDelayMinMs = Math.max(0, Number(s.likeTimelinePostsDelayMin ?? 3)) * 1e3;
             const likeDelayMaxMs = Math.max(likeDelayMinMs, Number(s.likeTimelinePostsDelayMax ?? 8) * 1e3);
-            let expanded = 0;
             let liked = 0;
             for (let i2 = 0; i2 < feedCount && !state.stop.stopped; i2++) {
               await page.evaluate(() => window.scrollBy(0, 350 + Math.random() * 250)).catch(() => {
               });
               await sleep(actionDelay());
-              if (ecPctMax > 0 && Math.random() * 100 < ecPct) {
-                const clicked = await page.evaluate(() => {
-                  const articles = Array.from(document.querySelectorAll("article:not([data-eb-caption-done])"));
-                  const target = articles.find((a2) => {
-                    const rect = a2.getBoundingClientRect();
-                    return rect.bottom > 0 && rect.top < window.innerHeight;
-                  }) ?? articles[0];
-                  if (!target) return false;
-                  target.setAttribute("data-eb-caption-done", "1");
-                  const moreBtn = Array.from(target.querySelectorAll(
-                    'div[role="button"], span[role="button"], button'
-                  )).find((el) => {
-                    const text2 = (el.textContent ?? "").trim().toLowerCase();
-                    return text2.endsWith("more") && text2.length < 20;
-                  });
-                  if (!moreBtn) return false;
-                  moreBtn.click();
-                  return true;
-                }).catch(() => false);
-                if (clicked) {
-                  expanded++;
-                  await sleep(randInt2(600, 1200));
-                }
-              }
               if (likeCount > 0 && liked < likeCount) {
                 const likedOne = await page.evaluate(() => {
                   const articles = Array.from(document.querySelectorAll("article"));
@@ -166905,11 +166875,6 @@ ${err?.stack ?? ""}`);
             this.logAction(profile.id, tool.id, "view_timeline_feed", "", "", "", "ok", `EB scrolled feed (${feedCount} scrolls)`);
             this.logGhostBrowserCall(profile.id, profile.username, "view_timeline_feed", `EB scrolled feed (${feedCount} scrolls)`);
             console.log(`[engine] @${profile.username}: [EB-only] \u{1F4F0} scrolled feed ${feedCount}\xD7 \u2014 feed had posts: ${feedHadPosts}`);
-            if (expanded > 0) {
-              this.logAction(profile.id, tool.id, "expand_caption", "", "", "", "ok", `EB expanded caption on ${expanded} post(s) inline while scrolling`);
-              this.logGhostBrowserCall(profile.id, profile.username, "expand_caption", `EB expanded caption on ${expanded} post(s) inline while scrolling`);
-              console.log(`[engine] @${profile.username}: [EB-only] \u{1F4D6} expanded ${expanded} caption(s) inline`);
-            }
             if (liked > 0) {
               this.logAction(profile.id, tool.id, "like_timeline_post", "", "", "", "ok", `EB liked ${liked} post(s) inline while scrolling`);
               this.logGhostBrowserCall(profile.id, profile.username, "like_timeline_post", `EB liked ${liked} post(s) inline while scrolling`);

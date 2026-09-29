@@ -39,6 +39,8 @@ interface HumanSessionPanelProps {
 
 function withoutRemovedActivitySettings(settings: Record<string, any>): Record<string, any> {
   const cleaned = { ...settings };
+  delete cleaned.expandCaptionPercentMin;
+  delete cleaned.expandCaptionPercentMax;
   delete cleaned.viewActivityRunChanceMin;
   delete cleaned.viewActivityRunChanceMax;
   const legacySavePercent = cleaned.saveMediaPercent == null ? 20 : Number(cleaned.saveMediaPercent);
