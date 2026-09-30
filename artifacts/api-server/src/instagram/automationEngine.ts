@@ -4762,6 +4762,54 @@ class AutomationEngine {
       oncePerExecution?: boolean;
       attempted?: boolean;
     };
+    // Picks the per-session run threshold from the configured min/max range.
+    const willRunJitterAction = (minKey: string, maxKey: string, defaultChance = 100) => {
+      const lo = Number(s[minKey] ?? defaultChance);
+      const hi = Number(s[maxKey] ?? defaultChance);
+      const threshold = randInt(Math.min(lo, hi), Math.max(lo, hi));
+      return Math.random() * 100 < threshold;
+    };
+    const runOwnProfileWithSubActions = async (): Promise<boolean> => {
+      const profileOk = await client.visitOwnProfile();
+      if (!profileOk) return false;
+
+      const subActions = [
+        {
+          label: "tagged posts",
+          minKey: "humanJitterTaggedPostsRunChanceMin",
+          maxKey: "humanJitterTaggedPostsRunChanceMax",
+          actionType: "view_tagged_posts",
+          run: () => client.viewTaggedPosts(),
+        },
+        {
+          label: "reposts tab",
+          minKey: "humanJitterRepostsTabRunChanceMin",
+          maxKey: "humanJitterRepostsTabRunChanceMax",
+          actionType: "view_reposts_tab",
+          run: () => client.viewRepostsTab(),
+        },
+      ];
+      for (const subAction of subActions) {
+        if (!willRunJitterAction(subAction.minKey, subAction.maxKey, 0)) {
+          console.log(`[engine] @${profile.username}: ${subAction.label} skipped (run chance)`);
+          continue;
+        }
+        try {
+          const ok = await subAction.run();
+          const detail = ok
+            ? `${subAction.label} completed`
+            : `${subAction.label} returned no valid response`;
+          console.log(`[engine] @${profile.username}: ${subAction.label} — ${ok ? "ok" : "failed"}`);
+          this.logAction(profile.id, tool.id, subAction.actionType, "", "", "", ok ? "ok" : "error", detail);
+        } catch (e: any) {
+          const message = e?.message ?? "unknown error";
+          console.warn(`[engine] @${profile.username}: ${subAction.label} API error: ${message}`);
+          this.logAction(profile.id, tool.id, subAction.actionType, "", "", "", "error", `${subAction.label} failed — ${message.slice(0, 300)}`);
+          if (await checkSessionErr(e, subAction.label)) return true;
+        }
+      }
+      return true;
+    };
     // These are direct API actions, not browser/DOM navigation. Keep them on
     // the mobile API client path in both grouped and shuffled execution modes.
     const humanJitterActions: HumanJitterAction[] = [
@@ -4779,7 +4827,7 @@ class AutomationEngine {
         chanceMinKey: "ownProfileRunChanceMin",
         chanceMaxKey: "ownProfileRunChanceMax",
         actionType: "visit_own_profile",
-        run: () => client.visitOwnProfile(),
+        run: () => runOwnProfileWithSubActions(),
       },
       {
         label: "settings",
@@ -4828,13 +4876,6 @@ class AutomationEngine {
         },
       });
     }
-    // Picks the per-session run threshold from the configured min/max range.
-    const willRunJitterAction = (minKey: string, maxKey: string) => {
-      const lo = Number(s[minKey] ?? 100);
-      const hi = Number(s[maxKey] ?? 100);
-      const threshold = randInt(Math.min(lo, hi), Math.max(lo, hi));
-      return Math.random() * 100 < threshold;
-    };
     const runJitterApiAction = async (action: HumanJitterAction): Promise<void> => {
       if (s[action.enabledKey] === false) {
         console.log(`[engine] @${profile.username}: ${action.label} skipped (disabled)`);
@@ -4867,7 +4908,9 @@ class AutomationEngine {
     };
     const runGroupedHumanJitter = async (): Promise<void> => {
       for (let i = 0; i < humanJitterActions.length; i++) {
+        if (sessionError) break;
         await runJitterApiAction(humanJitterActions[i]);
+        if (sessionError) break;
         if (i < humanJitterActions.length - 1) await sleep(actionDelay());
       }
     };
@@ -6091,7 +6134,7 @@ class AutomationEngine {
             shuffleInserted: true,
             run: async () => {
               await runJitterApiAction(action);
-              if (i < randomizedActions.length - 1) await sleep(actionDelay());
+              if (!sessionError && i < randomizedActions.length - 1) await sleep(actionDelay());
             },
           });
         }

@@ -3477,10 +3477,15 @@ export class InstagramWebClient {
 
   // ── Visit own profile ─────────────────────────────────────────────────────
   // Simulates a user tapping their own profile tab.
-  async visitOwnProfile(): Promise<boolean> {
+  private getOwnUserIdFromSessionCookies(): string | null {
     const userIdCookie = this.mobileCookieJar.find(c => c.startsWith("ds_user_id="))
       ?? this.cookieJar.find(c => c.startsWith("ds_user_id="));
-    const userId = userIdCookie?.split("=")[1] ?? "";
+    const userId = userIdCookie?.split("=")[1];
+    return userId || null;
+  }
+
+  async visitOwnProfile(): Promise<boolean> {
+    const userId = this.getOwnUserIdFromSessionCookies();
     if (!userId) return false;
 
     return this.timed("VisitOwnProfile", async () => {
@@ -3491,6 +3496,28 @@ export class InstagramWebClient {
       const j = await this.mobileSessionGet(`/api/v1/users/${userId}/info/`);
       return !!(j?.user);
     }, "Visit own profile");
+  }
+
+  // ── Visit the tagged-posts tab on the own profile ──────────────────────────
+  async viewTaggedPosts(): Promise<boolean> {
+    const userId = this.getOwnUserIdFromSessionCookies();
+    if (!userId) return false;
+    return this.timed("ViewTaggedPosts", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/usertags/${userId}/feed/`);
+      const status = String(j?.status ?? "").toLowerCase();
+      return !!j && status !== "fail" && status !== "error";
+    }, "View tagged posts");
+  }
+
+  // ── Visit the reposts tab on the own profile ───────────────────────────────
+  async viewRepostsTab(): Promise<boolean> {
+    const userId = this.getOwnUserIdFromSessionCookies();
+    if (!userId) return false;
+    return this.timed("ViewRepostsTab", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/feed/user/${userId}/reposts/`);
+      const status = String(j?.status ?? "").toLowerCase();
+      return !!j && status !== "fail" && status !== "error";
+    }, "View reposts tab");
   }
 
   // ── Fetch own profile stats (followers / following / posts) ───────────────

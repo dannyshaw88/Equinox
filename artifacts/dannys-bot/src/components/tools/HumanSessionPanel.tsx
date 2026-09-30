@@ -135,7 +135,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "hs_shuffle",      label: "Shuffle actions through session", settingKeys: ["humanSessionShuffle"] },
         { key: "hs_rerun",        label: "Re-run chance %",    settingKeys: ["humanSessionRerunChanceMin","humanSessionRerunChanceMax"] },
         { key: "hs_notif", label: "Notifications", settingKeys: ["humanJitterNotificationsEnabled","notificationsRunChanceMin","notificationsRunChanceMax"] },
-        { key: "hs_ownprofile", label: "Own Profile", settingKeys: ["humanJitterOwnProfileEnabled","ownProfileRunChanceMin","ownProfileRunChanceMax"] },
+        { key: "hs_ownprofile", label: "Own Profile", settingKeys: ["humanJitterOwnProfileEnabled","ownProfileRunChanceMin","ownProfileRunChanceMax","humanJitterTaggedPostsRunChanceMin","humanJitterTaggedPostsRunChanceMax","humanJitterRepostsTabRunChanceMin","humanJitterRepostsTabRunChanceMax"] },
         { key: "hs_settings", label: "Settings", settingKeys: ["humanJitterSettingsEnabled","settingsActivityRunChanceMin","settingsActivityRunChanceMax"] },
         { key: "hs_saved", label: "View Saved", settingKeys: ["humanJitterSavedEnabled","viewSavedRunChanceMin","viewSavedRunChanceMax"] },
         { key: "hs_followers_every", label: "Followers", settingKeys: ["humanJitterFollowersEnabled","humanJitterFollowersEveryMin","humanJitterFollowersEveryMax"] },
@@ -546,6 +546,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       notificationsRunChanceMax: 100,
       ownProfileRunChanceMin: 100,
       ownProfileRunChanceMax: 100,
+      humanJitterTaggedPostsRunChanceMin: 0,
+      humanJitterTaggedPostsRunChanceMax: 0,
+      humanJitterRepostsTabRunChanceMin: 0,
+      humanJitterRepostsTabRunChanceMax: 0,
       settingsActivityRunChanceMin: 50,
       settingsActivityRunChanceMax: 100,
       viewSavedRunChanceMin: 50,
@@ -737,6 +741,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       humanJitterFollowersEnabled: true, humanJitterFollowingsEnabled: true,
       notificationsRunChanceMin: 100, notificationsRunChanceMax: 100,
       ownProfileRunChanceMin: 100, ownProfileRunChanceMax: 100,
+      humanJitterTaggedPostsRunChanceMin: 0, humanJitterTaggedPostsRunChanceMax: 0,
+      humanJitterRepostsTabRunChanceMin: 0, humanJitterRepostsTabRunChanceMax: 0,
       settingsActivityRunChanceMin: 50, settingsActivityRunChanceMax: 100,
       viewSavedRunChanceMin: 50, viewSavedRunChanceMax: 100,
       humanJitterFollowersEveryMin: 10, humanJitterFollowersEveryMax: 25,
@@ -1358,7 +1364,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   const checkboxId = `human-jitter-${enabledKey}`;
                   const isEnabled = (settings as any)[enabledKey] !== false;
                   return (
-                    <div key={enabledKey} className={`flex items-center gap-1 shrink-0 transition-opacity ${isEnabled ? "" : "opacity-40"}`}>
+                    <div key={enabledKey} className={`flex flex-wrap items-center gap-x-1 gap-y-1 transition-opacity ${isEnabled ? "" : "opacity-40"}`}>
                       <label htmlFor={checkboxId} className="flex items-center gap-1 cursor-pointer select-none">
                         <input
                           type="checkbox"
@@ -1383,6 +1389,38 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                         />
                         <span className="text-[9px] text-muted-foreground">%</span>
                       </div>
+                      {enabledKey === "humanJitterOwnProfileEnabled" && (
+                        <>
+                          <span className="text-border/60 text-xs mx-0.5 shrink-0">|</span>
+                          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Tagged Posts</span>
+                          <div className="flex items-center gap-0.5">
+                            <NumField min={0} max={100} className="w-12 h-6 text-xs pr-4 pl-1"
+                              value={(settings as any).humanJitterTaggedPostsRunChanceMin ?? 0}
+                              onChange={v => setSettings({ ...settings, humanJitterTaggedPostsRunChanceMin: v } as any)}
+                            />
+                            <span className="text-[10px] text-muted-foreground px-0.5">–</span>
+                            <NumField min={0} max={100} className="w-12 h-6 text-xs pr-4 pl-1"
+                              value={(settings as any).humanJitterTaggedPostsRunChanceMax ?? 0}
+                              onChange={v => setSettings({ ...settings, humanJitterTaggedPostsRunChanceMax: v } as any)}
+                            />
+                            <span className="text-[9px] text-muted-foreground">%</span>
+                          </div>
+                          <span className="text-border/60 text-xs mx-0.5 shrink-0">|</span>
+                          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Reposts Tab</span>
+                          <div className="flex items-center gap-0.5">
+                            <NumField min={0} max={100} className="w-12 h-6 text-xs pr-4 pl-1"
+                              value={(settings as any).humanJitterRepostsTabRunChanceMin ?? 0}
+                              onChange={v => setSettings({ ...settings, humanJitterRepostsTabRunChanceMin: v } as any)}
+                            />
+                            <span className="text-[10px] text-muted-foreground px-0.5">–</span>
+                            <NumField min={0} max={100} className="w-12 h-6 text-xs pr-4 pl-1"
+                              value={(settings as any).humanJitterRepostsTabRunChanceMax ?? 0}
+                              onChange={v => setSettings({ ...settings, humanJitterRepostsTabRunChanceMax: v } as any)}
+                            />
+                            <span className="text-[9px] text-muted-foreground">%</span>
+                          </div>
+                        </>
+                      )}
                       {idx < arr.length - 1 && <span className="text-border/60 text-xs mx-0.5 shrink-0">|</span>}
                     </div>
                   );

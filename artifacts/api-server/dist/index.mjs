@@ -159542,14 +159542,38 @@ var InstagramWebClient = class {
   }
   // ── Visit own profile ─────────────────────────────────────────────────────
   // Simulates a user tapping their own profile tab.
-  async visitOwnProfile() {
+  getOwnUserIdFromSessionCookies() {
     const userIdCookie = this.mobileCookieJar.find((c3) => c3.startsWith("ds_user_id=")) ?? this.cookieJar.find((c3) => c3.startsWith("ds_user_id="));
-    const userId = userIdCookie?.split("=")[1] ?? "";
+    const userId = userIdCookie?.split("=")[1];
+    return userId || null;
+  }
+  async visitOwnProfile() {
+    const userId = this.getOwnUserIdFromSessionCookies();
     if (!userId) return false;
     return this.timed("VisitOwnProfile", async () => {
       const j = await this.mobileSessionGet(`/api/v1/users/${userId}/info/`);
       return !!j?.user;
     }, "Visit own profile");
+  }
+  // ── Visit the tagged-posts tab on the own profile ──────────────────────────
+  async viewTaggedPosts() {
+    const userId = this.getOwnUserIdFromSessionCookies();
+    if (!userId) return false;
+    return this.timed("ViewTaggedPosts", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/usertags/${userId}/feed/`);
+      const status = String(j?.status ?? "").toLowerCase();
+      return !!j && status !== "fail" && status !== "error";
+    }, "View tagged posts");
+  }
+  // ── Visit the reposts tab on the own profile ───────────────────────────────
+  async viewRepostsTab() {
+    const userId = this.getOwnUserIdFromSessionCookies();
+    if (!userId) return false;
+    return this.timed("ViewRepostsTab", async () => {
+      const j = await this.mobileSessionGet(`/api/v1/feed/user/${userId}/reposts/`);
+      const status = String(j?.status ?? "").toLowerCase();
+      return !!j && status !== "fail" && status !== "error";
+    }, "View reposts tab");
   }
   // ── Fetch own profile stats (followers / following / posts) ───────────────
   // Uses the same current_user endpoint but extracts the counts.
@@ -168432,6 +168456,50 @@ ${err?.stack ?? ""}`);
       const rerunKey = label === "likeTimelinePosts" ? "viewTimelineFeed" : label.replace(/Tool$/, "");
       queue.push({ order, label, rerunKey, run: fn });
     };
+    const willRunJitterAction = (minKey, maxKey, defaultChance = 100) => {
+      const lo = Number(s[minKey] ?? defaultChance);
+      const hi = Number(s[maxKey] ?? defaultChance);
+      const threshold = randInt2(Math.min(lo, hi), Math.max(lo, hi));
+      return Math.random() * 100 < threshold;
+    };
+    const runOwnProfileWithSubActions = async () => {
+      const profileOk = await client.visitOwnProfile();
+      if (!profileOk) return false;
+      const subActions = [
+        {
+          label: "tagged posts",
+          minKey: "humanJitterTaggedPostsRunChanceMin",
+          maxKey: "humanJitterTaggedPostsRunChanceMax",
+          actionType: "view_tagged_posts",
+          run: () => client.viewTaggedPosts()
+        },
+        {
+          label: "reposts tab",
+          minKey: "humanJitterRepostsTabRunChanceMin",
+          maxKey: "humanJitterRepostsTabRunChanceMax",
+          actionType: "view_reposts_tab",
+          run: () => client.viewRepostsTab()
+        }
+      ];
+      for (const subAction of subActions) {
+        if (!willRunJitterAction(subAction.minKey, subAction.maxKey, 0)) {
+          console.log(`[engine] @${profile.username}: ${subAction.label} skipped (run chance)`);
+          continue;
+        }
+        try {
+          const ok = await subAction.run();
+          const detail = ok ? `${subAction.label} completed` : `${subAction.label} returned no valid response`;
+          console.log(`[engine] @${profile.username}: ${subAction.label} \u2014 ${ok ? "ok" : "failed"}`);
+          this.logAction(profile.id, tool.id, subAction.actionType, "", "", "", ok ? "ok" : "error", detail);
+        } catch (e) {
+          const message = e?.message ?? "unknown error";
+          console.warn(`[engine] @${profile.username}: ${subAction.label} API error: ${message}`);
+          this.logAction(profile.id, tool.id, subAction.actionType, "", "", "", "error", `${subAction.label} failed \u2014 ${message.slice(0, 300)}`);
+          if (await checkSessionErr(e, subAction.label)) return true;
+        }
+      }
+      return true;
+    };
     const humanJitterActions = [
       {
         label: "notifications",
@@ -168447,7 +168515,7 @@ ${err?.stack ?? ""}`);
         chanceMinKey: "ownProfileRunChanceMin",
         chanceMaxKey: "ownProfileRunChanceMax",
         actionType: "visit_own_profile",
-        run: () => client.visitOwnProfile()
+        run: () => runOwnProfileWithSubActions()
       },
       {
         label: "settings",
@@ -168494,12 +168562,6 @@ ${err?.stack ?? ""}`);
         }
       });
     }
-    const willRunJitterAction = (minKey, maxKey) => {
-      const lo = Number(s[minKey] ?? 100);
-      const hi = Number(s[maxKey] ?? 100);
-      const threshold = randInt2(Math.min(lo, hi), Math.max(lo, hi));
-      return Math.random() * 100 < threshold;
-    };
     const runJitterApiAction = async (action) => {
       if (s[action.enabledKey] === false) {
         console.log(`[engine] @${profile.username}: ${action.label} skipped (disabled)`);
@@ -168529,7 +168591,9 @@ ${err?.stack ?? ""}`);
     };
     const runGroupedHumanJitter = async () => {
       for (let i2 = 0; i2 < humanJitterActions.length; i2++) {
+        if (sessionError) break;
         await runJitterApiAction(humanJitterActions[i2]);
+        if (sessionError) break;
         if (i2 < humanJitterActions.length - 1) await sleep(actionDelay());
       }
     };
@@ -169636,7 +169700,7 @@ ${err?.stack ?? ""}`);
             shuffleInserted: true,
             run: async () => {
               await runJitterApiAction(action);
-              if (i2 < randomizedActions.length - 1) await sleep(actionDelay());
+              if (!sessionError && i2 < randomizedActions.length - 1) await sleep(actionDelay());
             }
           });
         }
