@@ -9,7 +9,7 @@ import { NumField } from "@/components/ui/num-field";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Bell, User, RefreshCw, Settings, PlaySquare, BookOpen, Bookmark,
+  Bell, User, RefreshCw, Settings, PlaySquare, BookOpen, Bookmark, Shuffle,
   MessageSquare, Repeat2, AtSign, Clock, ExternalLink, Image as ImageIcon,
   ChevronDown, ChevronUp, Heart, Copy, FolderOpen, UserPlus, UserMinus, Zap, Film, Percent, Trash2, Globe, Compass,
 } from "lucide-react";
@@ -128,6 +128,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "hs_enabled",      label: "Enabled",                                      settingKeys: ["humanSessionEnabled"] },
         { key: "hs_order",        label: "Execution order",                  settingKeys: ["humanSessionOrderMin","humanSessionOrderMax"] },
         { key: "hs_chance",       label: "Skip chance %",      settingKeys: ["humanSessionNotUsedMin","humanSessionNotUsedMax"] },
+        { key: "hs_shuffle",      label: "Shuffle actions through session", settingKeys: ["humanSessionShuffle"] },
         { key: "hs_rerun",        label: "Re-run chance %",    settingKeys: ["humanSessionRerunChanceMin","humanSessionRerunChanceMax"] },
         { key: "hs_notif",        label: "Notifications run chance %",       settingKeys: ["notificationsRunChanceMin","notificationsRunChanceMax"] },
         { key: "hs_ownprofile",   label: "Own Profile run chance %",         settingKeys: ["ownProfileRunChanceMin","ownProfileRunChanceMax"] },
@@ -522,6 +523,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewTimelineFeedRerunChanceMin: 0,
       viewTimelineFeedRerunChanceMax: 0,
       humanSessionEnabled: true,
+      humanSessionShuffle: false,
       humanSessionOrderMin: 0,
       humanSessionOrderMax: 0,
       humanSessionNotUsedMin: 0,
@@ -711,7 +713,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewTimelineFeedOrderMin: 5, viewTimelineFeedOrderMax: 10,
       viewTimelineFeedNotUsedMin: 0, viewTimelineFeedNotUsedMax: 0,
       viewTimelineFeedRerunChanceMin: 0, viewTimelineFeedRerunChanceMax: 0,
-      humanSessionEnabled: true, humanSessionOrderMin: 0, humanSessionOrderMax: 0,
+      humanSessionEnabled: true, humanSessionShuffle: false, humanSessionOrderMin: 0, humanSessionOrderMax: 0,
       humanSessionNotUsedMin: 0, humanSessionNotUsedMax: 0,
       humanSessionRerunChanceMin: 0, humanSessionRerunChanceMax: 0,
       notificationsRunChanceMin: 100, notificationsRunChanceMax: 100,
@@ -1306,6 +1308,23 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   </div>
                   {rerunChanceInputs("humanSession")}
                 </div>
+              </div>
+              <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                <label htmlFor="humanSessionShuffle" className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    id="humanSessionShuffle"
+                    data-testid="human-session-shuffle"
+                    checked={settings.humanSessionShuffle === true}
+                    onChange={(e) => setSettings({ ...settings, humanSessionShuffle: e.target.checked })}
+                    className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0"
+                  />
+                  <Shuffle className="w-3.5 h-3.5 text-violet-500" />
+                  Shuffle Jitter actions
+                </label>
+                <span className="text-[10px] text-muted-foreground">
+                  Spreads them through enabled Human Session tools; Order % applies only when off.
+                </span>
               </div>
               {/* Sub-row — all 4 jitter action chances on one row */}
               <div className={`flex items-center gap-2 flex-wrap transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>

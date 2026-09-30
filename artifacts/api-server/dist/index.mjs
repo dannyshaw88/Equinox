@@ -168309,6 +168309,7 @@ ${err?.stack ?? ""}`);
     };
     const queue = [];
     const rerunQueue = [];
+    const humanJitterShuffle = s.humanSessionShuffle === true;
     const shouldRerun = (key) => {
       const rawMin = Number(s[`${key}RerunChanceMin`] ?? 0);
       const rawMax = Number(s[`${key}RerunChanceMax`] ?? 0);
@@ -168323,7 +168324,7 @@ ${err?.stack ?? ""}`);
       console.log(`[engine] @${profile.username}: ${key} re-run roll ${roll.toFixed(1)}% against ${chance2}% \u2192 ${selected ? "queued" : "not selected"}`);
       return selected;
     };
-    const enqueue = (label, enabled, notUsedMinKey, notUsedMaxKey, orderMinKey, orderMaxKey, fn) => {
+    const enqueue = (label, enabled, notUsedMinKey, notUsedMaxKey, orderMinKey, orderMaxKey, fn, fixedOrder) => {
       if (!enabled) {
         console.log(`[engine] @${profile.username}: HS queue \u2014 ${label} skipped (disabled)`);
         return;
@@ -168332,9 +168333,69 @@ ${err?.stack ?? ""}`);
         console.log(`[engine] @${profile.username}: HS queue \u2014 ${label} skipped (chance roll)`);
         return;
       }
-      const order = randInt2(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
+      const order = fixedOrder ?? randInt2(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
       const rerunKey = label === "likeTimelinePosts" ? "viewTimelineFeed" : label.replace(/Tool$/, "");
       queue.push({ order, label, rerunKey, run: fn });
+    };
+    const humanJitterActions = [
+      {
+        label: "notifications",
+        chanceMinKey: "notificationsRunChanceMin",
+        chanceMaxKey: "notificationsRunChanceMax",
+        actionType: "visit_notifications",
+        run: () => client.visitNotifications()
+      },
+      {
+        label: "own profile",
+        chanceMinKey: "ownProfileRunChanceMin",
+        chanceMaxKey: "ownProfileRunChanceMax",
+        actionType: "visit_own_profile",
+        run: () => client.visitOwnProfile()
+      },
+      {
+        label: "settings",
+        chanceMinKey: "settingsActivityRunChanceMin",
+        chanceMaxKey: "settingsActivityRunChanceMax",
+        actionType: "visit_settings",
+        run: () => client.visitSettingsAndActivity()
+      },
+      {
+        label: "Saved Media",
+        chanceMinKey: "viewSavedRunChanceMin",
+        chanceMaxKey: "viewSavedRunChanceMax",
+        actionType: "view_saved",
+        run: () => client.viewSavedMedia()
+      }
+    ];
+    const willRunJitterAction = (minKey, maxKey) => {
+      const lo = Number(s[minKey] ?? 100);
+      const hi = Number(s[maxKey] ?? 100);
+      const threshold = randInt2(Math.min(lo, hi), Math.max(lo, hi));
+      return Math.random() * 100 < threshold;
+    };
+    const runJitterApiAction = async (action) => {
+      if (!willRunJitterAction(action.chanceMinKey, action.chanceMaxKey)) {
+        console.log(`[engine] @${profile.username}: ${action.label} skipped (run chance)`);
+        return;
+      }
+      client.setApiCallSource("Human Session Emulation");
+      try {
+        const ok = await action.run();
+        const detail = ok ? `${action.label} completed` : `${action.label} returned no valid response`;
+        console.log(`[engine] @${profile.username}: ${action.label} \u2014 ${ok ? "ok" : "failed"}`);
+        this.logAction(profile.id, tool.id, action.actionType, "", "", "", ok ? "ok" : "error", detail);
+      } catch (e) {
+        if (await checkSessionErr(e, action.label)) return;
+        const message = e?.message ?? "unknown error";
+        console.warn(`[engine] @${profile.username}: ${action.label} API error: ${message}`);
+        this.logAction(profile.id, tool.id, action.actionType, "", "", "", "error", `${action.label} failed \u2014 ${message.slice(0, 300)}`);
+      }
+    };
+    const runGroupedHumanJitter = async () => {
+      for (let i2 = 0; i2 < humanJitterActions.length; i2++) {
+        await runJitterApiAction(humanJitterActions[i2]);
+        if (i2 < humanJitterActions.length - 1) await sleep(actionDelay());
+      }
     };
     enqueue(
       "humanSession",
@@ -168343,63 +168404,8 @@ ${err?.stack ?? ""}`);
       "humanSessionNotUsedMax",
       "humanSessionOrderMin",
       "humanSessionOrderMax",
-      async () => {
-        const willRun = (minKey, maxKey) => {
-          const lo = Number(s[minKey] ?? 100);
-          const hi = Number(s[maxKey] ?? 100);
-          const threshold = randInt2(Math.min(lo, hi), Math.max(lo, hi));
-          return Math.random() * 100 < threshold;
-        };
-        const runJitterApiAction = async (label, chanceMinKey, chanceMaxKey, actionType, run) => {
-          if (!willRun(chanceMinKey, chanceMaxKey)) {
-            console.log(`[engine] @${profile.username}: ${label} skipped (run chance)`);
-            return;
-          }
-          client.setApiCallSource("Human Session Emulation");
-          try {
-            const ok = await run();
-            const detail = ok ? `${label} completed` : `${label} returned no valid response`;
-            console.log(`[engine] @${profile.username}: ${label} \u2014 ${ok ? "ok" : "failed"}`);
-            this.logAction(profile.id, tool.id, actionType, "", "", "", ok ? "ok" : "error", detail);
-          } catch (e) {
-            if (await checkSessionErr(e, label)) return;
-            const message = e?.message ?? "unknown error";
-            console.warn(`[engine] @${profile.username}: ${label} API error: ${message}`);
-            this.logAction(profile.id, tool.id, actionType, "", "", "", "error", `${label} failed \u2014 ${message.slice(0, 300)}`);
-          }
-        };
-        await runJitterApiAction(
-          "notifications",
-          "notificationsRunChanceMin",
-          "notificationsRunChanceMax",
-          "visit_notifications",
-          () => client.visitNotifications()
-        );
-        await sleep(actionDelay());
-        await runJitterApiAction(
-          "own profile",
-          "ownProfileRunChanceMin",
-          "ownProfileRunChanceMax",
-          "visit_own_profile",
-          () => client.visitOwnProfile()
-        );
-        await sleep(actionDelay());
-        await runJitterApiAction(
-          "settings",
-          "settingsActivityRunChanceMin",
-          "settingsActivityRunChanceMax",
-          "visit_settings",
-          () => client.visitSettingsAndActivity()
-        );
-        await sleep(actionDelay());
-        await runJitterApiAction(
-          "Saved Media",
-          "viewSavedRunChanceMin",
-          "viewSavedRunChanceMax",
-          "view_saved",
-          () => client.viewSavedMedia()
-        );
-      }
+      runGroupedHumanJitter,
+      humanJitterShuffle ? 0 : void 0
     );
     enqueue(
       "viewTimelineFeed",
@@ -169474,14 +169480,71 @@ ${err?.stack ?? ""}`);
         }
       }
     );
+    const jitterShuffleEntries = [];
+    if (humanJitterShuffle) {
+      const groupedJitterIndex = queue.findIndex((entry) => entry.label === "humanSession");
+      if (groupedJitterIndex >= 0) {
+        queue.splice(groupedJitterIndex, 1);
+        const randomizedActions = [...humanJitterActions];
+        for (let i2 = randomizedActions.length - 1; i2 > 0; i2--) {
+          const j = randInt2(0, i2);
+          [randomizedActions[i2], randomizedActions[j]] = [randomizedActions[j], randomizedActions[i2]];
+        }
+        for (let i2 = 0; i2 < randomizedActions.length; i2++) {
+          const action = randomizedActions[i2];
+          jitterShuffleEntries.push({
+            order: 0,
+            label: `humanJitter:${action.label}`,
+            rerunKey: "humanSession",
+            rerunGroupKey: "humanSession",
+            shuffleInserted: true,
+            run: async () => {
+              await runJitterApiAction(action);
+              if (i2 < randomizedActions.length - 1) await sleep(actionDelay());
+            }
+          });
+        }
+      }
+    }
     queue.sort((a2, b3) => b3.order - a2.order);
-    const orderSummary = queue.map((e) => `${e.label}[${e.order}]`).join(" \u2192 ");
+    if (jitterShuffleEntries.length > 0) {
+      const baseQueue = [...queue];
+      const gapCount = baseQueue.length + 1;
+      const insertionGaps = jitterShuffleEntries.map((_2, index) => {
+        if (jitterShuffleEntries.length > gapCount) {
+          return Math.floor(index * gapCount / jitterShuffleEntries.length);
+        }
+        const segmentStart = Math.floor(index * gapCount / jitterShuffleEntries.length);
+        const segmentEnd = Math.floor((index + 1) * gapCount / jitterShuffleEntries.length);
+        return randInt2(segmentStart, segmentEnd - 1);
+      });
+      const entriesByGap = Array.from({ length: gapCount }, () => []);
+      insertionGaps.forEach((gap, index) => entriesByGap[gap].push(jitterShuffleEntries[index]));
+      queue.length = 0;
+      for (let gap = 0; gap < gapCount; gap++) {
+        queue.push(...entriesByGap[gap]);
+        if (gap < baseQueue.length) queue.push(baseQueue[gap]);
+      }
+    }
+    const orderSummary = queue.map(
+      (e) => e.shuffleInserted ? `${e.label}[shuffle]` : `${e.label}[${e.order}]`
+    ).join(" \u2192 ");
     console.log(`[engine] @${profile.username}: session order: ${orderSummary || "(nothing to run)"}`);
+    const rerunGroupDecisions = /* @__PURE__ */ new Map();
     for (const entry of queue) {
       if (sessionError) break;
       await entry.run();
-      if (!sessionError && shouldRerun(entry.rerunKey)) {
-        rerunQueue.push(entry);
+      if (!sessionError) {
+        let selectedForRerun;
+        if (entry.rerunGroupKey) {
+          if (!rerunGroupDecisions.has(entry.rerunGroupKey)) {
+            rerunGroupDecisions.set(entry.rerunGroupKey, shouldRerun(entry.rerunKey));
+          }
+          selectedForRerun = rerunGroupDecisions.get(entry.rerunGroupKey);
+        } else {
+          selectedForRerun = shouldRerun(entry.rerunKey);
+        }
+        if (selectedForRerun) rerunQueue.push(entry);
       }
     }
     if (!sessionError && rerunQueue.length > 0) {

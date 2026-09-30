@@ -163,6 +163,7 @@ export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyO
       viewTimelineFeedOrderMax: 10,
       humanToolsDelayMin: 30,
       humanToolsDelayMax: 60,
+      humanSessionShuffle: false,
       humanSessionOrderMin: 0,
       humanSessionOrderMax: 0,
       humanSessionNotUsedMin: 0,

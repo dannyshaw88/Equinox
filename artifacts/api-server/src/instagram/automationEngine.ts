@@ -4626,9 +4626,17 @@ class AutomationEngine {
     // Actions are sorted descending by order before executing, so higher numbers
     // run first. Ties preserve insertion order (stable sort).
     // Actions that are disabled or skipped by the NotUsed chance are excluded.
-    type QueueEntry = { order: number; label: string; rerunKey: string; run: () => Promise<void> };
+    type QueueEntry = {
+      order: number;
+      label: string;
+      rerunKey: string;
+      rerunGroupKey?: string;
+      shuffleInserted?: boolean;
+      run: () => Promise<void>;
+    };
     const queue: QueueEntry[] = [];
     const rerunQueue: QueueEntry[] = [];
+    const humanJitterShuffle = s.humanSessionShuffle === true;
     const shouldRerun = (key: string) => {
       const rawMin = Number(s[`${key}RerunChanceMin`] ?? 0);
       const rawMax = Number(s[`${key}RerunChanceMax`] ?? 0);
@@ -4651,6 +4659,7 @@ class AutomationEngine {
       notUsedMinKey: string, notUsedMaxKey: string,
       orderMinKey: string,   orderMaxKey: string,
       fn: () => Promise<void>,
+      fixedOrder?: number,
     ) => {
       if (!enabled) {
         console.log(`[engine] @${profile.username}: HS queue — ${label} skipped (disabled)`);
@@ -4660,11 +4669,85 @@ class AutomationEngine {
         console.log(`[engine] @${profile.username}: HS queue — ${label} skipped (chance roll)`);
         return;
       }
-      const order = randInt(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
+      const order = fixedOrder ?? randInt(Number(s[orderMinKey] ?? 0), Number(s[orderMaxKey] ?? 0));
       const rerunKey = label === "likeTimelinePosts"
         ? "viewTimelineFeed"
         : label.replace(/Tool$/, "");
       queue.push({ order, label, rerunKey, run: fn });
+    };
+
+    type HumanJitterAction = {
+      label: string;
+      chanceMinKey: string;
+      chanceMaxKey: string;
+      actionType: string;
+      run: () => Promise<boolean>;
+    };
+    // These are direct API actions, not browser/DOM navigation. Keep them on
+    // the mobile API client path in both grouped and shuffled execution modes.
+    const humanJitterActions: HumanJitterAction[] = [
+      {
+        label: "notifications",
+        chanceMinKey: "notificationsRunChanceMin",
+        chanceMaxKey: "notificationsRunChanceMax",
+        actionType: "visit_notifications",
+        run: () => client.visitNotifications(),
+      },
+      {
+        label: "own profile",
+        chanceMinKey: "ownProfileRunChanceMin",
+        chanceMaxKey: "ownProfileRunChanceMax",
+        actionType: "visit_own_profile",
+        run: () => client.visitOwnProfile(),
+      },
+      {
+        label: "settings",
+        chanceMinKey: "settingsActivityRunChanceMin",
+        chanceMaxKey: "settingsActivityRunChanceMax",
+        actionType: "visit_settings",
+        run: () => client.visitSettingsAndActivity(),
+      },
+      {
+        label: "Saved Media",
+        chanceMinKey: "viewSavedRunChanceMin",
+        chanceMaxKey: "viewSavedRunChanceMax",
+        actionType: "view_saved",
+        run: () => client.viewSavedMedia(),
+      },
+    ];
+    // Picks the per-session run threshold from the configured min/max range.
+    const willRunJitterAction = (minKey: string, maxKey: string) => {
+      const lo = Number(s[minKey] ?? 100);
+      const hi = Number(s[maxKey] ?? 100);
+      const threshold = randInt(Math.min(lo, hi), Math.max(lo, hi));
+      return Math.random() * 100 < threshold;
+    };
+    const runJitterApiAction = async (action: HumanJitterAction): Promise<void> => {
+      if (!willRunJitterAction(action.chanceMinKey, action.chanceMaxKey)) {
+        console.log(`[engine] @${profile.username}: ${action.label} skipped (run chance)`);
+        return;
+      }
+
+      client.setApiCallSource("Human Session Emulation");
+      try {
+        const ok = await action.run();
+        const detail = ok
+          ? `${action.label} completed`
+          : `${action.label} returned no valid response`;
+        console.log(`[engine] @${profile.username}: ${action.label} — ${ok ? "ok" : "failed"}`);
+        this.logAction(profile.id, tool.id, action.actionType, "", "", "", ok ? "ok" : "error", detail);
+      } catch (e: any) {
+        if (await checkSessionErr(e, action.label)) return;
+        const message = e?.message ?? "unknown error";
+        console.warn(`[engine] @${profile.username}: ${action.label} API error: ${message}`);
+        this.logAction(profile.id, tool.id, action.actionType, "", "", "", "error", `${action.label} failed — ${message.slice(0, 300)}`);
+      }
+    };
+    const runGroupedHumanJitter = async (): Promise<void> => {
+      for (let i = 0; i < humanJitterActions.length; i++) {
+        await runJitterApiAction(humanJitterActions[i]);
+        if (i < humanJitterActions.length - 1) await sleep(actionDelay());
+      }
     };
 
     // ── Human Session ────────────────────────────────────────────────────────
@@ -4672,81 +4755,8 @@ class AutomationEngine {
       s.humanSessionEnabled === true && (s as any).emulationGroupEnabled !== false,
       "humanSessionNotUsedMin", "humanSessionNotUsedMax",
       "humanSessionOrderMin",   "humanSessionOrderMax",
-      async () => {
-        // Per-action run chance range (0=never, 100=always). Picks a random threshold between min/max each session.
-        const willRun = (minKey: string, maxKey: string) => {
-          const lo = Number((s as any)[minKey] ?? 100);
-          const hi = Number((s as any)[maxKey] ?? 100);
-          const threshold = randInt(Math.min(lo, hi), Math.max(lo, hi));
-          return Math.random() * 100 < threshold;
-        };
-
-        // These are API actions, not browser clicks. The API Human Session path
-        // has no Puppeteer page or DOM, so the old nav()/page.evaluate() code
-        // failed before reaching Instagram.
-        const runJitterApiAction = async (
-          label: string,
-          chanceMinKey: string,
-          chanceMaxKey: string,
-          actionType: string,
-          run: () => Promise<boolean>,
-        ): Promise<void> => {
-          if (!willRun(chanceMinKey, chanceMaxKey)) {
-            console.log(`[engine] @${profile.username}: ${label} skipped (run chance)`);
-            return;
-          }
-
-          client.setApiCallSource("Human Session Emulation");
-          try {
-            const ok = await run();
-            const detail = ok
-              ? `${label} completed`
-              : `${label} returned no valid response`;
-            console.log(`[engine] @${profile.username}: ${label} — ${ok ? "ok" : "failed"}`);
-            this.logAction(profile.id, tool.id, actionType, "", "", "", ok ? "ok" : "error", detail);
-          } catch (e: any) {
-            if (await checkSessionErr(e, label)) return;
-            const message = e?.message ?? "unknown error";
-            console.warn(`[engine] @${profile.username}: ${label} API error: ${message}`);
-            this.logAction(profile.id, tool.id, actionType, "", "", "", "error", `${label} failed — ${message.slice(0, 300)}`);
-          }
-        };
-
-        await runJitterApiAction(
-          "notifications",
-          "notificationsRunChanceMin",
-          "notificationsRunChanceMax",
-          "visit_notifications",
-          () => client.visitNotifications(),
-        );
-        await sleep(actionDelay());
-
-        await runJitterApiAction(
-          "own profile",
-          "ownProfileRunChanceMin",
-          "ownProfileRunChanceMax",
-          "visit_own_profile",
-          () => client.visitOwnProfile(),
-        );
-        await sleep(actionDelay());
-
-        await runJitterApiAction(
-          "settings",
-          "settingsActivityRunChanceMin",
-          "settingsActivityRunChanceMax",
-          "visit_settings",
-          () => client.visitSettingsAndActivity(),
-        );
-        await sleep(actionDelay());
-
-        await runJitterApiAction(
-          "Saved Media",
-          "viewSavedRunChanceMin",
-          "viewSavedRunChanceMax",
-          "view_saved",
-          () => client.viewSavedMedia(),
-        );
-      },
+      runGroupedHumanJitter,
+      humanJitterShuffle ? 0 : undefined,
     );
 
     // ── View Timeline Feed ───────────────────────────────────────────────────
@@ -5936,18 +5946,84 @@ class AutomationEngine {
       },
     );
 
+    const jitterShuffleEntries: QueueEntry[] = [];
+    if (humanJitterShuffle) {
+      const groupedJitterIndex = queue.findIndex(entry => entry.label === "humanSession");
+      if (groupedJitterIndex >= 0) {
+        // The enqueue above preserves Human Jitter's master enable/skip gate.
+        // Replace its single grouped entry with individual actions for shuffling.
+        queue.splice(groupedJitterIndex, 1);
+
+        const randomizedActions = [...humanJitterActions];
+        for (let i = randomizedActions.length - 1; i > 0; i--) {
+          const j = randInt(0, i);
+          [randomizedActions[i], randomizedActions[j]] = [randomizedActions[j], randomizedActions[i]];
+        }
+        for (let i = 0; i < randomizedActions.length; i++) {
+          const action = randomizedActions[i];
+          jitterShuffleEntries.push({
+            order: 0,
+            label: `humanJitter:${action.label}`,
+            rerunKey: "humanSession",
+            rerunGroupKey: "humanSession",
+            shuffleInserted: true,
+            run: async () => {
+              await runJitterApiAction(action);
+              if (i < randomizedActions.length - 1) await sleep(actionDelay());
+            },
+          });
+        }
+      }
+    }
+
     // Sort descending by order value (higher order = runs first — ties keep insertion order)
     queue.sort((a, b) => b.order - a.order);
 
-    const orderSummary = queue.map(e => `${e.label}[${e.order}]`).join(" → ");
+    if (jitterShuffleEntries.length > 0) {
+      // Preserve the existing relative order of all non-Jitter tools, then
+      // place one Jitter action in each evenly spaced gap when possible.
+      const baseQueue = [...queue];
+      const gapCount = baseQueue.length + 1;
+      const insertionGaps = jitterShuffleEntries.map((_, index) => {
+        if (jitterShuffleEntries.length > gapCount) {
+          return Math.floor(index * gapCount / jitterShuffleEntries.length);
+        }
+        const segmentStart = Math.floor(index * gapCount / jitterShuffleEntries.length);
+        const segmentEnd = Math.floor((index + 1) * gapCount / jitterShuffleEntries.length);
+        return randInt(segmentStart, segmentEnd - 1);
+      });
+      const entriesByGap: QueueEntry[][] = Array.from({ length: gapCount }, () => []);
+      insertionGaps.forEach((gap, index) => entriesByGap[gap].push(jitterShuffleEntries[index]));
+
+      queue.length = 0;
+      for (let gap = 0; gap < gapCount; gap++) {
+        queue.push(...entriesByGap[gap]);
+        if (gap < baseQueue.length) queue.push(baseQueue[gap]);
+      }
+    }
+
+    const orderSummary = queue.map(e => e.shuffleInserted
+      ? `${e.label}[shuffle]`
+      : `${e.label}[${e.order}]`
+    ).join(" → ");
     console.log(`[engine] @${profile.username}: session order: ${orderSummary || "(nothing to run)"}`);
 
     // Execute in sorted order — stop immediately on any account-level error
+    const rerunGroupDecisions = new Map<string, boolean>();
     for (const entry of queue) {
       if (sessionError) break;
       await entry.run();
-      if (!sessionError && shouldRerun(entry.rerunKey)) {
-        rerunQueue.push(entry);
+      if (!sessionError) {
+        let selectedForRerun: boolean;
+        if (entry.rerunGroupKey) {
+          if (!rerunGroupDecisions.has(entry.rerunGroupKey)) {
+            rerunGroupDecisions.set(entry.rerunGroupKey, shouldRerun(entry.rerunKey));
+          }
+          selectedForRerun = rerunGroupDecisions.get(entry.rerunGroupKey)!;
+        } else {
+          selectedForRerun = shouldRerun(entry.rerunKey);
+        }
+        if (selectedForRerun) rerunQueue.push(entry);
       }
     }
 
