@@ -3628,6 +3628,52 @@ export class InstagramWebClient {
     const reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }> = [];
     const allClipImpressions: Array<{ clip_id: string; view_state: string }> = [];
     let stopAfterSeenBatch = false;
+    let seenIgClient: IgApiClient | null = null;
+
+    // Use the installed client's media.seen implementation so this request has
+    // Instagram's expected v2 URL, signed form, query flags, and nested reels map.
+    // Initialize lazily: an empty feed does not need another client instance.
+    const getSeenIgClient = async (): Promise<IgApiClient> => {
+      if (seenIgClient) return seenIgClient;
+      if (!this.igApiCookies) {
+        throw new Error("media/seen requires the igApiCookies mobile session");
+      }
+
+      const ig = this._newAutomationIgClient();
+      const deviceSeed = (this.userAgentApi ?? this.username ?? "instagram") + "|" + (this.username ?? "instagram");
+      let saved: { deviceId?: string; uuid?: string; phoneId?: string; adid?: string; deviceString?: string; authorization?: string; igWWWClaim?: string } = {};
+      try { saved = JSON.parse(this.igDeviceState ?? "{}"); } catch { /* use generated device defaults */ }
+      ig.state.generateDevice(deviceSeed);
+      if (saved.deviceId) ig.state.deviceId = saved.deviceId;
+      if (saved.uuid) ig.state.uuid = saved.uuid;
+      if (saved.phoneId) ig.state.phoneId = saved.phoneId;
+      if (saved.adid) ig.state.adid = saved.adid;
+      if (saved.deviceString) ig.state.deviceString = saved.deviceString;
+      if (saved.authorization) ig.state.authorization = saved.authorization;
+      if (saved.igWWWClaim) ig.state.igWWWClaim = saved.igWWWClaim;
+
+      const cookieParts = this.igApiCookies.split(";").map((part) => part.trim()).filter(Boolean);
+      let ownUserId = cookieParts.find((part) => part.toLowerCase().startsWith("ds_user_id="))
+        ?.split("=").slice(1).join("=").trim() ?? "";
+      if (!ownUserId) {
+        const sessionPair = cookieParts.find((part) => part.toLowerCase().startsWith("sessionid="));
+        if (sessionPair) {
+          let sessionValue = sessionPair.slice(sessionPair.indexOf("=") + 1);
+          try { sessionValue = decodeURIComponent(sessionValue); } catch { /* keep raw value */ }
+          ownUserId = sessionValue.split(":")[0] ?? "";
+        }
+      }
+      const cookieString = ownUserId ? `${this.igApiCookies};ds_user_id=${ownUserId}` : this.igApiCookies;
+      await this._deserializeIgCookies(ig, cookieString);
+      ig.state.constants.APP_VERSION = MOBILE_VERSION;
+      ig.state.constants.APP_VERSION_CODE = MOBILE_VERSION_CODE;
+      patchDeviceStringVersionCode(ig, MOBILE_VERSION_CODE);
+      if (this.proxyUrl) ig.state.proxyUrl = this.proxyUrl;
+      patchIgClientTls(ig, this.proxyUrl);
+
+      seenIgClient = ig;
+      return ig;
+    };
 
     // Marks one page's worth of posts as seen (batches of 4, matching real app behaviour)
     // and accumulates viewedItems / reelWatches.  Returns number of items consumed.
@@ -3640,12 +3686,17 @@ export class InstagramWebClient {
 
       if (!pageMedia.length) return 0;
 
-      const seenEntries: string[] = [];
+      const seenEntries: Array<{ mediaId: string; userId: string; viewTime: string }> = [];
       const pageItems: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }> = [];
       let processedPageItems = 0;
       for (const media of pageMedia) {
         const mediaId = String(media?.id ?? media?.pk ?? "");
         if (!mediaId) continue;
+        const userId = String(media?.user?.pk ?? media?.user_id ?? "");
+        if (!userId) {
+          console.warn(`[webClient] viewTimelineFeed: skipping seen marker for media ${mediaId} — owner ID missing`);
+          continue;
+        }
         const takenAt = media.taken_at ?? Math.floor(Date.now() / 1000);
         const isReel = media?.media_type === 2 || media?.product_type === "clips";
         let watchDuration = 3;
@@ -3656,7 +3707,7 @@ export class InstagramWebClient {
           watchPct = Math.round(pct);
           watchDuration = Math.max(1, Math.round(reelDuration * pct / 100));
         }
-        seenEntries.push(`${mediaId}_${takenAt}_${takenAt + watchDuration}`);
+        seenEntries.push({ mediaId, userId, viewTime: `${takenAt}_${takenAt + watchDuration}` });
 
         if (isReel && reelWatchPercentMax > 0 && reelWatchedSoFar < reelWatchLimit) {
           const username = String(media?.user?.username ?? "");
@@ -3664,7 +3715,6 @@ export class InstagramWebClient {
           reelWatchedSoFar++;
           reelWatches.push({ mediaId, shortcode: this.mediaIdToShortcode(mediaId), username, pct: watchPct, durationSec: watchDuration });
         }
-        const userId   = String(media?.user?.pk ?? media?.user_id ?? "");
         const username = String(media?.user?.username ?? "");
         if (mediaId) {
           const item = { mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel };
@@ -3674,20 +3724,28 @@ export class InstagramWebClient {
 
       // Instagram's real mobile app sends at most 4 posts per media/seen/ call.
       // Fire the seen POST for this page's items immediately (before next page fetch).
-      // The seen signal is best-effort. mobileSessionPost logs the actual HTTP
-      // response, including 5xx errors; the ViewTimelineFeedSeen row below is
-      // only an action summary and must not imply Instagram confirmed the marker.
+      // The SDK transport logs the actual HTTP response, including 5xx errors;
+      // the ViewTimelineFeedSeen row below is only an action summary and must
+      // not imply Instagram confirmed the marker.
       for (let i = 0; i < seenEntries.length; i += 4) {
         const batch = seenEntries.slice(i, i + 4);
         const _seenT0 = Date.now();
         this._inTimedCall = true;
         try {
-          await this.mobileSessionPost(`/api/v1/media/seen/`, new URLSearchParams({
-            reels: batch.join(","),
-            live_vods_skipped: "",
-            nuxes_skipped: "",
-          }).toString());
-        } catch (_) { /* best-effort seen signal — never propagate */ }
+          const reels: Record<string, string[]> = {};
+          for (const entry of batch) {
+            reels[`${entry.mediaId}_${entry.userId}`] = [entry.viewTime];
+          }
+          const ig = await getSeenIgClient();
+          await ig.media.seen(reels, "feed_timeline");
+        } catch (err: any) {
+          const status = err?.response?.statusCode ?? err?.response?.status ?? "unknown";
+          const body = err?.response?.body;
+          const detail = body
+            ? (typeof body === "string" ? body : JSON.stringify(body)).slice(0, 400)
+            : (err?.message ?? String(err));
+          console.warn(`[webClient] viewTimelineFeed: media/seen batch failed — HTTP ${status}; ${detail}`);
+        }
         finally { this._inTimedCall = false; }
         const batchItems = pageItems.slice(i, i + batch.length);
         viewed += batchItems.length;

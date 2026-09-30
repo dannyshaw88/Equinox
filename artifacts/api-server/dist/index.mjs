@@ -159647,6 +159647,50 @@ var InstagramWebClient = class {
     const reelWatches = [];
     const allClipImpressions = [];
     let stopAfterSeenBatch = false;
+    let seenIgClient = null;
+    const getSeenIgClient = async () => {
+      if (seenIgClient) return seenIgClient;
+      if (!this.igApiCookies) {
+        throw new Error("media/seen requires the igApiCookies mobile session");
+      }
+      const ig = this._newAutomationIgClient();
+      const deviceSeed = (this.userAgentApi ?? this.username ?? "instagram") + "|" + (this.username ?? "instagram");
+      let saved = {};
+      try {
+        saved = JSON.parse(this.igDeviceState ?? "{}");
+      } catch {
+      }
+      ig.state.generateDevice(deviceSeed);
+      if (saved.deviceId) ig.state.deviceId = saved.deviceId;
+      if (saved.uuid) ig.state.uuid = saved.uuid;
+      if (saved.phoneId) ig.state.phoneId = saved.phoneId;
+      if (saved.adid) ig.state.adid = saved.adid;
+      if (saved.deviceString) ig.state.deviceString = saved.deviceString;
+      if (saved.authorization) ig.state.authorization = saved.authorization;
+      if (saved.igWWWClaim) ig.state.igWWWClaim = saved.igWWWClaim;
+      const cookieParts = this.igApiCookies.split(";").map((part) => part.trim()).filter(Boolean);
+      let ownUserId = cookieParts.find((part) => part.toLowerCase().startsWith("ds_user_id="))?.split("=").slice(1).join("=").trim() ?? "";
+      if (!ownUserId) {
+        const sessionPair = cookieParts.find((part) => part.toLowerCase().startsWith("sessionid="));
+        if (sessionPair) {
+          let sessionValue = sessionPair.slice(sessionPair.indexOf("=") + 1);
+          try {
+            sessionValue = decodeURIComponent(sessionValue);
+          } catch {
+          }
+          ownUserId = sessionValue.split(":")[0] ?? "";
+        }
+      }
+      const cookieString = ownUserId ? `${this.igApiCookies};ds_user_id=${ownUserId}` : this.igApiCookies;
+      await this._deserializeIgCookies(ig, cookieString);
+      ig.state.constants.APP_VERSION = MOBILE_VERSION;
+      ig.state.constants.APP_VERSION_CODE = MOBILE_VERSION_CODE;
+      patchDeviceStringVersionCode(ig, MOBILE_VERSION_CODE);
+      if (this.proxyUrl) ig.state.proxyUrl = this.proxyUrl;
+      patchIgClientTls(ig, this.proxyUrl);
+      seenIgClient = ig;
+      return ig;
+    };
     const processAndMarkPage = async (rawPage) => {
       const remaining = count - viewed;
       const pageMedia = rawPage.map((raw) => raw?.media_or_ad ?? raw?.media ?? raw).filter((m2) => m2?.id || m2?.pk).slice(0, remaining);
@@ -159657,6 +159701,11 @@ var InstagramWebClient = class {
       for (const media of pageMedia) {
         const mediaId = String(media?.id ?? media?.pk ?? "");
         if (!mediaId) continue;
+        const userId = String(media?.user?.pk ?? media?.user_id ?? "");
+        if (!userId) {
+          console.warn(`[webClient] viewTimelineFeed: skipping seen marker for media ${mediaId} \u2014 owner ID missing`);
+          continue;
+        }
         const takenAt = media.taken_at ?? Math.floor(Date.now() / 1e3);
         const isReel = media?.media_type === 2 || media?.product_type === "clips";
         let watchDuration = 3;
@@ -159667,14 +159716,13 @@ var InstagramWebClient = class {
           watchPct = Math.round(pct);
           watchDuration = Math.max(1, Math.round(reelDuration * pct / 100));
         }
-        seenEntries.push(`${mediaId}_${takenAt}_${takenAt + watchDuration}`);
+        seenEntries.push({ mediaId, userId, viewTime: `${takenAt}_${takenAt + watchDuration}` });
         if (isReel && reelWatchPercentMax > 0 && reelWatchedSoFar < reelWatchLimit) {
           const username2 = String(media?.user?.username ?? "");
           allClipImpressions.push({ clip_id: mediaId, view_state: "initial_impression" });
           reelWatchedSoFar++;
           reelWatches.push({ mediaId, shortcode: this.mediaIdToShortcode(mediaId), username: username2, pct: watchPct, durationSec: watchDuration });
         }
-        const userId = String(media?.user?.pk ?? media?.user_id ?? "");
         const username = String(media?.user?.username ?? "");
         if (mediaId) {
           const item = { mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel };
@@ -159686,12 +159734,17 @@ var InstagramWebClient = class {
         const _seenT0 = Date.now();
         this._inTimedCall = true;
         try {
-          await this.mobileSessionPost(`/api/v1/media/seen/`, new URLSearchParams({
-            reels: batch.join(","),
-            live_vods_skipped: "",
-            nuxes_skipped: ""
-          }).toString());
-        } catch (_2) {
+          const reels = {};
+          for (const entry of batch) {
+            reels[`${entry.mediaId}_${entry.userId}`] = [entry.viewTime];
+          }
+          const ig = await getSeenIgClient();
+          await ig.media.seen(reels, "feed_timeline");
+        } catch (err) {
+          const status = err?.response?.statusCode ?? err?.response?.status ?? "unknown";
+          const body = err?.response?.body;
+          const detail = body ? (typeof body === "string" ? body : JSON.stringify(body)).slice(0, 400) : err?.message ?? String(err);
+          console.warn(`[webClient] viewTimelineFeed: media/seen batch failed \u2014 HTTP ${status}; ${detail}`);
         } finally {
           this._inTimedCall = false;
         }
