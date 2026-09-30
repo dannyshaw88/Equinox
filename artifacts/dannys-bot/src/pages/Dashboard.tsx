@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.583",
+    date: "30 Sep 2026",
+    items: [
+      { category: "New", text: "Own Profile now has separate chances for opening Tagged Posts and the Reposts tab, both off by default." },
+    ],
+  },
+  {
     version: "1.1.582",
     date: "30 Sep 2026",
     items: [
