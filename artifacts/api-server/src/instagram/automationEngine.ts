@@ -4831,7 +4831,7 @@ class AutomationEngine {
               if (type === "feed_load") {
                 this.logAction(profile.id, tool.id, "feed_timeline_load", "", "", "", "ok", `Loading ${count} post${count === 1 ? "" : "s"} from timeline`);
               } else if (type === "feed_seen") {
-                this.logAction(profile.id, tool.id, "feed_timeline_seen", "", "", "", "ok", `Marked ${count} post${count === 1 ? "" : "s"} as seen`);
+                this.logAction(profile.id, tool.id, "feed_timeline_seen", "", "", "", "ok", `Processed ${count} post${count === 1 ? "" : "s"}; seen signal is best-effort`);
               }
             },
             processSeenBatch,

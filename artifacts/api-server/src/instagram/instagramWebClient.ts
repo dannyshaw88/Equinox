@@ -3674,10 +3674,9 @@ export class InstagramWebClient {
 
       // Instagram's real mobile app sends at most 4 posts per media/seen/ call.
       // Fire the seen POST for this page's items immediately (before next page fetch).
-      // The seen signal is best-effort — a 500 from Instagram should NEVER show as
-      // an ERROR in the API calls log.  We suppress _logTransport by setting
-      // _inTimedCall=true (which causes mobileSessionPost's internal _logTransport
-      // to be a no-op), then write the ViewTimelineFeedSeen entry manually as success.
+      // The seen signal is best-effort. mobileSessionPost logs the actual HTTP
+      // response, including 5xx errors; the ViewTimelineFeedSeen row below is
+      // only an action summary and must not imply Instagram confirmed the marker.
       for (let i = 0; i < seenEntries.length; i += 4) {
         const batch = seenEntries.slice(i, i + 4);
         const _seenT0 = Date.now();
@@ -3694,10 +3693,15 @@ export class InstagramWebClient {
         viewed += batchItems.length;
         processedPageItems += batchItems.length;
         viewedItems.push(...batchItems);
-        // Log ViewTimelineFeedSeen as success — the posts were viewed; seen-signal
-        // failures (e.g. Instagram 500) are non-fatal and must not show as ERROR.
+        // The posts were processed even if Instagram rejects this best-effort
+        // marker. Keep the transport's real HTTP result in its separate log row.
         const _seenN = batch.length;
-        this.logCallFn?.("ViewTimelineFeedSeen", Date.now() - _seenT0, `Marked ${_seenN} post${_seenN === 1 ? "" : "s"} as seen`, false);
+        this.logCallFn?.(
+          "ViewTimelineFeedSeen",
+          Date.now() - _seenT0,
+          `Processed ${_seenN} post${_seenN === 1 ? "" : "s"}; seen signal is best-effort`,
+          false,
+        );
         onPageEvent?.("feed_seen", batch.length);
         if (onSeenBatch) {
           const shouldContinue = await onSeenBatch(batchItems);
