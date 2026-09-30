@@ -159700,7 +159700,12 @@ var InstagramWebClient = class {
         processedPageItems += batchItems.length;
         viewedItems.push(...batchItems);
         const _seenN = batch.length;
-        this.logCallFn?.("ViewTimelineFeedSeen", Date.now() - _seenT0, `Marked ${_seenN} post${_seenN === 1 ? "" : "s"} as seen`, false);
+        this.logCallFn?.(
+          "ViewTimelineFeedSeen",
+          Date.now() - _seenT0,
+          `Processed ${_seenN} post${_seenN === 1 ? "" : "s"}; seen signal is best-effort`,
+          false
+        );
         onPageEvent?.("feed_seen", batch.length);
         if (onSeenBatch) {
           const shouldContinue = await onSeenBatch(batchItems);
@@ -168427,7 +168432,7 @@ ${err?.stack ?? ""}`);
               if (type === "feed_load") {
                 this.logAction(profile.id, tool.id, "feed_timeline_load", "", "", "", "ok", `Loading ${count} post${count === 1 ? "" : "s"} from timeline`);
               } else if (type === "feed_seen") {
-                this.logAction(profile.id, tool.id, "feed_timeline_seen", "", "", "", "ok", `Marked ${count} post${count === 1 ? "" : "s"} as seen`);
+                this.logAction(profile.id, tool.id, "feed_timeline_seen", "", "", "", "ok", `Processed ${count} post${count === 1 ? "" : "s"}; seen signal is best-effort`);
               }
             },
             processSeenBatch
