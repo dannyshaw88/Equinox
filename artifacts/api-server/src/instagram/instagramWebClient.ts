@@ -4560,7 +4560,16 @@ export class InstagramWebClient {
   async sharePostToFeed(mediaId: string): Promise<boolean> {
     return this.timed("SharePostToFeed", async () => {
       const body = new URLSearchParams({ media_id: mediaId }).toString();
-      const j = await this.mobileSessionPost(`/api/v1/media/${mediaId}/re_share_to_feed/`, body);
+      const path = `/api/v1/media/${mediaId}/re_share_to_feed/`;
+      // Prefer the authenticated web origin when available. The mobile-origin
+      // request can return Instagram's HTML Page Not Found response for this
+      // action even when other mobile API endpoints work.
+      if (this.isLoggedIn()) {
+        const response = await this.webPost(path, body);
+        return response.status < 400 && response.json?.status === "ok";
+      }
+      // Keep support for accounts that have only a mobile session.
+      const j = await this.mobileSessionPost(path, body);
       return j?.status === "ok";
     }, `Share post to feed ${mediaId}`);
   }

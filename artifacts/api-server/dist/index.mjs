@@ -160394,7 +160394,12 @@ var InstagramWebClient = class {
   async sharePostToFeed(mediaId) {
     return this.timed("SharePostToFeed", async () => {
       const body = new URLSearchParams({ media_id: mediaId }).toString();
-      const j = await this.mobileSessionPost(`/api/v1/media/${mediaId}/re_share_to_feed/`, body);
+      const path6 = `/api/v1/media/${mediaId}/re_share_to_feed/`;
+      if (this.isLoggedIn()) {
+        const response = await this.webPost(path6, body);
+        return response.status < 400 && response.json?.status === "ok";
+      }
+      const j = await this.mobileSessionPost(path6, body);
       return j?.status === "ok";
     }, `Share post to feed ${mediaId}`);
   }
