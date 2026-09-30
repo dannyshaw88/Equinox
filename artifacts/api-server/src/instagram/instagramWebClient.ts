@@ -3559,7 +3559,16 @@ export class InstagramWebClient {
   // simulating a user scrolling through their Instagram home feed.
   // Paginates using next_max_id so the full count (e.g. 50–100) is reachable —
   // Instagram returns only ~12–18 posts per call so multiple pages are needed.
-  async viewTimelineFeed(count: number = 5, reelWatchPercentMin: number = 0, reelWatchPercentMax: number = 0, reelWatchCountMin: number = 0, reelWatchCountMax: number = 0, _consentRetry = false, onPageEvent?: (type: "feed_load" | "feed_seen", count: number) => void): Promise<{ viewed: number; feedEmpty?: boolean; sessionExpired?: boolean; reason?: string; items?: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }>; reelWatches?: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }> }> {
+  async viewTimelineFeed(
+    count: number = 5,
+    reelWatchPercentMin: number = 0,
+    reelWatchPercentMax: number = 0,
+    reelWatchCountMin: number = 0,
+    reelWatchCountMax: number = 0,
+    _consentRetry = false,
+    onPageEvent?: (type: "feed_load" | "feed_seen", count: number) => void,
+    onSeenBatch?: (items: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }>) => Promise<boolean | void>,
+  ): Promise<{ viewed: number; feedEmpty?: boolean; sessionExpired?: boolean; reason?: string; items?: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }>; reelWatches?: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }> }> {
     // ── Page 1: cold_start_fetch ─────────────────────────────────────────────
     // Fetch timeline using the igApiCookies mobile session — the EB web cookies
     // do not have a valid i.instagram.com mobile session so the endpoint returns 0 items.
@@ -3595,7 +3604,7 @@ export class InstagramWebClient {
         const accepted = await this._tryAcceptConsent();
         if (accepted) {
           console.log(`[webClient] viewTimelineFeed: retrying after consent acceptance`);
-          return this.viewTimelineFeed(count, reelWatchPercentMin, reelWatchPercentMax, reelWatchCountMin, reelWatchCountMax, true, onPageEvent);
+          return this.viewTimelineFeed(count, reelWatchPercentMin, reelWatchPercentMax, reelWatchCountMin, reelWatchCountMax, true, onPageEvent, onSeenBatch);
         }
       }
       return { viewed: 0 };
@@ -3618,6 +3627,7 @@ export class InstagramWebClient {
     const viewedItems: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }> = [];
     const reelWatches: Array<{ mediaId: string; shortcode: string; username: string; pct: number; durationSec: number }> = [];
     const allClipImpressions: Array<{ clip_id: string; view_state: string }> = [];
+    let stopAfterSeenBatch = false;
 
     // Marks one page's worth of posts as seen (batches of 4, matching real app behaviour)
     // and accumulates viewedItems / reelWatches.  Returns number of items consumed.
@@ -3631,6 +3641,8 @@ export class InstagramWebClient {
       if (!pageMedia.length) return 0;
 
       const seenEntries: string[] = [];
+      const pageItems: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }> = [];
+      let processedPageItems = 0;
       for (const media of pageMedia) {
         const mediaId = String(media?.id ?? media?.pk ?? "");
         if (!mediaId) continue;
@@ -3645,7 +3657,6 @@ export class InstagramWebClient {
           watchDuration = Math.max(1, Math.round(reelDuration * pct / 100));
         }
         seenEntries.push(`${mediaId}_${takenAt}_${takenAt + watchDuration}`);
-        viewed++;
 
         if (isReel && reelWatchPercentMax > 0 && reelWatchedSoFar < reelWatchLimit) {
           const username = String(media?.user?.username ?? "");
@@ -3655,7 +3666,10 @@ export class InstagramWebClient {
         }
         const userId   = String(media?.user?.pk ?? media?.user_id ?? "");
         const username = String(media?.user?.username ?? "");
-        if (mediaId) viewedItems.push({ mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel });
+        if (mediaId) {
+          const item = { mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel };
+          pageItems.push(item);
+        }
       }
 
       // Instagram's real mobile app sends at most 4 posts per media/seen/ call.
@@ -3676,14 +3690,25 @@ export class InstagramWebClient {
           }).toString());
         } catch (_) { /* best-effort seen signal — never propagate */ }
         finally { this._inTimedCall = false; }
+        const batchItems = pageItems.slice(i, i + batch.length);
+        viewed += batchItems.length;
+        processedPageItems += batchItems.length;
+        viewedItems.push(...batchItems);
         // Log ViewTimelineFeedSeen as success — the posts were viewed; seen-signal
         // failures (e.g. Instagram 500) are non-fatal and must not show as ERROR.
         const _seenN = batch.length;
         this.logCallFn?.("ViewTimelineFeedSeen", Date.now() - _seenT0, `Marked ${_seenN} post${_seenN === 1 ? "" : "s"} as seen`, false);
         onPageEvent?.("feed_seen", batch.length);
+        if (onSeenBatch) {
+          const shouldContinue = await onSeenBatch(batchItems);
+          if (shouldContinue === false) {
+            stopAfterSeenBatch = true;
+            break;
+          }
+        }
       }
 
-      return pageMedia.length;
+      return processedPageItems;
     };
 
     // Process page 1 (already fetched above)
@@ -3697,7 +3722,7 @@ export class InstagramWebClient {
     let nextMaxId: string | null = j?.next_max_id ?? null;
     const MAX_PAGES = 8;
     let page = 1;
-    while (viewed < count && nextMaxId && page < MAX_PAGES) {
+    while (!stopAfterSeenBatch && viewed < count && nextMaxId && page < MAX_PAGES) {
       console.log(`[webClient] viewTimelineFeed: page ${page + 1} — have ${viewed}/${count} seen, cursor=${String(nextMaxId).slice(0, 24)}…`);
       const pageJ = await this.mobileSessionPost(
         `/api/v1/feed/timeline/`,
@@ -3718,7 +3743,12 @@ export class InstagramWebClient {
     // The media/seen calls in processAndMarkPage already mark each reel as seen.
     // No additional impression signal needed.
 
-    return { viewed, items: viewedItems, reelWatches };
+    const processedMediaIds = new Set(viewedItems.map((item) => item.mediaId));
+    return {
+      viewed,
+      items: viewedItems,
+      reelWatches: reelWatches.filter((reel) => processedMediaIds.has(reel.mediaId)),
+    };
   }
 
   // ── View Reels (independent tool) — open the dedicated Reels tab ──────────

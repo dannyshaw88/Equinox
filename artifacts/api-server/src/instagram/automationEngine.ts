@@ -4757,6 +4757,65 @@ class AutomationEngine {
       async () => {
         client.setApiCallSource("Human Session Emulation");
         const feedCount = randInt(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
+        const saveEnabled = !!s.saveMediaEnabled;
+        const legacySavePct = Number(s.saveMediaPercent ?? 20);
+        const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
+        const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
+        const sharePctMin = Number(s.sharePostPercentMin ?? 0);
+        const sharePctMax = Number(s.sharePostPercentMax ?? 0);
+        let stopFeedAfterPostActionError = false;
+        const processSeenBatch = async (
+          items: Array<{ mediaId: string; userId: string; username: string; shortcode: string; isReel: boolean }>,
+        ): Promise<boolean> => {
+          for (const item of items) {
+            if (!item.mediaId) continue;
+
+            if (saveEnabled && savePctMax > 0) {
+              const saveChancePct = randInt(savePctMin, savePctMax);
+              if (Math.random() * 100 < saveChancePct) {
+                try {
+                  const saved = await client.saveMedia(item.mediaId);
+                  this.logAction(
+                    profile.id, tool.id, "save_media", item.username, item.shortcode, "post",
+                    saved ? "ok" : "fail",
+                    saved ? "Saved viewed timeline post" : "Instagram did not confirm saving timeline post",
+                  );
+                  if (saved) {
+                    console.log(`[engine] @${profile.username}: 🔖 saved viewed post ${item.shortcode} by @${item.username}`);
+                  }
+                } catch (se: any) {
+                  if (await checkSessionErr(se, "save_timeline_media")) {
+                    stopFeedAfterPostActionError = true;
+                    return false;
+                  }
+                  console.warn(`[engine] @${profile.username}: save timeline media error: ${se?.message}`);
+                  this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
+                }
+              }
+            }
+
+            if (sharePctMax > 0) {
+              const shareRoll = Math.random() * 100;
+              const shareThreshold = randInt(sharePctMin, sharePctMax);
+              if (shareRoll < shareThreshold) {
+                try {
+                  const shared = await client.sharePostToFeed(item.mediaId);
+                  if (shared) {
+                    console.log(`[engine] @${profile.username}: 🔁 shared post ${item.shortcode} by @${item.username} to feed`);
+                    this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "ok", "Shared timeline post to feed");
+                  }
+                } catch (se: any) {
+                  if (await checkSessionErr(se, "share_post")) {
+                    stopFeedAfterPostActionError = true;
+                    return false;
+                  }
+                  console.warn(`[engine] @${profile.username}: share post error: ${se?.message}`);
+                }
+              }
+            }
+          }
+          return true;
+        };
         // Reel-watching is now its own independent "View Reels" tool (see the
         // separate enqueue("viewReels", ...) block below) with its own
         // enabled/order/chance settings — it is no longer nested inside this
@@ -4775,7 +4834,9 @@ class AutomationEngine {
                 this.logAction(profile.id, tool.id, "feed_timeline_seen", "", "", "", "ok", `Marked ${count} post${count === 1 ? "" : "s"} as seen`);
               }
             },
+            processSeenBatch,
           );
+          if (stopFeedAfterPostActionError) return;
           if (vtfResult.sessionExpired) {
             const expReason = vtfResult.reason ?? "session expired (login_required) — viewTimelineFeed";
             console.warn(`[engine] @${profile.username}: viewTimelineFeed — session expired, marking logged_out`);
@@ -4846,58 +4907,6 @@ class AutomationEngine {
             console.warn(`[engine] @${profile.username}: like timeline posts error: ${e?.message}`);
           }
           } // end likeCount > 0
-        }
-
-        // ── Save a % of viewed timeline posts, independently of liking ────────
-        const saveEnabled = !!s.saveMediaEnabled;
-        const legacySavePct = Number(s.saveMediaPercent ?? 20);
-        const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
-        const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
-        if (saveEnabled && savePctMax > 0 && vtfResult?.items?.length) {
-          for (const item of vtfResult.items) {
-            if (!item.mediaId) continue;
-            const saveChancePct = randInt(savePctMin, savePctMax);
-            if (Math.random() * 100 >= saveChancePct) continue;
-            try {
-              const saved = await client.saveMedia(item.mediaId);
-              this.logAction(
-                profile.id, tool.id, "save_media", item.username, item.shortcode, "post",
-                saved ? "ok" : "fail",
-                saved ? "Saved viewed timeline post" : "Instagram did not confirm saving timeline post",
-              );
-              if (saved) {
-                console.log(`[engine] @${profile.username}: 🔖 saved viewed post ${item.shortcode} by @${item.username}`);
-              }
-            } catch (se: any) {
-              if (await checkSessionErr(se, "save_timeline_media")) return;
-              console.warn(`[engine] @${profile.username}: save timeline media error: ${se?.message}`);
-              this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
-            }
-          }
-        }
-
-        // ── Share a % of viewed feed posts to the user's feed ────────────────
-        // Simulates pressing the two-arrow share/repost button on posts while
-        // scrolling the timeline — shares them to followers in the home feed.
-        const sharePctMin = Number(s.sharePostPercentMin ?? 0);
-        const sharePctMax = Number(s.sharePostPercentMax ?? 0);
-        if (sharePctMax > 0 && vtfResult?.items && vtfResult.items.length > 0) {
-          for (const item of vtfResult.items) {
-            if (!item.mediaId) continue;
-            const shareRoll = Math.random() * 100;
-            const shareThreshold = randInt(sharePctMin, sharePctMax);
-            if (shareRoll >= shareThreshold) continue;
-            try {
-              const shared = await client.sharePostToFeed(item.mediaId);
-              if (shared) {
-                console.log(`[engine] @${profile.username}: 🔁 shared post ${item.shortcode} by @${item.username} to feed`);
-                this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "ok", "Shared timeline post to feed");
-              }
-            } catch (se: any) {
-              if (await checkSessionErr(se, "share_post")) return;
-              console.warn(`[engine] @${profile.username}: share post error: ${se?.message}`);
-            }
-          }
         }
 
         // ── Visit a % of viewed feed posts' author profiles ──────────────────

@@ -159603,7 +159603,7 @@ var InstagramWebClient = class {
   // simulating a user scrolling through their Instagram home feed.
   // Paginates using next_max_id so the full count (e.g. 50–100) is reachable —
   // Instagram returns only ~12–18 posts per call so multiple pages are needed.
-  async viewTimelineFeed(count = 5, reelWatchPercentMin = 0, reelWatchPercentMax = 0, reelWatchCountMin = 0, reelWatchCountMax = 0, _consentRetry = false, onPageEvent) {
+  async viewTimelineFeed(count = 5, reelWatchPercentMin = 0, reelWatchPercentMax = 0, reelWatchCountMin = 0, reelWatchCountMax = 0, _consentRetry = false, onPageEvent, onSeenBatch) {
     const j = await this.mobileSessionPost(
       `/api/v1/feed/timeline/`,
       new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString()
@@ -159633,7 +159633,7 @@ var InstagramWebClient = class {
         const accepted = await this._tryAcceptConsent();
         if (accepted) {
           console.log(`[webClient] viewTimelineFeed: retrying after consent acceptance`);
-          return this.viewTimelineFeed(count, reelWatchPercentMin, reelWatchPercentMax, reelWatchCountMin, reelWatchCountMax, true, onPageEvent);
+          return this.viewTimelineFeed(count, reelWatchPercentMin, reelWatchPercentMax, reelWatchCountMin, reelWatchCountMax, true, onPageEvent, onSeenBatch);
         }
       }
       return { viewed: 0 };
@@ -159646,11 +159646,14 @@ var InstagramWebClient = class {
     const viewedItems = [];
     const reelWatches = [];
     const allClipImpressions = [];
+    let stopAfterSeenBatch = false;
     const processAndMarkPage = async (rawPage) => {
       const remaining = count - viewed;
       const pageMedia = rawPage.map((raw) => raw?.media_or_ad ?? raw?.media ?? raw).filter((m2) => m2?.id || m2?.pk).slice(0, remaining);
       if (!pageMedia.length) return 0;
       const seenEntries = [];
+      const pageItems = [];
+      let processedPageItems = 0;
       for (const media of pageMedia) {
         const mediaId = String(media?.id ?? media?.pk ?? "");
         if (!mediaId) continue;
@@ -159665,7 +159668,6 @@ var InstagramWebClient = class {
           watchDuration = Math.max(1, Math.round(reelDuration * pct / 100));
         }
         seenEntries.push(`${mediaId}_${takenAt}_${takenAt + watchDuration}`);
-        viewed++;
         if (isReel && reelWatchPercentMax > 0 && reelWatchedSoFar < reelWatchLimit) {
           const username2 = String(media?.user?.username ?? "");
           allClipImpressions.push({ clip_id: mediaId, view_state: "initial_impression" });
@@ -159674,7 +159676,10 @@ var InstagramWebClient = class {
         }
         const userId = String(media?.user?.pk ?? media?.user_id ?? "");
         const username = String(media?.user?.username ?? "");
-        if (mediaId) viewedItems.push({ mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel });
+        if (mediaId) {
+          const item = { mediaId, userId, username, shortcode: this.mediaIdToShortcode(mediaId), isReel };
+          pageItems.push(item);
+        }
       }
       for (let i2 = 0; i2 < seenEntries.length; i2 += 4) {
         const batch = seenEntries.slice(i2, i2 + 4);
@@ -159690,11 +159695,22 @@ var InstagramWebClient = class {
         } finally {
           this._inTimedCall = false;
         }
+        const batchItems = pageItems.slice(i2, i2 + batch.length);
+        viewed += batchItems.length;
+        processedPageItems += batchItems.length;
+        viewedItems.push(...batchItems);
         const _seenN = batch.length;
         this.logCallFn?.("ViewTimelineFeedSeen", Date.now() - _seenT0, `Marked ${_seenN} post${_seenN === 1 ? "" : "s"} as seen`, false);
         onPageEvent?.("feed_seen", batch.length);
+        if (onSeenBatch) {
+          const shouldContinue = await onSeenBatch(batchItems);
+          if (shouldContinue === false) {
+            stopAfterSeenBatch = true;
+            break;
+          }
+        }
       }
-      return pageMedia.length;
+      return processedPageItems;
     };
     const page1Raw = j?.feed_items ?? j?.items ?? [];
     console.log(`[webClient] viewTimelineFeed: page 1 \u2014 ${page1Raw.length} raw items`);
@@ -159704,7 +159720,7 @@ var InstagramWebClient = class {
     let nextMaxId = j?.next_max_id ?? null;
     const MAX_PAGES = 8;
     let page = 1;
-    while (viewed < count && nextMaxId && page < MAX_PAGES) {
+    while (!stopAfterSeenBatch && viewed < count && nextMaxId && page < MAX_PAGES) {
       console.log(`[webClient] viewTimelineFeed: page ${page + 1} \u2014 have ${viewed}/${count} seen, cursor=${String(nextMaxId).slice(0, 24)}\u2026`);
       const pageJ = await this.mobileSessionPost(
         `/api/v1/feed/timeline/`,
@@ -159719,7 +159735,12 @@ var InstagramWebClient = class {
       page++;
     }
     console.log(`[webClient] viewTimelineFeed: ${page} page(s) \u2014 ${viewed} posts seen`);
-    return { viewed, items: viewedItems, reelWatches };
+    const processedMediaIds = new Set(viewedItems.map((item) => item.mediaId));
+    return {
+      viewed,
+      items: viewedItems,
+      reelWatches: reelWatches.filter((reel) => processedMediaIds.has(reel.mediaId))
+    };
   }
   // ── View Reels (independent tool) — open the dedicated Reels tab ──────────
   // The Reels page uses POST /api/v1/clips/discover/stream/ with the
@@ -168327,6 +168348,66 @@ ${err?.stack ?? ""}`);
       async () => {
         client.setApiCallSource("Human Session Emulation");
         const feedCount = randInt2(s.viewTimelineFeedMin ?? 3, s.viewTimelineFeedMax ?? 8);
+        const saveEnabled = !!s.saveMediaEnabled;
+        const legacySavePct = Number(s.saveMediaPercent ?? 20);
+        const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
+        const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
+        const sharePctMin = Number(s.sharePostPercentMin ?? 0);
+        const sharePctMax = Number(s.sharePostPercentMax ?? 0);
+        let stopFeedAfterPostActionError = false;
+        const processSeenBatch = async (items) => {
+          for (const item of items) {
+            if (!item.mediaId) continue;
+            if (saveEnabled && savePctMax > 0) {
+              const saveChancePct = randInt2(savePctMin, savePctMax);
+              if (Math.random() * 100 < saveChancePct) {
+                try {
+                  const saved = await client.saveMedia(item.mediaId);
+                  this.logAction(
+                    profile.id,
+                    tool.id,
+                    "save_media",
+                    item.username,
+                    item.shortcode,
+                    "post",
+                    saved ? "ok" : "fail",
+                    saved ? "Saved viewed timeline post" : "Instagram did not confirm saving timeline post"
+                  );
+                  if (saved) {
+                    console.log(`[engine] @${profile.username}: \u{1F516} saved viewed post ${item.shortcode} by @${item.username}`);
+                  }
+                } catch (se) {
+                  if (await checkSessionErr(se, "save_timeline_media")) {
+                    stopFeedAfterPostActionError = true;
+                    return false;
+                  }
+                  console.warn(`[engine] @${profile.username}: save timeline media error: ${se?.message}`);
+                  this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
+                }
+              }
+            }
+            if (sharePctMax > 0) {
+              const shareRoll = Math.random() * 100;
+              const shareThreshold = randInt2(sharePctMin, sharePctMax);
+              if (shareRoll < shareThreshold) {
+                try {
+                  const shared = await client.sharePostToFeed(item.mediaId);
+                  if (shared) {
+                    console.log(`[engine] @${profile.username}: \u{1F501} shared post ${item.shortcode} by @${item.username} to feed`);
+                    this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "ok", "Shared timeline post to feed");
+                  }
+                } catch (se) {
+                  if (await checkSessionErr(se, "share_post")) {
+                    stopFeedAfterPostActionError = true;
+                    return false;
+                  }
+                  console.warn(`[engine] @${profile.username}: share post error: ${se?.message}`);
+                }
+              }
+            }
+          }
+          return true;
+        };
         let viewed = 0;
         let vtfResult = null;
         try {
@@ -168343,8 +168424,10 @@ ${err?.stack ?? ""}`);
               } else if (type === "feed_seen") {
                 this.logAction(profile.id, tool.id, "feed_timeline_seen", "", "", "", "ok", `Marked ${count} post${count === 1 ? "" : "s"} as seen`);
               }
-            }
+            },
+            processSeenBatch
           );
+          if (stopFeedAfterPostActionError) return;
           if (vtfResult.sessionExpired) {
             const expReason = vtfResult.reason ?? "session expired (login_required) \u2014 viewTimelineFeed";
             console.warn(`[engine] @${profile.username}: viewTimelineFeed \u2014 session expired, marking logged_out`);
@@ -168401,57 +168484,6 @@ ${err?.stack ?? ""}`);
             } catch (e) {
               if (await checkSessionErr(e, "like_timeline_posts")) return;
               console.warn(`[engine] @${profile.username}: like timeline posts error: ${e?.message}`);
-            }
-          }
-        }
-        const saveEnabled = !!s.saveMediaEnabled;
-        const legacySavePct = Number(s.saveMediaPercent ?? 20);
-        const savePctMin = Math.min(100, Math.max(0, Number(s.saveMediaPercentMin ?? s.saveMediaPercentMax ?? legacySavePct)));
-        const savePctMax = Math.min(100, Math.max(savePctMin, Number(s.saveMediaPercentMax ?? s.saveMediaPercentMin ?? legacySavePct)));
-        if (saveEnabled && savePctMax > 0 && vtfResult?.items?.length) {
-          for (const item of vtfResult.items) {
-            if (!item.mediaId) continue;
-            const saveChancePct = randInt2(savePctMin, savePctMax);
-            if (Math.random() * 100 >= saveChancePct) continue;
-            try {
-              const saved = await client.saveMedia(item.mediaId);
-              this.logAction(
-                profile.id,
-                tool.id,
-                "save_media",
-                item.username,
-                item.shortcode,
-                "post",
-                saved ? "ok" : "fail",
-                saved ? "Saved viewed timeline post" : "Instagram did not confirm saving timeline post"
-              );
-              if (saved) {
-                console.log(`[engine] @${profile.username}: \u{1F516} saved viewed post ${item.shortcode} by @${item.username}`);
-              }
-            } catch (se) {
-              if (await checkSessionErr(se, "save_timeline_media")) return;
-              console.warn(`[engine] @${profile.username}: save timeline media error: ${se?.message}`);
-              this.logAction(profile.id, tool.id, "save_media", item.username, item.shortcode, "post", "fail", se?.message ?? "Save timeline media failed");
-            }
-          }
-        }
-        const sharePctMin = Number(s.sharePostPercentMin ?? 0);
-        const sharePctMax = Number(s.sharePostPercentMax ?? 0);
-        if (sharePctMax > 0 && vtfResult?.items && vtfResult.items.length > 0) {
-          for (const item of vtfResult.items) {
-            if (!item.mediaId) continue;
-            const shareRoll = Math.random() * 100;
-            const shareThreshold = randInt2(sharePctMin, sharePctMax);
-            if (shareRoll >= shareThreshold) continue;
-            try {
-              const shared = await client.sharePostToFeed(item.mediaId);
-              if (shared) {
-                console.log(`[engine] @${profile.username}: \u{1F501} shared post ${item.shortcode} by @${item.username} to feed`);
-                this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "ok", "Shared timeline post to feed");
-              }
-            } catch (se) {
-              if (await checkSessionErr(se, "share_post")) return;
-              console.warn(`[engine] @${profile.username}: share post error: ${se?.message}`);
             }
           }
         }
