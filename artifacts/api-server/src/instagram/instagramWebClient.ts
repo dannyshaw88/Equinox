@@ -6854,7 +6854,12 @@ export class InstagramWebClient {
       for (let page = 0; page < maxPages && users.length < maxFollowers; page++) {
         const qs = new URLSearchParams({ count: "50", ...(maxId ? { max_id: maxId } : {}) });
         const j = await this.mobileSessionGet(`/api/v1/friendships/${userId}/followers/?${qs}`);
-        if (!j?.users?.length) break;
+        const status = String(j?.status ?? "").toLowerCase();
+        if (!j || !Array.isArray(j.users) || status === "fail" || status === "error") {
+          const detail = j?.message ?? j?.error_type ?? "invalid response";
+          throw new Error(`Followers request failed: ${detail}`);
+        }
+        if (j.users.length === 0) break;
         for (const u of j.users) {
           if (u.pk && u.username) users.push({ pk: String(u.pk), username: u.username, fullName: String(u.full_name ?? "") });
         }
@@ -6865,6 +6870,34 @@ export class InstagramWebClient {
       console.log(`[webClient] followers of ${userId}: found ${users.length}`);
       return users.slice(0, maxFollowers);
     }, `Followers of ${userId}`);
+  }
+
+  // ── Scrape accounts followed by a target account ───────────────────────────
+  async getFollowings(userId: string, maxFollowings = 50): Promise<{ pk: string; username: string; fullName: string }[]> {
+    return this.timed("FollowingsScrape", async () => {
+      const users: { pk: string; username: string; fullName: string }[] = [];
+      let maxId = "";
+
+      const maxPages = Math.min(Math.ceil(maxFollowings / 50) + 2, 25);
+      for (let page = 0; page < maxPages && users.length < maxFollowings; page++) {
+        const qs = new URLSearchParams({ count: "50", ...(maxId ? { max_id: maxId } : {}) });
+        const j = await this.mobileSessionGet(`/api/v1/friendships/${userId}/following/?${qs}`);
+        const status = String(j?.status ?? "").toLowerCase();
+        if (!j || !Array.isArray(j.users) || status === "fail" || status === "error") {
+          const detail = j?.message ?? j?.error_type ?? "invalid response";
+          throw new Error(`Followings request failed: ${detail}`);
+        }
+        if (j.users.length === 0) break;
+        for (const u of j.users) {
+          if (u.pk && u.username) users.push({ pk: String(u.pk), username: u.username, fullName: String(u.full_name ?? "") });
+        }
+        maxId = j.next_max_id ?? "";
+        if (!maxId) break;
+      }
+
+      console.log(`[webClient] followings of ${userId}: found ${users.length}`);
+      return users.slice(0, maxFollowings);
+    }, `Followings of ${userId}`);
   }
 
   // ── Resolve own account pk (reuses current_user endpoint, no extra call) ──

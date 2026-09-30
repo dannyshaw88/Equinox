@@ -1227,8 +1227,10 @@ class AutomationEngine {
           this.logAction(freshProfile.id, hsTool.id, "human_session_start", "", "", "", "ok", "Human Session Emulation started");
           let acctStatusBroke = false;
           try {
-            await this.runHumanSessionTools(freshProfile, hsTool, state);
+            // Count each Human Session execution when it starts. The lifetime
+            // count also drives the per-account Human Jitter interval checks.
             await storage.incrementStat(freshProfile.id, "human_session");
+            await this.runHumanSessionTools(freshProfile, hsTool, state);
             this.logAction(freshProfile.id, hsTool.id, "tool_complete", "", "", "", "ok", "Human Session complete");
           } catch (err: any) {
             const acctStatus = await this.applyAccountLevelError(freshProfile.id, err?.message ?? "", state, hsTool.id);
@@ -4583,13 +4585,85 @@ class AutomationEngine {
 
   private async runHumanSessionTools(profile: Profile, tool: Tool, state: ProfileState): Promise<void> {
     const s = tool.settings as any;
+    const sessionStats = await storage.getStatsByProfile(profile.id);
+    const sessionExecutionCount = Number(
+      sessionStats.find(row => row.toolType === "human_session" && row.date === "lifetime")?.count ?? 0,
+    );
+    const persistHumanJitterSchedule = async (updates: Record<string, unknown>) => {
+      const latestTool = (await storage.getToolsByProfile(profile.id)).find(candidate => candidate.id === tool.id);
+      if (!latestTool) throw new Error("Human Sessions settings disappeared before saving the Jitter interval.");
+      const latestSettings = latestTool.settings && typeof latestTool.settings === "object" && !Array.isArray(latestTool.settings)
+        ? latestTool.settings as Record<string, unknown>
+        : {};
+      const saved = await storage.updateTool(tool.id, {
+        settings: { ...latestSettings, ...updates },
+      });
+      if (!saved) throw new Error("Could not save the Human Jitter execution interval.");
+      Object.assign(s, updates);
+    };
+    const intervalEndpointConfigs = [
+      {
+        kind: "followers",
+        label: "followers",
+        minKey: "humanJitterFollowersEveryMin",
+        maxKey: "humanJitterFollowersEveryMax",
+        scheduleKey: "humanJitterFollowersSchedule",
+        actionType: "get_followers",
+      },
+      {
+        kind: "followings",
+        label: "followings",
+        minKey: "humanJitterFollowingsEveryMin",
+        maxKey: "humanJitterFollowingsEveryMax",
+        scheduleKey: "humanJitterFollowingsSchedule",
+        actionType: "get_followings",
+      },
+    ] as const;
+    type HumanJitterIntervalSchedule = { everyMin: number; everyMax: number; nextExecution: number };
+    const dueJitterIntervalActions: Array<{
+      endpoint: typeof intervalEndpointConfigs[number];
+      everyMin: number;
+      everyMax: number;
+      schedule: HumanJitterIntervalSchedule;
+    }> = [];
+    const scheduleInitialUpdates: Record<string, unknown> = {};
+    for (const endpoint of intervalEndpointConfigs) {
+      const parsedMin = Number(s[endpoint.minKey] ?? 10);
+      const parsedMax = Number(s[endpoint.maxKey] ?? 25);
+      const inputMin = Math.max(0, Math.min(1000, Number.isFinite(parsedMin) ? Math.floor(parsedMin) : 10));
+      const inputMax = Math.max(0, Math.min(1000, Number.isFinite(parsedMax) ? Math.floor(parsedMax) : 25));
+      if (inputMin === 0 && inputMax === 0) {
+        if (s[endpoint.scheduleKey] != null) scheduleInitialUpdates[endpoint.scheduleKey] = null;
+        continue;
+      }
+      const everyMin = Math.max(1, Math.min(inputMin, inputMax));
+      const everyMax = Math.max(everyMin, Math.max(inputMin, inputMax));
+      const savedSchedule = s[endpoint.scheduleKey] as HumanJitterIntervalSchedule | null | undefined;
+      const schedule = savedSchedule &&
+        savedSchedule.everyMin === everyMin &&
+        savedSchedule.everyMax === everyMax &&
+        Number.isSafeInteger(savedSchedule.nextExecution)
+        ? savedSchedule
+        : {
+          everyMin,
+          everyMax,
+          nextExecution: Math.max(0, sessionExecutionCount - 1) + randInt(everyMin, everyMax),
+        };
+      if (schedule !== savedSchedule) scheduleInitialUpdates[endpoint.scheduleKey] = schedule;
+      if (sessionExecutionCount >= schedule.nextExecution) {
+        dueJitterIntervalActions.push({ endpoint, everyMin, everyMax, schedule });
+      }
+    }
+    if (Object.keys(scheduleInitialUpdates).length > 0) {
+      await persistHumanJitterSchedule(scheduleInitialUpdates);
+    }
+
     const client = await this.ensureClient(profile, state);
     if (!client) {
       this.logAction(profile.id, tool.id, "session_skipped", "", "", "", "warn",
         "Human Session skipped — no Instagram session found. Run Verify Credentials to establish one.");
       return;
     }
-
     // Keep the pauses between API Human Jitter actions aligned with the
     // account-level API Limits & Control settings. The browser-only runner has
     // its own actionDelay helper, but this API path needs one as well.
@@ -4678,10 +4752,12 @@ class AutomationEngine {
 
     type HumanJitterAction = {
       label: string;
-      chanceMinKey: string;
-      chanceMaxKey: string;
+      chanceMinKey?: string;
+      chanceMaxKey?: string;
       actionType: string;
       run: () => Promise<boolean>;
+      oncePerExecution?: boolean;
+      attempted?: boolean;
     };
     // These are direct API actions, not browser/DOM navigation. Keep them on
     // the mobile API client path in both grouped and shuffled execution modes.
@@ -4715,6 +4791,34 @@ class AutomationEngine {
         run: () => client.viewSavedMedia(),
       },
     ];
+    let ownUserIdPromise: Promise<string | null> | null = null;
+    const getOwnUserIdForJitter = async (): Promise<string> => {
+      ownUserIdPromise ??= client.getOwnUserId();
+      const ownUserId = await ownUserIdPromise;
+      if (!ownUserId) throw new Error("Could not resolve this account's Instagram user ID.");
+      return ownUserId;
+    };
+    for (const due of dueJitterIntervalActions) {
+      humanJitterActions.push({
+        label: `check ${due.endpoint.label}`,
+        actionType: due.endpoint.actionType,
+        oncePerExecution: true,
+        attempted: false,
+        run: async () => {
+          const nextSchedule: HumanJitterIntervalSchedule = {
+            everyMin: due.everyMin,
+            everyMax: due.everyMax,
+            nextExecution: sessionExecutionCount + randInt(due.everyMin, due.everyMax),
+          };
+          await persistHumanJitterSchedule({ [due.endpoint.scheduleKey]: nextSchedule });
+          const ownUserId = await getOwnUserIdForJitter();
+          const users = due.endpoint.kind === "followers"
+            ? await client.getFollowers(ownUserId, 50)
+            : await client.getFollowings(ownUserId, 50);
+          return Array.isArray(users);
+        },
+      });
+    }
     // Picks the per-session run threshold from the configured min/max range.
     const willRunJitterAction = (minKey: string, maxKey: string) => {
       const lo = Number(s[minKey] ?? 100);
@@ -4723,11 +4827,16 @@ class AutomationEngine {
       return Math.random() * 100 < threshold;
     };
     const runJitterApiAction = async (action: HumanJitterAction): Promise<void> => {
-      if (!willRunJitterAction(action.chanceMinKey, action.chanceMaxKey)) {
+      if (action.oncePerExecution && action.attempted) {
+        console.log(`[engine] @${profile.username}: ${action.label} already attempted in this Human Session execution`);
+        return;
+      }
+      if (action.chanceMinKey && action.chanceMaxKey && !willRunJitterAction(action.chanceMinKey, action.chanceMaxKey)) {
         console.log(`[engine] @${profile.username}: ${action.label} skipped (run chance)`);
         return;
       }
 
+      if (action.oncePerExecution) action.attempted = true;
       client.setApiCallSource("Human Session Emulation");
       try {
         const ok = await action.run();

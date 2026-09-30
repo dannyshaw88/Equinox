@@ -46,6 +46,7 @@ export interface IStorage {
 
   // Tools
   getToolsByProfile(profileId: number): Promise<Tool[]>;
+  getToolById(id: number): Promise<Tool | undefined>;
   updateTool(id: number, tool: Partial<InsertTool>): Promise<Tool>;
   initializeToolsForProfile(profileId: number): Promise<void>;
 
@@ -300,6 +301,11 @@ export class DatabaseStorage implements IStorage {
       return await db.select().from(tools).where(eq(tools.profileId, profileId));
     }
     return existing;
+  }
+
+  async getToolById(id: number): Promise<Tool | undefined> {
+    const [tool] = await db.select().from(tools).where(eq(tools.id, id));
+    return tool;
   }
 
   async updateTool(id: number, updates: Partial<InsertTool>): Promise<Tool> {

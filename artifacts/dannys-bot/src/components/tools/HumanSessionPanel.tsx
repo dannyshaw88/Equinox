@@ -134,6 +134,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "hs_ownprofile",   label: "Own Profile run chance %",         settingKeys: ["ownProfileRunChanceMin","ownProfileRunChanceMax"] },
         { key: "hs_settings",     label: "Settings run chance %",            settingKeys: ["settingsActivityRunChanceMin","settingsActivityRunChanceMax"] },
         { key: "hs_saved",        label: "View Saved run chance %",          settingKeys: ["viewSavedRunChanceMin","viewSavedRunChanceMax"] },
+        { key: "hs_followers_every", label: "Check followers every (sessions)", settingKeys: ["humanJitterFollowersEveryMin","humanJitterFollowersEveryMax"] },
+        { key: "hs_followings_every", label: "Check followings every (sessions)", settingKeys: ["humanJitterFollowingsEveryMin","humanJitterFollowingsEveryMax"] },
       ]},
       { key: "checkStories", label: "Check Timeline Stories", description: "Watch stories while active", subOptions: [
         { key: "cs_enabled", label: "Enabled",                            settingKeys: ["checkTimelineStoriesEnabled"] },
@@ -538,6 +540,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       settingsActivityRunChanceMax: 100,
       viewSavedRunChanceMin: 50,
       viewSavedRunChanceMax: 100,
+      humanJitterFollowersEveryMin: 10,
+      humanJitterFollowersEveryMax: 25,
+      humanJitterFollowingsEveryMin: 10,
+      humanJitterFollowingsEveryMax: 25,
       checkTimelineStoriesEnabled: true,
       checkTimelineStoriesMin: 3,
       checkTimelineStoriesMax: 8,
@@ -720,6 +726,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       ownProfileRunChanceMin: 100, ownProfileRunChanceMax: 100,
       settingsActivityRunChanceMin: 50, settingsActivityRunChanceMax: 100,
       viewSavedRunChanceMin: 50, viewSavedRunChanceMax: 100,
+      humanJitterFollowersEveryMin: 10, humanJitterFollowersEveryMax: 25,
+      humanJitterFollowingsEveryMin: 10, humanJitterFollowingsEveryMax: 25,
       checkTimelineStoriesEnabled: true, checkTimelineStoriesMin: 3, checkTimelineStoriesMax: 8,
       checkTimelineStoriesSlideMin: 2, checkTimelineStoriesSlideMax: 5,
       checkTimelineStoriesWatchPctMin: 0, checkTimelineStoriesWatchPctMax: 0,
@@ -1325,6 +1333,27 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 <span className="text-[10px] text-muted-foreground">
                   Spreads them through enabled Human Session tools; Order % applies only when off.
                 </span>
+              </div>
+              <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                {([
+                  { minKey: "humanJitterFollowersEveryMin", maxKey: "humanJitterFollowersEveryMax", label: "Followers" },
+                  { minKey: "humanJitterFollowingsEveryMin", maxKey: "humanJitterFollowingsEveryMax", label: "Followings" },
+                ] as { minKey: string; maxKey: string; label: string }[]).map(({ minKey, maxKey, label }) => (
+                  <div key={minKey} className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Check {label} every</span>
+                    <NumField min={0} max={1000} className="w-12 h-6 text-xs px-1"
+                      value={(settings as any)[minKey] ?? 10}
+                      onChange={v => setSettings({ ...settings, [minKey]: v } as any)}
+                    />
+                    <span className="text-[10px] text-muted-foreground">–</span>
+                    <NumField min={0} max={1000} className="w-12 h-6 text-xs px-1"
+                      value={(settings as any)[maxKey] ?? 25}
+                      onChange={v => setSettings({ ...settings, [maxKey]: v } as any)}
+                    />
+                    <span className="text-[10px] text-muted-foreground">sessions</span>
+                  </div>
+                ))}
+                <span className="text-[10px] text-muted-foreground">Counts this account’s Human Session runs; 0–0 disables that check.</span>
               </div>
               {/* Sub-row — all 4 jitter action chances on one row */}
               <div className={`flex items-center gap-2 flex-wrap transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>

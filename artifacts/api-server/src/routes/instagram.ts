@@ -3016,13 +3016,29 @@ export async function registerInstagramRoutes(
   app.put(api.tools.update.path, async (req, res) => {
     try {
       const input = api.tools.update.input.parse(req.body);
+      const toolId = Number(req.params.id);
+      let updatePayload = input;
+      if (input.settings) {
+        const existingTool = await storage.getToolById(toolId);
+        if (existingTool?.type === "human_sessions") {
+          const existingSettings = (existingTool.settings ?? {}) as Record<string, any>;
+          const nextSettings = { ...(input.settings as Record<string, any>) };
+          // These counters are engine-owned. Preserve the latest database copy
+          // rather than accepting a stale value from an open settings panel.
+          for (const key of ["humanJitterFollowersSchedule", "humanJitterFollowingsSchedule"]) {
+            delete nextSettings[key];
+            if (existingSettings[key] !== undefined) nextSettings[key] = existingSettings[key];
+          }
+          updatePayload = { ...input, settings: nextSettings };
+        }
+      }
       // `cold` is a copy-settings flag — not part of the tool schema, parsed separately
       const cold = req.body.cold === true;
       const stagger = (input.settings as any)?.staggerOffsetMins;
       if (stagger != null && stagger > 0) {
         req.log.info(`[copySettings] tool ${req.params.id} — staggerOffsetMins=${stagger} saved to DB`);
       }
-      let updated = await storage.updateTool(Number(req.params.id), input);
+      let updated = await storage.updateTool(toolId, updatePayload);
       if (input.enabled === true) {
         if (cold) {
           // Copy-settings path: stop the existing runner and relaunch with startup wait + stagger

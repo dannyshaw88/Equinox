@@ -147946,6 +147946,10 @@ var DatabaseStorage = class {
     }
     return existing;
   }
+  async getToolById(id) {
+    const [tool] = await db.select().from(tools).where(eq(tools.id, id));
+    return tool;
+  }
   async updateTool(id, updates) {
     const [updated] = await db.update(tools).set(updates).where(eq(tools.id, id)).returning();
     return updated;
@@ -162281,7 +162285,12 @@ Content-Disposition: form-data; name="${part.name}"`;
       for (let page = 0; page < maxPages && users.length < maxFollowers; page++) {
         const qs = new URLSearchParams({ count: "50", ...maxId ? { max_id: maxId } : {} });
         const j = await this.mobileSessionGet(`/api/v1/friendships/${userId}/followers/?${qs}`);
-        if (!j?.users?.length) break;
+        const status = String(j?.status ?? "").toLowerCase();
+        if (!j || !Array.isArray(j.users) || status === "fail" || status === "error") {
+          const detail = j?.message ?? j?.error_type ?? "invalid response";
+          throw new Error(`Followers request failed: ${detail}`);
+        }
+        if (j.users.length === 0) break;
         for (const u of j.users) {
           if (u.pk && u.username) users.push({ pk: String(u.pk), username: u.username, fullName: String(u.full_name ?? "") });
         }
@@ -162291,6 +162300,31 @@ Content-Disposition: form-data; name="${part.name}"`;
       console.log(`[webClient] followers of ${userId}: found ${users.length}`);
       return users.slice(0, maxFollowers);
     }, `Followers of ${userId}`);
+  }
+  // ── Scrape accounts followed by a target account ───────────────────────────
+  async getFollowings(userId, maxFollowings = 50) {
+    return this.timed("FollowingsScrape", async () => {
+      const users = [];
+      let maxId = "";
+      const maxPages = Math.min(Math.ceil(maxFollowings / 50) + 2, 25);
+      for (let page = 0; page < maxPages && users.length < maxFollowings; page++) {
+        const qs = new URLSearchParams({ count: "50", ...maxId ? { max_id: maxId } : {} });
+        const j = await this.mobileSessionGet(`/api/v1/friendships/${userId}/following/?${qs}`);
+        const status = String(j?.status ?? "").toLowerCase();
+        if (!j || !Array.isArray(j.users) || status === "fail" || status === "error") {
+          const detail = j?.message ?? j?.error_type ?? "invalid response";
+          throw new Error(`Followings request failed: ${detail}`);
+        }
+        if (j.users.length === 0) break;
+        for (const u of j.users) {
+          if (u.pk && u.username) users.push({ pk: String(u.pk), username: u.username, fullName: String(u.full_name ?? "") });
+        }
+        maxId = j.next_max_id ?? "";
+        if (!maxId) break;
+      }
+      console.log(`[webClient] followings of ${userId}: found ${users.length}`);
+      return users.slice(0, maxFollowings);
+    }, `Followings of ${userId}`);
   }
   // ── Resolve own account pk (reuses current_user endpoint, no extra call) ──
   async getOwnUserId() {
@@ -165392,8 +165426,8 @@ ${err?.stack ?? ""}`);
           this.logAction(freshProfile.id, hsTool.id, "human_session_start", "", "", "", "ok", "Human Session Emulation started");
           let acctStatusBroke = false;
           try {
-            await this.runHumanSessionTools(freshProfile, hsTool, state);
             await storage.incrementStat(freshProfile.id, "human_session");
+            await this.runHumanSessionTools(freshProfile, hsTool, state);
             this.logAction(freshProfile.id, hsTool.id, "tool_complete", "", "", "", "ok", "Human Session complete");
           } catch (err) {
             const acctStatus = await this.applyAccountLevelError(freshProfile.id, err?.message ?? "", state, hsTool.id);
@@ -168271,6 +168305,65 @@ ${err?.stack ?? ""}`);
   }
   async runHumanSessionTools(profile, tool, state) {
     const s = tool.settings;
+    const sessionStats = await storage.getStatsByProfile(profile.id);
+    const sessionExecutionCount = Number(
+      sessionStats.find((row) => row.toolType === "human_session" && row.date === "lifetime")?.count ?? 0
+    );
+    const persistHumanJitterSchedule = async (updates) => {
+      const latestTool = (await storage.getToolsByProfile(profile.id)).find((candidate) => candidate.id === tool.id);
+      if (!latestTool) throw new Error("Human Sessions settings disappeared before saving the Jitter interval.");
+      const latestSettings = latestTool.settings && typeof latestTool.settings === "object" && !Array.isArray(latestTool.settings) ? latestTool.settings : {};
+      const saved = await storage.updateTool(tool.id, {
+        settings: { ...latestSettings, ...updates }
+      });
+      if (!saved) throw new Error("Could not save the Human Jitter execution interval.");
+      Object.assign(s, updates);
+    };
+    const intervalEndpointConfigs = [
+      {
+        kind: "followers",
+        label: "followers",
+        minKey: "humanJitterFollowersEveryMin",
+        maxKey: "humanJitterFollowersEveryMax",
+        scheduleKey: "humanJitterFollowersSchedule",
+        actionType: "get_followers"
+      },
+      {
+        kind: "followings",
+        label: "followings",
+        minKey: "humanJitterFollowingsEveryMin",
+        maxKey: "humanJitterFollowingsEveryMax",
+        scheduleKey: "humanJitterFollowingsSchedule",
+        actionType: "get_followings"
+      }
+    ];
+    const dueJitterIntervalActions = [];
+    const scheduleInitialUpdates = {};
+    for (const endpoint of intervalEndpointConfigs) {
+      const parsedMin = Number(s[endpoint.minKey] ?? 10);
+      const parsedMax = Number(s[endpoint.maxKey] ?? 25);
+      const inputMin = Math.max(0, Math.min(1e3, Number.isFinite(parsedMin) ? Math.floor(parsedMin) : 10));
+      const inputMax = Math.max(0, Math.min(1e3, Number.isFinite(parsedMax) ? Math.floor(parsedMax) : 25));
+      if (inputMin === 0 && inputMax === 0) {
+        if (s[endpoint.scheduleKey] != null) scheduleInitialUpdates[endpoint.scheduleKey] = null;
+        continue;
+      }
+      const everyMin = Math.max(1, Math.min(inputMin, inputMax));
+      const everyMax = Math.max(everyMin, Math.max(inputMin, inputMax));
+      const savedSchedule = s[endpoint.scheduleKey];
+      const schedule = savedSchedule && savedSchedule.everyMin === everyMin && savedSchedule.everyMax === everyMax && Number.isSafeInteger(savedSchedule.nextExecution) ? savedSchedule : {
+        everyMin,
+        everyMax,
+        nextExecution: Math.max(0, sessionExecutionCount - 1) + randInt2(everyMin, everyMax)
+      };
+      if (schedule !== savedSchedule) scheduleInitialUpdates[endpoint.scheduleKey] = schedule;
+      if (sessionExecutionCount >= schedule.nextExecution) {
+        dueJitterIntervalActions.push({ endpoint, everyMin, everyMax, schedule });
+      }
+    }
+    if (Object.keys(scheduleInitialUpdates).length > 0) {
+      await persistHumanJitterSchedule(scheduleInitialUpdates);
+    }
     const client = await this.ensureClient(profile, state);
     if (!client) {
       this.logAction(
@@ -168367,6 +168460,32 @@ ${err?.stack ?? ""}`);
         run: () => client.viewSavedMedia()
       }
     ];
+    let ownUserIdPromise = null;
+    const getOwnUserIdForJitter = async () => {
+      ownUserIdPromise ??= client.getOwnUserId();
+      const ownUserId = await ownUserIdPromise;
+      if (!ownUserId) throw new Error("Could not resolve this account's Instagram user ID.");
+      return ownUserId;
+    };
+    for (const due of dueJitterIntervalActions) {
+      humanJitterActions.push({
+        label: `check ${due.endpoint.label}`,
+        actionType: due.endpoint.actionType,
+        oncePerExecution: true,
+        attempted: false,
+        run: async () => {
+          const nextSchedule = {
+            everyMin: due.everyMin,
+            everyMax: due.everyMax,
+            nextExecution: sessionExecutionCount + randInt2(due.everyMin, due.everyMax)
+          };
+          await persistHumanJitterSchedule({ [due.endpoint.scheduleKey]: nextSchedule });
+          const ownUserId = await getOwnUserIdForJitter();
+          const users = due.endpoint.kind === "followers" ? await client.getFollowers(ownUserId, 50) : await client.getFollowings(ownUserId, 50);
+          return Array.isArray(users);
+        }
+      });
+    }
     const willRunJitterAction = (minKey, maxKey) => {
       const lo = Number(s[minKey] ?? 100);
       const hi = Number(s[maxKey] ?? 100);
@@ -168374,10 +168493,15 @@ ${err?.stack ?? ""}`);
       return Math.random() * 100 < threshold;
     };
     const runJitterApiAction = async (action) => {
-      if (!willRunJitterAction(action.chanceMinKey, action.chanceMaxKey)) {
+      if (action.oncePerExecution && action.attempted) {
+        console.log(`[engine] @${profile.username}: ${action.label} already attempted in this Human Session execution`);
+        return;
+      }
+      if (action.chanceMinKey && action.chanceMaxKey && !willRunJitterAction(action.chanceMinKey, action.chanceMaxKey)) {
         console.log(`[engine] @${profile.username}: ${action.label} skipped (run chance)`);
         return;
       }
+      if (action.oncePerExecution) action.attempted = true;
       client.setApiCallSource("Human Session Emulation");
       try {
         const ok = await action.run();
@@ -173608,12 +173732,26 @@ ${stamp}` : stamp;
   app2.put(api.tools.update.path, async (req, res) => {
     try {
       const input = api.tools.update.input.parse(req.body);
+      const toolId = Number(req.params.id);
+      let updatePayload = input;
+      if (input.settings) {
+        const existingTool = await storage.getToolById(toolId);
+        if (existingTool?.type === "human_sessions") {
+          const existingSettings = existingTool.settings ?? {};
+          const nextSettings = { ...input.settings };
+          for (const key of ["humanJitterFollowersSchedule", "humanJitterFollowingsSchedule"]) {
+            delete nextSettings[key];
+            if (existingSettings[key] !== void 0) nextSettings[key] = existingSettings[key];
+          }
+          updatePayload = { ...input, settings: nextSettings };
+        }
+      }
       const cold = req.body.cold === true;
       const stagger = input.settings?.staggerOffsetMins;
       if (stagger != null && stagger > 0) {
         req.log.info(`[copySettings] tool ${req.params.id} \u2014 staggerOffsetMins=${stagger} saved to DB`);
       }
-      let updated = await storage.updateTool(Number(req.params.id), input);
+      let updated = await storage.updateTool(toolId, updatePayload);
       if (input.enabled === true) {
         if (cold) {
           req.log.info(`[copySettings] tool ${req.params.id} (${updated.type}) cold restart \u2014 stagger will apply`);
