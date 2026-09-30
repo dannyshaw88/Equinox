@@ -78,6 +78,13 @@ const COL_LABELS: Record<keyof typeof DEFAULT_COL_WIDTHS, string> = {
 
 const CHANGELOG: { version: string; date: string; items: { category: string; text: string; technical?: string[] }[] }[] = [
   {
+    version: "1.1.582",
+    date: "30 Sep 2026",
+    items: [
+      { category: "Fix", text: "Fixed timeline posts failing to register as viewed." },
+    ],
+  },
+  {
     version: "1.1.581",
     date: "29 Sep 2026",
     items: [
