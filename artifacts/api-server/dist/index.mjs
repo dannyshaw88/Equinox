@@ -168326,8 +168326,6 @@ ${err?.stack ?? ""}`);
         enabledKey: "humanJitterFollowersEnabled",
         minKey: "humanJitterFollowersEveryMin",
         maxKey: "humanJitterFollowersEveryMax",
-        chanceMinKey: "humanJitterFollowersRunChanceMin",
-        chanceMaxKey: "humanJitterFollowersRunChanceMax",
         scheduleKey: "humanJitterFollowersSchedule",
         actionType: "get_followers"
       },
@@ -168337,8 +168335,6 @@ ${err?.stack ?? ""}`);
         enabledKey: "humanJitterFollowingsEnabled",
         minKey: "humanJitterFollowingsEveryMin",
         maxKey: "humanJitterFollowingsEveryMax",
-        chanceMinKey: "humanJitterFollowingsRunChanceMin",
-        chanceMaxKey: "humanJitterFollowingsRunChanceMax",
         scheduleKey: "humanJitterFollowingsSchedule",
         actionType: "get_followings"
       }
@@ -168482,8 +168478,6 @@ ${err?.stack ?? ""}`);
       humanJitterActions.push({
         label: `check ${due.endpoint.label}`,
         enabledKey: due.endpoint.enabledKey,
-        chanceMinKey: due.endpoint.chanceMinKey,
-        chanceMaxKey: due.endpoint.chanceMaxKey,
         actionType: due.endpoint.actionType,
         oncePerExecution: true,
         attempted: false,
