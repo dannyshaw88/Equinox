@@ -168323,16 +168323,22 @@ ${err?.stack ?? ""}`);
       {
         kind: "followers",
         label: "followers",
+        enabledKey: "humanJitterFollowersEnabled",
         minKey: "humanJitterFollowersEveryMin",
         maxKey: "humanJitterFollowersEveryMax",
+        chanceMinKey: "humanJitterFollowersRunChanceMin",
+        chanceMaxKey: "humanJitterFollowersRunChanceMax",
         scheduleKey: "humanJitterFollowersSchedule",
         actionType: "get_followers"
       },
       {
         kind: "followings",
         label: "followings",
+        enabledKey: "humanJitterFollowingsEnabled",
         minKey: "humanJitterFollowingsEveryMin",
         maxKey: "humanJitterFollowingsEveryMax",
+        chanceMinKey: "humanJitterFollowingsRunChanceMin",
+        chanceMaxKey: "humanJitterFollowingsRunChanceMax",
         scheduleKey: "humanJitterFollowingsSchedule",
         actionType: "get_followings"
       }
@@ -168433,6 +168439,7 @@ ${err?.stack ?? ""}`);
     const humanJitterActions = [
       {
         label: "notifications",
+        enabledKey: "humanJitterNotificationsEnabled",
         chanceMinKey: "notificationsRunChanceMin",
         chanceMaxKey: "notificationsRunChanceMax",
         actionType: "visit_notifications",
@@ -168440,6 +168447,7 @@ ${err?.stack ?? ""}`);
       },
       {
         label: "own profile",
+        enabledKey: "humanJitterOwnProfileEnabled",
         chanceMinKey: "ownProfileRunChanceMin",
         chanceMaxKey: "ownProfileRunChanceMax",
         actionType: "visit_own_profile",
@@ -168447,6 +168455,7 @@ ${err?.stack ?? ""}`);
       },
       {
         label: "settings",
+        enabledKey: "humanJitterSettingsEnabled",
         chanceMinKey: "settingsActivityRunChanceMin",
         chanceMaxKey: "settingsActivityRunChanceMax",
         actionType: "visit_settings",
@@ -168454,12 +168463,13 @@ ${err?.stack ?? ""}`);
       },
       {
         label: "Saved Media",
+        enabledKey: "humanJitterSavedEnabled",
         chanceMinKey: "viewSavedRunChanceMin",
         chanceMaxKey: "viewSavedRunChanceMax",
         actionType: "view_saved",
         run: () => client.viewSavedMedia()
       }
-    ];
+    ].filter((action) => s[action.enabledKey] !== false);
     let ownUserIdPromise = null;
     const getOwnUserIdForJitter = async () => {
       ownUserIdPromise ??= client.getOwnUserId();
@@ -168468,8 +168478,12 @@ ${err?.stack ?? ""}`);
       return ownUserId;
     };
     for (const due of dueJitterIntervalActions) {
+      if (s[due.endpoint.enabledKey] === false) continue;
       humanJitterActions.push({
         label: `check ${due.endpoint.label}`,
+        enabledKey: due.endpoint.enabledKey,
+        chanceMinKey: due.endpoint.chanceMinKey,
+        chanceMaxKey: due.endpoint.chanceMaxKey,
         actionType: due.endpoint.actionType,
         oncePerExecution: true,
         attempted: false,
@@ -168493,6 +168507,10 @@ ${err?.stack ?? ""}`);
       return Math.random() * 100 < threshold;
     };
     const runJitterApiAction = async (action) => {
+      if (s[action.enabledKey] === false) {
+        console.log(`[engine] @${profile.username}: ${action.label} skipped (disabled)`);
+        return;
+      }
       if (action.oncePerExecution && action.attempted) {
         console.log(`[engine] @${profile.username}: ${action.label} already attempted in this Human Session execution`);
         return;

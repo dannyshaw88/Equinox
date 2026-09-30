@@ -4605,16 +4605,22 @@ class AutomationEngine {
       {
         kind: "followers",
         label: "followers",
+        enabledKey: "humanJitterFollowersEnabled",
         minKey: "humanJitterFollowersEveryMin",
         maxKey: "humanJitterFollowersEveryMax",
+        chanceMinKey: "humanJitterFollowersRunChanceMin",
+        chanceMaxKey: "humanJitterFollowersRunChanceMax",
         scheduleKey: "humanJitterFollowersSchedule",
         actionType: "get_followers",
       },
       {
         kind: "followings",
         label: "followings",
+        enabledKey: "humanJitterFollowingsEnabled",
         minKey: "humanJitterFollowingsEveryMin",
         maxKey: "humanJitterFollowingsEveryMax",
+        chanceMinKey: "humanJitterFollowingsRunChanceMin",
+        chanceMaxKey: "humanJitterFollowingsRunChanceMax",
         scheduleKey: "humanJitterFollowingsSchedule",
         actionType: "get_followings",
       },
@@ -4752,6 +4758,7 @@ class AutomationEngine {
 
     type HumanJitterAction = {
       label: string;
+      enabledKey: string;
       chanceMinKey?: string;
       chanceMaxKey?: string;
       actionType: string;
@@ -4764,6 +4771,7 @@ class AutomationEngine {
     const humanJitterActions: HumanJitterAction[] = [
       {
         label: "notifications",
+        enabledKey: "humanJitterNotificationsEnabled",
         chanceMinKey: "notificationsRunChanceMin",
         chanceMaxKey: "notificationsRunChanceMax",
         actionType: "visit_notifications",
@@ -4771,6 +4779,7 @@ class AutomationEngine {
       },
       {
         label: "own profile",
+        enabledKey: "humanJitterOwnProfileEnabled",
         chanceMinKey: "ownProfileRunChanceMin",
         chanceMaxKey: "ownProfileRunChanceMax",
         actionType: "visit_own_profile",
@@ -4778,6 +4787,7 @@ class AutomationEngine {
       },
       {
         label: "settings",
+        enabledKey: "humanJitterSettingsEnabled",
         chanceMinKey: "settingsActivityRunChanceMin",
         chanceMaxKey: "settingsActivityRunChanceMax",
         actionType: "visit_settings",
@@ -4785,12 +4795,13 @@ class AutomationEngine {
       },
       {
         label: "Saved Media",
+        enabledKey: "humanJitterSavedEnabled",
         chanceMinKey: "viewSavedRunChanceMin",
         chanceMaxKey: "viewSavedRunChanceMax",
         actionType: "view_saved",
         run: () => client.viewSavedMedia(),
       },
-    ];
+    ].filter(action => s[action.enabledKey] !== false);
     let ownUserIdPromise: Promise<string | null> | null = null;
     const getOwnUserIdForJitter = async (): Promise<string> => {
       ownUserIdPromise ??= client.getOwnUserId();
@@ -4799,8 +4810,12 @@ class AutomationEngine {
       return ownUserId;
     };
     for (const due of dueJitterIntervalActions) {
+      if (s[due.endpoint.enabledKey] === false) continue;
       humanJitterActions.push({
         label: `check ${due.endpoint.label}`,
+        enabledKey: due.endpoint.enabledKey,
+        chanceMinKey: due.endpoint.chanceMinKey,
+        chanceMaxKey: due.endpoint.chanceMaxKey,
         actionType: due.endpoint.actionType,
         oncePerExecution: true,
         attempted: false,
@@ -4827,6 +4842,10 @@ class AutomationEngine {
       return Math.random() * 100 < threshold;
     };
     const runJitterApiAction = async (action: HumanJitterAction): Promise<void> => {
+      if (s[action.enabledKey] === false) {
+        console.log(`[engine] @${profile.username}: ${action.label} skipped (disabled)`);
+        return;
+      }
       if (action.oncePerExecution && action.attempted) {
         console.log(`[engine] @${profile.username}: ${action.label} already attempted in this Human Session execution`);
         return;

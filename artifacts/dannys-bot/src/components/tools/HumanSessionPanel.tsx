@@ -43,6 +43,10 @@ function withoutRemovedActivitySettings(settings: Record<string, any>): Record<s
   delete cleaned.expandCaptionPercentMax;
   delete cleaned.viewActivityRunChanceMin;
   delete cleaned.viewActivityRunChanceMax;
+  delete cleaned.humanJitterFollowersRunChanceMin;
+  delete cleaned.humanJitterFollowersRunChanceMax;
+  delete cleaned.humanJitterFollowingsRunChanceMin;
+  delete cleaned.humanJitterFollowingsRunChanceMax;
   const legacySavePercent = cleaned.saveMediaPercent == null ? 20 : Number(cleaned.saveMediaPercent);
   const savePercentFallback = Number.isFinite(legacySavePercent) ? legacySavePercent : 20;
   if (cleaned.saveMediaPercentMin == null && cleaned.saveMediaPercentMax == null) {
@@ -130,12 +134,12 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "hs_chance",       label: "Skip chance %",      settingKeys: ["humanSessionNotUsedMin","humanSessionNotUsedMax"] },
         { key: "hs_shuffle",      label: "Shuffle actions through session", settingKeys: ["humanSessionShuffle"] },
         { key: "hs_rerun",        label: "Re-run chance %",    settingKeys: ["humanSessionRerunChanceMin","humanSessionRerunChanceMax"] },
-        { key: "hs_notif",        label: "Notifications run chance %",       settingKeys: ["notificationsRunChanceMin","notificationsRunChanceMax"] },
-        { key: "hs_ownprofile",   label: "Own Profile run chance %",         settingKeys: ["ownProfileRunChanceMin","ownProfileRunChanceMax"] },
-        { key: "hs_settings",     label: "Settings run chance %",            settingKeys: ["settingsActivityRunChanceMin","settingsActivityRunChanceMax"] },
-        { key: "hs_saved",        label: "View Saved run chance %",          settingKeys: ["viewSavedRunChanceMin","viewSavedRunChanceMax"] },
-        { key: "hs_followers_every", label: "Check followers every (sessions)", settingKeys: ["humanJitterFollowersEveryMin","humanJitterFollowersEveryMax"] },
-        { key: "hs_followings_every", label: "Check followings every (sessions)", settingKeys: ["humanJitterFollowingsEveryMin","humanJitterFollowingsEveryMax"] },
+        { key: "hs_notif", label: "Notifications", settingKeys: ["humanJitterNotificationsEnabled","notificationsRunChanceMin","notificationsRunChanceMax"] },
+        { key: "hs_ownprofile", label: "Own Profile", settingKeys: ["humanJitterOwnProfileEnabled","ownProfileRunChanceMin","ownProfileRunChanceMax"] },
+        { key: "hs_settings", label: "Settings", settingKeys: ["humanJitterSettingsEnabled","settingsActivityRunChanceMin","settingsActivityRunChanceMax"] },
+        { key: "hs_saved", label: "View Saved", settingKeys: ["humanJitterSavedEnabled","viewSavedRunChanceMin","viewSavedRunChanceMax"] },
+        { key: "hs_followers_every", label: "Followers", settingKeys: ["humanJitterFollowersEnabled","humanJitterFollowersEveryMin","humanJitterFollowersEveryMax"] },
+        { key: "hs_followings_every", label: "Followings", settingKeys: ["humanJitterFollowingsEnabled","humanJitterFollowingsEveryMin","humanJitterFollowingsEveryMax"] },
       ]},
       { key: "checkStories", label: "Check Timeline Stories", description: "Watch stories while active", subOptions: [
         { key: "cs_enabled", label: "Enabled",                            settingKeys: ["checkTimelineStoriesEnabled"] },
@@ -532,6 +536,12 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       humanSessionNotUsedMax: 0,
       humanSessionRerunChanceMin: 0,
       humanSessionRerunChanceMax: 0,
+      humanJitterNotificationsEnabled: true,
+      humanJitterOwnProfileEnabled: true,
+      humanJitterSettingsEnabled: true,
+      humanJitterSavedEnabled: true,
+      humanJitterFollowersEnabled: true,
+      humanJitterFollowingsEnabled: true,
       notificationsRunChanceMin: 100,
       notificationsRunChanceMax: 100,
       ownProfileRunChanceMin: 100,
@@ -722,6 +732,9 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       humanSessionEnabled: true, humanSessionShuffle: false, humanSessionOrderMin: 0, humanSessionOrderMax: 0,
       humanSessionNotUsedMin: 0, humanSessionNotUsedMax: 0,
       humanSessionRerunChanceMin: 0, humanSessionRerunChanceMax: 0,
+      humanJitterNotificationsEnabled: true, humanJitterOwnProfileEnabled: true,
+      humanJitterSettingsEnabled: true, humanJitterSavedEnabled: true,
+      humanJitterFollowersEnabled: true, humanJitterFollowingsEnabled: true,
       notificationsRunChanceMin: 100, notificationsRunChanceMax: 100,
       ownProfileRunChanceMin: 100, ownProfileRunChanceMax: 100,
       settingsActivityRunChanceMin: 50, settingsActivityRunChanceMax: 100,
@@ -1334,58 +1347,82 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   Spreads them through enabled Human Session tools; Order % applies only when off.
                 </span>
               </div>
-              <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+              <div className={`flex flex-wrap items-center gap-x-2 gap-y-2 transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Jitter action chance per run</span>
                 {([
-                  { minKey: "humanJitterFollowersEveryMin", maxKey: "humanJitterFollowersEveryMax", label: "Followers" },
-                  { minKey: "humanJitterFollowingsEveryMin", maxKey: "humanJitterFollowingsEveryMax", label: "Followings" },
-                ] as { minKey: string; maxKey: string; label: string }[]).map(({ minKey, maxKey, label }) => (
-                  <div key={minKey} className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Check {label} every</span>
-                    <NumField min={0} max={1000} className="w-12 h-6 text-xs px-1"
-                      value={(settings as any)[minKey] ?? 10}
-                      onChange={v => setSettings({ ...settings, [minKey]: v } as any)}
-                    />
-                    <span className="text-[10px] text-muted-foreground">–</span>
-                    <NumField min={0} max={1000} className="w-12 h-6 text-xs px-1"
-                      value={(settings as any)[maxKey] ?? 25}
-                      onChange={v => setSettings({ ...settings, [maxKey]: v } as any)}
-                    />
-                    <span className="text-[10px] text-muted-foreground">sessions</span>
-                  </div>
-                ))}
-                <span className="text-[10px] text-muted-foreground">Counts this account’s Human Session runs; 0–0 disables that check.</span>
-              </div>
-              {/* Sub-row — all 4 jitter action chances on one row */}
-              <div className={`flex items-center gap-2 flex-wrap transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
-                {([
-                  { minKey: "notificationsRunChanceMin",    maxKey: "notificationsRunChanceMax",    label: "Notifs",    Icon: Bell,      color: "text-orange-500" },
-                  { minKey: "ownProfileRunChanceMin",       maxKey: "ownProfileRunChanceMax",       label: "Profile",   Icon: User,      color: "text-indigo-500" },
-                  { minKey: "settingsActivityRunChanceMin", maxKey: "settingsActivityRunChanceMax", label: "Settings",  Icon: Settings,  color: "text-gray-500"   },
-                  { minKey: "viewSavedRunChanceMin",        maxKey: "viewSavedRunChanceMax",        label: "Saved",     Icon: Bookmark,  color: "text-pink-500"   },
-                ] as { minKey: string; maxKey: string; label: string; Icon: React.ElementType; color: string }[]).map(({ minKey, maxKey, label, Icon, color }, idx, arr) => (
-                  <div key={minKey} className="flex items-center gap-1 shrink-0">
-                    <Icon className={`w-3 h-3 shrink-0 ${color}`} />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap shrink-0">{label}</span>
-                    <div className="flex items-center gap-0.5">
-                      <div className="relative">
+                  { enabledKey: "humanJitterNotificationsEnabled", minKey: "notificationsRunChanceMin", maxKey: "notificationsRunChanceMax", label: "Notifications", Icon: Bell, color: "text-orange-500" },
+                  { enabledKey: "humanJitterOwnProfileEnabled", minKey: "ownProfileRunChanceMin", maxKey: "ownProfileRunChanceMax", label: "Own Profile", Icon: User, color: "text-indigo-500" },
+                  { enabledKey: "humanJitterSettingsEnabled", minKey: "settingsActivityRunChanceMin", maxKey: "settingsActivityRunChanceMax", label: "Settings", Icon: Settings, color: "text-gray-500" },
+                  { enabledKey: "humanJitterSavedEnabled", minKey: "viewSavedRunChanceMin", maxKey: "viewSavedRunChanceMax", label: "Saved", Icon: Bookmark, color: "text-pink-500" },
+                ] as { enabledKey: string; minKey: string; maxKey: string; label: string; Icon: React.ElementType; color: string }[]).map(({ enabledKey, minKey, maxKey, label, Icon, color }, idx, arr) => {
+                  const checkboxId = `human-jitter-${enabledKey}`;
+                  const isEnabled = (settings as any)[enabledKey] !== false;
+                  return (
+                    <div key={enabledKey} className={`flex items-center gap-1 shrink-0 transition-opacity ${isEnabled ? "" : "opacity-40"}`}>
+                      <label htmlFor={checkboxId} className="flex items-center gap-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          id={checkboxId}
+                          aria-label={`Enable ${label} Human Jitter action`}
+                          checked={isEnabled}
+                          onChange={e => setSettings({ ...settings, [enabledKey]: e.target.checked } as any)}
+                          className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0"
+                        />
+                        <Icon className={`w-3 h-3 shrink-0 ${color}`} />
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{label}</span>
+                      </label>
+                      <div className="flex items-center gap-0.5">
                         <NumField min={0} max={100} className="w-12 h-6 text-xs pr-4 pl-1"
                           value={(settings as any)[minKey] ?? 100}
                           onChange={v => setSettings({ ...settings, [minKey]: v } as any)}
                         />
-                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground pointer-events-none">%</span>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground px-0.5">–</span>
-                      <div className="relative">
+                        <span className="text-[10px] text-muted-foreground px-0.5">–</span>
                         <NumField min={0} max={100} className="w-12 h-6 text-xs pr-4 pl-1"
                           value={(settings as any)[maxKey] ?? 100}
                           onChange={v => setSettings({ ...settings, [maxKey]: v } as any)}
                         />
-                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground pointer-events-none">%</span>
+                        <span className="text-[9px] text-muted-foreground">%</span>
                       </div>
+                      {idx < arr.length - 1 && <span className="text-border/60 text-xs mx-0.5 shrink-0">|</span>}
                     </div>
-                    {idx < arr.length - 1 && <span className="text-border/60 text-xs mx-0.5 shrink-0">|</span>}
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+              <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 transition-opacity ${!settings.humanSessionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                {([
+                  { enabledKey: "humanJitterFollowersEnabled", intervalMinKey: "humanJitterFollowersEveryMin", intervalMaxKey: "humanJitterFollowersEveryMax", label: "Followers" },
+                  { enabledKey: "humanJitterFollowingsEnabled", intervalMinKey: "humanJitterFollowingsEveryMin", intervalMaxKey: "humanJitterFollowingsEveryMax", label: "Followings" },
+                ] as { enabledKey: string; intervalMinKey: string; intervalMaxKey: string; label: string }[]).map(({ enabledKey, intervalMinKey, intervalMaxKey, label }) => {
+                  const checkboxId = `human-jitter-${enabledKey}`;
+                  const isEnabled = (settings as any)[enabledKey] !== false;
+                  return (
+                    <div key={enabledKey} className={`flex flex-wrap items-center gap-1.5 transition-opacity ${isEnabled ? "" : "opacity-40"}`}>
+                      <label htmlFor={checkboxId} className="flex items-center gap-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          id={checkboxId}
+                          aria-label={`Enable ${label} Human Jitter action`}
+                          checked={isEnabled}
+                          onChange={e => setSettings({ ...settings, [enabledKey]: e.target.checked } as any)}
+                          className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0"
+                        />
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{label}</span>
+                      </label>
+                      <span className="text-[10px] text-muted-foreground">every</span>
+                      <NumField min={0} max={1000} className="w-12 h-6 text-xs px-1"
+                        value={(settings as any)[intervalMinKey] ?? 10}
+                        onChange={v => setSettings({ ...settings, [intervalMinKey]: v } as any)}
+                      />
+                      <span className="text-[10px] text-muted-foreground">–</span>
+                      <NumField min={0} max={1000} className="w-12 h-6 text-xs px-1"
+                        value={(settings as any)[intervalMaxKey] ?? 25}
+                        onChange={v => setSettings({ ...settings, [intervalMaxKey]: v } as any)}
+                      />
+                      <span className="text-[10px] text-muted-foreground">sessions</span>
+                    </div>
+                  );
+                })}
+                <span className="text-[10px] text-muted-foreground">Runs when enabled and due; 0–0 sessions disables that interval.</span>
               </div>
             </div>
 
