@@ -154,7 +154,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "cs_chance",  label: "Skip chance %", settingKeys: ["checkTimelineStoriesNotUsedMin","checkTimelineStoriesNotUsedMax"] },
         { key: "cs_rerun",   label: "Re-run chance %", settingKeys: ["checkTimelineStoriesRerunChanceMin","checkTimelineStoriesRerunChanceMax"] },
         { key: "cs_like",    label: "Like %",        settingKeys: ["storyLikePctMin","storyLikePctMax"] },
-         { key: "cs_share",   label: "Share %",       settingKeys: ["storySharePctMin","storySharePctMax"] },
       ]},
       { key: "checkDm", label: "Check DMs", description: "Read direct messages", subOptions: [
         { key: "dm_enabled", label: "Enabled",                            settingKeys: ["checkDmEnabled"] },
@@ -581,8 +580,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkTimelineStoriesRerunChanceMax: 0,
       storyLikePctMin: 0,
       storyLikePctMax: 0,
-      storySharePctMin: 0,
-      storySharePctMax: 0,
       checkDmEnabled: true,
       checkDmMin: 5,
       checkDmMax: 15,
@@ -768,7 +765,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       checkTimelineStoriesOrderMin: 0, checkTimelineStoriesOrderMax: 0,
       checkTimelineStoriesNotUsedMin: 0, checkTimelineStoriesNotUsedMax: 0,
       checkTimelineStoriesRerunChanceMin: 0, checkTimelineStoriesRerunChanceMax: 0,
-      storyLikePctMin: 0, storyLikePctMax: 0, storySharePctMin: 0, storySharePctMax: 0,
+      storyLikePctMin: 0, storyLikePctMax: 0,
       checkDmEnabled: true, checkDmMin: 5, checkDmMax: 15,
       checkDmPresenceMin: 0, checkDmPresenceMax: 0,
       checkDmRankedRecipientsMin: 0, checkDmRankedRecipientsMax: 0,
@@ -1647,7 +1644,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   {rerunChanceInputs("checkTimelineStories")}
                 </div>
               </div>
-              {/* Single settings row — Users to Watch | Slides per User | Watch % | Like % | Share % */}
+              {/* Single settings row — Users to Watch | Slides per User | Watch % | Like % */}
               <div className={`flex items-center gap-2.5 flex-nowrap overflow-x-auto transition-opacity ${!settings.checkTimelineStoriesEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                 <NumField min={1} max={50} className="w-14 h-7 text-xs"
                   value={settings.checkTimelineStoriesMin ?? 3}
@@ -1684,17 +1681,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   onChange={(v) => setSettings({ ...settings, storyLikePctMax: v })}
                 />
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Like %</span>
-                <div className="h-4 w-px bg-border/60 shrink-0" />
-                <NumField min={0} max={100} className="w-14 h-7 text-xs"
-                  value={settings.storySharePctMin ?? 0}
-                  onChange={(v) => setSettings({ ...settings, storySharePctMin: v })}
-                />
-                <span className="text-[10px] text-muted-foreground">–</span>
-                <NumField min={0} max={100} className="w-14 h-7 text-xs"
-                  value={settings.storySharePctMax ?? 0}
-                  onChange={(v) => setSettings({ ...settings, storySharePctMax: v })}
-                />
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Share %</span>
               </div>
             </div>
 
