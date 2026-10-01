@@ -167095,20 +167095,16 @@ ${err?.stack ?? ""}`);
     const skipChance = randInt2(min, max);
     return Math.random() * 100 < skipChance;
   }
-  rollPostInfoLookupChance(settings) {
+  rollPostInfoLookupChance(settings, minKey, maxKey) {
     const readPercent = (key) => {
       const raw = settings?.[key];
       const parsed = raw === void 0 || raw === null ? 100 : Number(raw);
       return Number.isFinite(parsed) ? Math.min(100, Math.max(0, Math.floor(parsed))) : 100;
     };
-    const min = readPercent("viewPostInfoPercentMin");
-    const max = readPercent("viewPostInfoPercentMax");
+    const min = readPercent(minKey);
+    const max = readPercent(maxKey);
     const chance2 = randInt2(Math.min(min, max), Math.max(min, max));
     return { chance: chance2, allowed: Math.random() * 100 < chance2 };
-  }
-  async getSharedPostInfoSettings(profileId) {
-    const tools2 = await storage.getToolsByProfile(profileId);
-    return tools2.find((t2) => t2.type === "human_sessions")?.settings ?? {};
   }
   // Legacy browser human session helper.
   // Navigates the EB to Instagram pages to simulate human presence without any mobile API call.
@@ -169118,7 +169114,7 @@ ${err?.stack ?? ""}`);
                       for (const profilePost of profilePosts) {
                         if (postsOpened >= postViewMax) break;
                         if (Math.random() * 100 >= postViewPct) continue;
-                        const infoChance = this.rollPostInfoLookupChance(s);
+                        const infoChance = this.rollPostInfoLookupChance(s, "viewProfilePostsInfoLookupPercentMin", "viewProfilePostsInfoLookupPercentMax");
                         if (!infoChance.allowed) {
                           this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
                           continue;
@@ -169916,7 +169912,7 @@ ${err?.stack ?? ""}`);
           const exploreSavePctMin = Math.min(100, Math.max(0, Number(s.exploreSaveMediaPctMin ?? 0)));
           const exploreSavePctMax = Math.min(100, Math.max(exploreSavePctMin, Number(s.exploreSaveMediaPctMax ?? 0)));
           for (const item of toClick) {
-            const infoChance = this.rollPostInfoLookupChance(s);
+            const infoChance = this.rollPostInfoLookupChance(s, "explorePostInfoLookupPercentMin", "explorePostInfoLookupPercentMax");
             if (!infoChance.allowed) {
               this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
               continue;
@@ -170030,7 +170026,7 @@ ${err?.stack ?? ""}`);
                 let profilePostsOpened = 0;
                 for (const profilePost of profilePosts) {
                   if (profilePostsOpened >= profileClickMax) break;
-                  const infoChance2 = this.rollPostInfoLookupChance(s);
+                  const infoChance2 = this.rollPostInfoLookupChance(s, "explorePostInfoLookupPercentMin", "explorePostInfoLookupPercentMax");
                   if (!infoChance2.allowed) {
                     this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "skipped", `Post open skipped by ${infoChance2.chance}% post-info chance`);
                     continue;
@@ -170324,7 +170320,6 @@ ${err?.stack ?? ""}`);
     const injectProfileBrowsingLikeScrollMax = Math.max(0, s.injectProfileBrowsingLikeScrollMax ?? 0);
     const injectProfileBrowsingClickPostMin = Math.max(0, s.injectProfileBrowsingClickPostMin ?? 0);
     const injectProfileBrowsingClickPostMax = Math.max(injectProfileBrowsingClickPostMin, s.injectProfileBrowsingClickPostMax ?? 0);
-    const postInfoSettings = injectProfileBrowsingClickPostMax > 0 ? await this.getSharedPostInfoSettings(profile.id) : {};
     const injectProfileBrowsingSaveMediaPctMin = Math.max(0, s.injectProfileBrowsingSaveMediaPctMin ?? 0);
     const injectProfileBrowsingSaveMediaPctMax = Math.max(0, s.injectProfileBrowsingSaveMediaPctMax ?? 0);
     const injectProfileBrowsingSaveMediaScrollMin = Math.max(0, s.injectProfileBrowsingSaveMediaScrollMin ?? 0);
@@ -170444,7 +170439,7 @@ ${err?.stack ?? ""}`);
             const toClick = shuffled.slice(0, clickCount);
             engineLog("INFO", `@${profile.username}: [${label}] clicking ${clickCount} post(s) from @${targetUser.username}'s profile`);
             for (const post of toClick) {
-              const infoChance = this.rollPostInfoLookupChance(postInfoSettings);
+              const infoChance = this.rollPostInfoLookupChance(s, "injectProfileBrowsingPostInfoLookupPercentMin", "injectProfileBrowsingPostInfoLookupPercentMax");
               if (!infoChance.allowed) {
                 this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
                 continue;

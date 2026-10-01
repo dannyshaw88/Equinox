@@ -49,3 +49,4 @@
 - [Explore endpoint contract](explore-endpoint-distinction.md) — API Explore uses topical_explore; runtime diagnostics must confirm media_feed rather than topic/pill-only content
 - [Vendor transport evidence](vendor-transport-evidence.md) — API-parity docs do not establish Jarvee/SU Social's HTTP/TLS stack; require source history or a captured request.
 - [HTTP/2 bodyless request streams](http2-bodyless-request-streams.md) — Node may already end bodyless GET/HEAD streams; guard before calling `.end()` to avoid write-after-end.
+- [Per-tool post metrics lookup](per-tool-post-metrics.md) — keep lookup chances independent for author posts, Explore, and injected profile browsing; exclude feed scrolling and Reel views.

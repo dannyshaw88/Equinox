@@ -91,9 +91,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "hs_emulationGroup", label: "Emulation Group", description: "Enable / disable the entire Emulation section", subOptions: [
         { key: "emg_enabled", label: "Enabled", settingKeys: ["emulationGroupEnabled"] },
       ]},
-      { key: "postInfoLookup", label: "Post Metrics Lookup", description: "Shared chance to collect metrics on explicit post opens", subOptions: [
-        { key: "post_info_chance", label: "Chance per opened post", settingKeys: ["viewPostInfoPercentMin","viewPostInfoPercentMax"] },
-      ]},
       { key: "viewTimelineFeed", label: "View Timeline Feed", description: "Scrolling through the main feed + inline liking", subOptions: [
         { key: "vtf_enabled",    label: "Enabled",                                       settingKeys: ["viewTimelineFeedEnabled"] },
         { key: "vtf_count",      label: "Posts per session",                 settingKeys: ["viewTimelineFeedMin","viewTimelineFeedMax"] },
@@ -107,7 +104,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vtf_share_post",  label: "Share % (chance per timeline media item)", settingKeys: ["sharePostPercentMin","sharePostPercentMax"] },
         { key: "vtf_view_profile",     label: "Visit profile %",             settingKeys: ["viewPostProfilePercentMin","viewPostProfilePercentMax"] },
         { key: "vtf_profile_feed",     label: "View profile feed % + count", settingKeys: ["viewProfileFeedPercentMin","viewProfileFeedPercentMax","viewProfileFeedCountMin","viewProfileFeedCountMax"] },
-        { key: "vtf_profile_posts",    label: "Open profile posts count + %",settingKeys: ["viewProfilePostsCountMin","viewProfilePostsCountMax","viewProfilePostsPercentMin","viewProfilePostsPercentMax"] },
+        { key: "vtf_profile_posts",    label: "Open profile posts + metrics lookup",settingKeys: ["viewProfilePostsCountMin","viewProfilePostsCountMax","viewProfilePostsPercentMin","viewProfilePostsPercentMax","viewProfilePostsInfoLookupPercentMin","viewProfilePostsInfoLookupPercentMax"] },
       ]},
       { key: "explorePage", label: "Visit Explore Page", description: "Independent explore-page browsing session with its own order and skip chance", subOptions: [
         { key: "ep_enabled", label: "Enabled",          settingKeys: ["followSuggestedUsersIfEmptyEnabled"] },
@@ -116,6 +113,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "ep_rerun",   label: "Re-run chance %",  settingKeys: ["explorePageRerunChanceMin","explorePageRerunChanceMax"] },
         { key: "ep_scroll",  label: "Posts to scroll",  settingKeys: ["exploreScrollMin","exploreScrollMax"] },
          { key: "ep_click",   label: "Posts to click %", settingKeys: ["exploreClickMin","exploreClickMax"] },
+        { key: "ep_metrics", label: "Post metrics lookup %", settingKeys: ["explorePostInfoLookupPercentMin","explorePostInfoLookupPercentMax"] },
         { key: "ep_like",    label: "Like %",           settingKeys: ["exploreLikePctMin","exploreLikePctMax"] },
          { key: "ep_share",   label: "Share to Feed %",  settingKeys: ["exploreShareToFeedPctMin","exploreShareToFeedPctMax"] },
          { key: "ep_save",    label: "Save Media %",     settingKeys: ["exploreSaveMediaPctMin","exploreSaveMediaPctMax"] },
@@ -611,8 +609,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0,
       likeTimelinePostsPercentMax: 0,
-      viewPostInfoPercentMin: 100,
-      viewPostInfoPercentMax: 100,
       viewReelsEnabled: false,
       viewReelsCommentsMin: 0,
       viewReelsCommentsMax: 0,
@@ -630,6 +626,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewProfileFeedCountMax: 8,
       viewProfilePostsPercentMin: 0,
       viewProfilePostsPercentMax: 0,
+      viewProfilePostsInfoLookupPercentMin: 100,
+      viewProfilePostsInfoLookupPercentMax: 100,
       viewProfilePostsCountMin: 1,
       viewProfilePostsCountMax: 3,
       followOrderMin: 0,
@@ -663,6 +661,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       exploreScrollMax: 15,
       exploreClickMin: 10,
       exploreClickMax: 30,
+      explorePostInfoLookupPercentMin: 100,
+      explorePostInfoLookupPercentMax: 100,
       exploreLikePctMin: 0,
       exploreLikePctMax: 30,
       exploreShareToFeedPctMin: 0,
@@ -779,7 +779,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       saveMediaEnabled: false, saveMediaPercentMin: 20, saveMediaPercentMax: 20,
       sharePostPercentMin: 0, sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0, likeTimelinePostsPercentMax: 0,
-      viewPostInfoPercentMin: 100, viewPostInfoPercentMax: 100,
       viewReelsEnabled: false, viewReelsCommentsMin: 0, viewReelsCommentsMax: 0,
       viewReelsOrderMin: 0, viewReelsOrderMax: 0,
       viewReelsNotUsedMin: 0, viewReelsNotUsedMax: 0,
@@ -788,6 +787,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewProfileFeedPercentMin: 0, viewProfileFeedPercentMax: 0,
       viewProfileFeedCountMin: 3, viewProfileFeedCountMax: 8,
       viewProfilePostsPercentMin: 0, viewProfilePostsPercentMax: 0,
+      viewProfilePostsInfoLookupPercentMin: 100, viewProfilePostsInfoLookupPercentMax: 100,
       viewProfilePostsCountMin: 1, viewProfilePostsCountMax: 3,
       followOrderMin: 0, followOrderMax: 0, followSkipMin: 0, followSkipMax: 0,
       followRerunChanceMin: 0, followRerunChanceMax: 0,
@@ -801,6 +801,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       explorePageRerunChanceMin: 0, explorePageRerunChanceMax: 0,
       exploreScrollMin: 5, exploreScrollMax: 15,
        exploreClickMin: 10, exploreClickMax: 30,
+      explorePostInfoLookupPercentMin: 100, explorePostInfoLookupPercentMax: 100,
       exploreLikePctMin: 0, exploreLikePctMax: 30,
        exploreShareToFeedPctMin: 0, exploreShareToFeedPctMax: 0,
        exploreSaveMediaPctMin: 0, exploreSaveMediaPctMax: 0,
@@ -1061,13 +1062,6 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
             <Zap className="w-5 h-5 text-white shrink-0" />
             <h4 className="font-bold text-[17px] text-white">Emulation</h4>
           </div>
-          <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              {pctInputs("viewPostInfoPercentMin", "viewPostInfoPercentMax")}
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Post metrics lookup %</span>
-            </div>
-            <span className="text-[10px] text-muted-foreground">Chance per explicit post open for likes, comments, views and plays; shared across tools. 0–0 skips opening.</span>
-          </div>
           {(settings as any).emulationGroupEnabled !== false && (
           <div className="divide-y divide-border">
 
@@ -1217,6 +1211,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                 )}
               </div>
             )}
+            <div className="flex items-center gap-2 flex-wrap pt-1.5 border-t border-border/40">
+              {pctInputs("viewProfilePostsInfoLookupPercentMin", "viewProfilePostsInfoLookupPercentMax")}
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">AUTHOR POST METRICS LOOKUP %</span>
+            </div>
 
           </div>
         )}
@@ -1286,6 +1284,10 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     <div className="flex items-center gap-1.5">
                       {pctInputs("exploreClickMin", "exploreClickMax")}
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to Click</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {pctInputs("explorePostInfoLookupPercentMin", "explorePostInfoLookupPercentMax")}
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Post Metrics Lookup %</span>
                     </div>
                   </div>
                   {/* Row 2: Post actions */}
