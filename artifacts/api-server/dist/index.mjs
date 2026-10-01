@@ -150071,6 +150071,62 @@ var import_instagram_private_api2 = __toESM(require_dist2(), 1);
 // src/instagram/tlsTransport.ts
 var import_instagram_private_api = __toESM(require_dist2(), 1);
 import * as net4 from "node:net";
+function parseInstagramJson(rawBody) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  const maxSafeInteger = BigInt(Number.MAX_SAFE_INTEGER);
+  for (let i2 = 0; i2 < rawBody.length; ) {
+    const char = rawBody[i2];
+    if (inString) {
+      output += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      i2++;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      output += char;
+      i2++;
+      continue;
+    }
+    if (char === "-" || char >= "0" && char <= "9") {
+      const start = i2;
+      if (rawBody[i2] === "-") i2++;
+      if (rawBody[i2] === "0") {
+        i2++;
+      } else if (rawBody[i2] >= "1" && rawBody[i2] <= "9") {
+        while (rawBody[i2] >= "0" && rawBody[i2] <= "9") i2++;
+      } else {
+        output += rawBody[start];
+        i2 = start + 1;
+        continue;
+      }
+      if (rawBody[i2] === ".") {
+        i2++;
+        while (rawBody[i2] >= "0" && rawBody[i2] <= "9") i2++;
+      }
+      if (rawBody[i2] === "e" || rawBody[i2] === "E") {
+        i2++;
+        if (rawBody[i2] === "+" || rawBody[i2] === "-") i2++;
+        while (rawBody[i2] >= "0" && rawBody[i2] <= "9") i2++;
+      }
+      const token = rawBody.slice(start, i2);
+      if (/^-?(?:0|[1-9]\d*)$/.test(token)) {
+        const integer3 = BigInt(token);
+        output += integer3 > maxSafeInteger || integer3 < -maxSafeInteger ? JSON.stringify(token) : token;
+      } else {
+        output += token;
+      }
+      continue;
+    }
+    output += char;
+    i2++;
+  }
+  return JSON.parse(output);
+}
 async function findFreeTcpPort(fallback = 9119) {
   return new Promise((resolve) => {
     const srv = net4.createServer();
@@ -150198,6 +150254,7 @@ async function tlsRequest(opts) {
           ja3: ja3Override ?? OKHTTP4_JA3,
           userAgent,
           headers: headersWithoutUA,
+          responseType: "text",
           proxy: proxyUrl,
           timeout: 30,
           disableRedirect: false,
@@ -150229,7 +150286,7 @@ async function tlsRequest(opts) {
       const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
       let json2 = null;
       try {
-        json2 = JSON.parse(rawBody);
+        json2 = parseInstagramJson(rawBody);
       } catch {
         if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json2 = resp.data;
       }
@@ -150320,7 +150377,7 @@ async function tlsRequest(opts) {
     const cookies = (Array.isArray(rawSC) ? rawSC : rawSC ? [rawSC] : []).map((c3) => c3.split(";")[0]);
     let json2 = null;
     try {
-      json2 = JSON.parse(res.body);
+      json2 = parseInstagramJson(res.body);
     } catch {
     }
     return { status: res.status, cookies, json: json2, rawBody: res.body, responseHeaders: res.headers };
@@ -150404,6 +150461,7 @@ function patchIgClientTls(ig, proxyUrl) {
           ja3: OKHTTP4_JA3,
           userAgent,
           headers: headersWithoutUA,
+          responseType: "text",
           proxy: proxyUrl,
           timeout: 30,
           disableRedirect: false,
@@ -150467,11 +150525,12 @@ function patchIgClientTls(ig, proxyUrl) {
       if (pubKey) ig.state.passwordEncryptionPubKey = pubKey;
     }
     const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
-    let parsedBody = resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data) ? resp.data : rawBody;
-    if (typeof parsedBody === "string") {
-      try {
-        parsedBody = JSON.parse(parsedBody);
-      } catch {
+    let parsedBody = rawBody;
+    try {
+      parsedBody = parseInstagramJson(rawBody);
+    } catch {
+      if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) {
+        parsedBody = resp.data;
       }
     }
     if (resp.status === 200 && parsedBody && typeof parsedBody === "object" && parsedBody.status === "fail" && !("spam" in parsedBody) && !("feedback_required" in parsedBody) && /something went wrong|sorry/i.test(String(parsedBody.message ?? ""))) {
@@ -150551,6 +150610,7 @@ async function tlsMultipartPost(host, path6, headers, body, proxyUrl, forceNodeH
           ja3: OKHTTP4_JA3,
           userAgent,
           headers: headersWithoutUA,
+          responseType: "text",
           proxy: proxyUrl,
           timeout: 60,
           disableRedirect: false
@@ -150560,7 +150620,7 @@ async function tlsMultipartPost(host, path6, headers, body, proxyUrl, forceNodeH
       const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
       let json2 = null;
       try {
-        json2 = JSON.parse(rawBody);
+        json2 = parseInstagramJson(rawBody);
       } catch {
         if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json2 = resp.data;
       }
@@ -150602,7 +150662,7 @@ async function tlsMultipartPost(host, path6, headers, body, proxyUrl, forceNodeH
     });
     let json2 = null;
     try {
-      json2 = JSON.parse(res.body);
+      json2 = parseInstagramJson(res.body);
     } catch {
       const preview = res.body.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
       console.warn(`[tls:node-https] POST ${host}${path6} status=${res.status} \u2014 non-JSON response: ${preview}`);
@@ -159315,6 +159375,76 @@ var InstagramWebClient = class {
       return { count: 0, ok: false };
     }
   }
+  /**
+   * Create a signed mobile API client from the current session cookies without
+   * running the DM-specific warm-up sequence. SDK repository methods use this
+   * state to populate request signatures and required identity fields.
+   */
+  async _newRestoredMobileIgClient() {
+    const cookieHeader = this.igApiCookies || this.mobileCookieJar.join(";");
+    const pairs = cookieHeader.split(";").map((s) => s.trim()).filter(Boolean);
+    const sessionPair = pairs.find((pair) => pair.toLowerCase().startsWith("sessionid="));
+    if (!sessionPair) return null;
+    const savedState = (() => {
+      try {
+        return JSON.parse(this.igDeviceState ?? "{}");
+      } catch {
+        return {};
+      }
+    })();
+    const ig = this._newAutomationIgClient();
+    const deviceSeed = (this.userAgentApi ?? this.username ?? "instagram") + "|" + (this.username ?? "instagram");
+    ig.state.generateDevice(deviceSeed);
+    if (savedState.deviceId) ig.state.deviceId = savedState.deviceId;
+    if (savedState.uuid) ig.state.uuid = savedState.uuid;
+    if (savedState.phoneId) ig.state.phoneId = savedState.phoneId;
+    if (savedState.adid) ig.state.adid = savedState.adid;
+    if (savedState.deviceString) ig.state.deviceString = savedState.deviceString;
+    if (savedState.authorization) ig.state.authorization = savedState.authorization;
+    if (savedState.igWWWClaim) ig.state.igWWWClaim = savedState.igWWWClaim;
+    const dsUserId = pairs.find((pair) => pair.toLowerCase().startsWith("ds_user_id="));
+    let ownUserId = dsUserId?.slice(dsUserId.indexOf("=") + 1);
+    if (!ownUserId) {
+      let sessionValue = sessionPair.slice(sessionPair.indexOf("=") + 1);
+      try {
+        sessionValue = decodeURIComponent(sessionValue);
+      } catch {
+      }
+      ownUserId = sessionValue.split(":")[0] || void 0;
+    }
+    const normalizedPairs = [...pairs];
+    if (ownUserId && !dsUserId) normalizedPairs.push(`ds_user_id=${ownUserId}`);
+    if (this.mobileCsrf && this.mobileCsrf !== "missing" && !normalizedPairs.some((pair) => pair.toLowerCase().startsWith("csrftoken="))) {
+      normalizedPairs.push(`csrftoken=${this.mobileCsrf}`);
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const cookieEntries = normalizedPairs.flatMap((pair) => {
+      const eqIdx = pair.indexOf("=");
+      if (eqIdx === -1) return [];
+      const key = pair.slice(0, eqIdx).trim();
+      let value = pair.slice(eqIdx + 1).trim();
+      try {
+        value = decodeURIComponent(value);
+      } catch {
+      }
+      return [
+        { key, value, domain: "i.instagram.com", path: "/", secure: true, httpOnly: true, hostOnly: true, creation: now, lastAccessed: now },
+        { key, value, domain: ".instagram.com", path: "/", secure: true, httpOnly: true, hostOnly: false, creation: now, lastAccessed: now }
+      ];
+    });
+    await ig.state.deserializeCookieJar(JSON.stringify({
+      version: "tough-cookie@4.1.3",
+      storeType: "MemoryCookieStore",
+      rejectPublicSuffixes: true,
+      cookies: cookieEntries
+    }));
+    ig.state.constants.APP_VERSION = MOBILE_VERSION;
+    ig.state.constants.APP_VERSION_CODE = MOBILE_VERSION_CODE;
+    patchDeviceStringVersionCode(ig, MOBILE_VERSION_CODE);
+    if (this.proxyUrl) ig.state.proxyUrl = this.proxyUrl;
+    patchIgClientTls(ig, this.proxyUrl);
+    return ig;
+  }
   // Like a media post using IgApiClient (properly signs the request body).
   // The hand-rolled mobileSessionPost sends an empty body which Instagram
   // rejects with "something went wrong" — IgApiClient includes all required
@@ -160092,7 +160222,9 @@ var InstagramWebClient = class {
   // inject-browsing appear individually in the Export API Calls CSV.
   async viewFeedPost(mediaId) {
     return this.timed("ViewPost", async () => {
-      const j = await this.mobileSessionGet(`/api/v1/media/${mediaId}/info/`);
+      const ig = await this._newRestoredMobileIgClient();
+      if (!ig) return false;
+      const j = await ig.media.info(mediaId);
       return !!j?.items?.length;
     }, `View post ${mediaId}`);
   }
@@ -162372,12 +162504,9 @@ Content-Disposition: form-data; name="${part.name}"`;
   // Called between follows to add natural API variety.
   async getSuggestedUsers() {
     return this.timed("GetSuggestedUsers", async () => {
-      const response = await this.mobileSessionPost(`/api/v1/discover/ayml/`);
-      const status = String(response?.status ?? "").toLowerCase();
-      if (!response || status === "fail" || status === "error") {
-        const detail = response?.message ?? response?.error_type ?? "";
-        throw new Error(`Suggested users request failed${detail ? `: ${detail}` : ""}`);
-      }
+      const ig = await this._newRestoredMobileIgClient();
+      if (!ig) throw new Error("Suggested users request has no mobile session");
+      await ig.feed.discover().items();
     }, "Get suggested users");
   }
   // ── Visit Explore and gather up to `postCount` distinct posts ─────────────
@@ -162556,8 +162685,9 @@ Content-Disposition: form-data; name="${part.name}"`;
   // and follows them using the mobile API — seeding the feed for future runs.
   async followSuggestedUsers(count) {
     return this.timed("FollowSuggestedUsers", async () => {
-      const j = await this.mobileSessionPost(`/api/v1/discover/ayml/`);
-      const suggestions = j?.suggested_users ?? j?.users ?? [];
+      const ig = await this._newRestoredMobileIgClient();
+      if (!ig) throw new Error("Suggested users request has no mobile session");
+      const suggestions = await ig.feed.discover().items();
       const toFollow = suggestions.slice(0, count);
       const followed = [];
       for (const item of toFollow) {

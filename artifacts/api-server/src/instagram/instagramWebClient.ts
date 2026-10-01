@@ -7031,12 +7031,9 @@ export class InstagramWebClient {
   // Called between follows to add natural API variety.
   async getSuggestedUsers(): Promise<void> {
     return this.timed("GetSuggestedUsers", async () => {
-      const response = await this.mobileSessionPost(`/api/v1/discover/ayml/`);
-      const status = String(response?.status ?? "").toLowerCase();
-      if (!response || status === "fail" || status === "error") {
-        const detail = response?.message ?? response?.error_type ?? "";
-        throw new Error(`Suggested users request failed${detail ? `: ${detail}` : ""}`);
-      }
+      const ig = await this._newRestoredMobileIgClient();
+      if (!ig) throw new Error("Suggested users request has no mobile session");
+      await ig.feed.discover().items();
     }, "Get suggested users");
   }
 
@@ -7255,8 +7252,9 @@ export class InstagramWebClient {
   // and follows them using the mobile API — seeding the feed for future runs.
   async followSuggestedUsers(count: number): Promise<{ followed: number; usernames: string[] }> {
     return this.timed("FollowSuggestedUsers", async () => {
-      const j = await this.mobileSessionPost(`/api/v1/discover/ayml/`);
-      const suggestions: any[] = j?.suggested_users ?? j?.users ?? [];
+      const ig = await this._newRestoredMobileIgClient();
+      if (!ig) throw new Error("Suggested users request has no mobile session");
+      const suggestions = await ig.feed.discover().items();
       const toFollow = suggestions.slice(0, count);
       const followed: string[] = [];
       for (const item of toFollow) {
