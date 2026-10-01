@@ -157595,6 +157595,7 @@ var InstagramWebClient = class {
       try {
         const result = await _origSend(opts, onlyCheckHttpStatus);
         let successMsg;
+        let resultIsError = false;
         if (igPath.includes("/direct_v2/inbox")) {
           const threads = result?.inbox?.threads ?? result?.threads ?? [];
           successMsg = `Inbox overview: ${threads.length} thread${threads.length !== 1 ? "s" : ""}`;
@@ -157607,7 +157608,9 @@ var InstagramWebClient = class {
         } else if (igPath.includes("/discover/explore")) {
           successMsg = "Explore feed loaded";
         } else if (igPath.includes("/clips/discover/stream")) {
-          successMsg = "Reels feed loaded";
+          const summary = _self._clipsStreamLogSummary(result);
+          successMsg = summary.message;
+          resultIsError = summary.isError;
         } else if (igPath.includes("/feed/timeline")) {
           const n = (result?.feed_items ?? result?.items ?? []).length;
           successMsg = n > 0 ? `${n} post${n !== 1 ? "s" : ""} in timeline` : "Loading timeline feed";
@@ -157620,11 +157623,12 @@ var InstagramWebClient = class {
         } else if (igPath.includes("/comment") && igPath.includes("/media")) {
           successMsg = "Comment posted";
         }
-        _logT(igPath, igMethod, Date.now() - t0, false, successMsg);
+        _logT(igPath, igMethod, Date.now() - t0, resultIsError, successMsg);
         _self._absorbIgClientState(ig);
         return result;
       } catch (err) {
-        _logT(igPath, igMethod, Date.now() - t0, true);
+        const clipsFailure = igPath.includes("/clips/discover/stream") ? `Reels feed failed${err?.message ? ` \u2014 ${String(err.message).slice(0, 180)}` : ""}` : void 0;
+        _logT(igPath, igMethod, Date.now() - t0, true, clipsFailure);
         throw err;
       }
     };
@@ -157889,6 +157893,31 @@ var InstagramWebClient = class {
     const pascal = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).replace(/_([a-z])/g, (_2, c3) => c3.toUpperCase()));
     const deduped = pascal.filter((p, i2) => i2 === pascal.length - 1 || !pascal[i2 + 1].startsWith(p));
     return deduped.join("") || base;
+  }
+  _clipsStreamLogSummary(response, httpStatus) {
+    const responseStatus = String(response?.status ?? "").toLowerCase();
+    const itemList = response?.items ?? response?.feed_items;
+    const detail = String(
+      response?.message ?? response?.error_type ?? (response?.error_code !== void 0 ? `error_code=${response.error_code}` : "")
+    ).trim();
+    const failed = httpStatus !== void 0 && httpStatus >= 400 || responseStatus === "fail" || responseStatus === "error";
+    if (failed) {
+      const statusText = httpStatus !== void 0 ? ` (HTTP ${httpStatus})` : "";
+      return {
+        isError: true,
+        message: `Reels feed failed${statusText}${detail ? ` \u2014 ${detail}` : ""}`
+      };
+    }
+    if (Array.isArray(itemList)) {
+      return {
+        isError: false,
+        message: itemList.length ? `Reels feed loaded: ${itemList.length} item${itemList.length === 1 ? "" : "s"}` : "Reels feed returned 0 items"
+      };
+    }
+    return {
+      isError: false,
+      message: "Reels feed response received without an item list"
+    };
   }
   // Single source of truth for all API call log messages.
   // Accepts an optional override `msg` — pass it when the caller has parsed
@@ -158744,7 +158773,15 @@ var InstagramWebClient = class {
     const responseStatus = String(res.json?.status ?? "").toLowerCase();
     const applicationFailed = responseStatus === "fail" || responseStatus === "error";
     const responseDetail = applicationFailed ? `HTTP ${res.status} \u2014 status=${responseStatus}${res.json?.message ? ` \u2014 ${String(res.json.message).slice(0, 180)}` : ""}` : void 0;
-    this._logTransport(path6, "POST", Date.now() - _t0, res.status >= 400 || applicationFailed, responseDetail);
+    const isClipsStream = path6.split("?")[0].replace(/\/+$/, "") === "/api/v1/clips/discover/stream";
+    const clipsSummary = isClipsStream ? this._clipsStreamLogSummary(res.json, res.status) : void 0;
+    this._logTransport(
+      path6,
+      "POST",
+      Date.now() - _t0,
+      res.status >= 400 || applicationFailed || !!clipsSummary?.isError,
+      clipsSummary?.message ?? responseDetail
+    );
     return { json: res.json, status: res.status, rawBody: res.rawBody };
   }
   // ── Legacy FollowUser compatibility alias ──────────────────────────────────
@@ -161235,13 +161272,15 @@ var InstagramWebClient = class {
     const responseStatus = String(res.json?.status ?? "").toLowerCase();
     const applicationFailed = responseStatus === "fail" || responseStatus === "error";
     const responseDetail = res.json?.message || res.json?.error_type || (res.json?.error_code !== void 0 ? `error_code=${res.json.error_code}` : "") || String(res.rawBody ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
-    const transportFailed = res.status >= 400 || applicationFailed;
+    const isClipsStream = path6.split("?")[0].replace(/\/+$/, "") === "/api/v1/clips/discover/stream";
+    const clipsSummary = isClipsStream ? this._clipsStreamLogSummary(res.json, res.status) : void 0;
+    const transportFailed = res.status >= 400 || applicationFailed || !!clipsSummary?.isError;
     this._logTransport(
       path6,
       "POST",
       Date.now() - _t0,
       transportFailed,
-      transportFailed ? `HTTP ${res.status}${responseDetail ? ` \u2014 ${responseDetail}` : ""}` : void 0
+      clipsSummary?.message ?? (transportFailed ? `HTTP ${res.status}${responseDetail ? ` \u2014 ${responseDetail}` : ""}` : void 0)
     );
     return res.json;
   }
