@@ -1,10 +1,10 @@
 ---
 name: GitHub integration write limits
-description: Replit's connected GitHub client may allow file/tree creation while blocking branch ref mutations and GitHub Actions workflow writes.
+description: Observed GitHub connector capabilities and endpoint pitfalls in this workspace.
 ---
 
-The connected GitHub integration is not equivalent to an authenticated local `git push`. In this workspace, GitHub tree/blob creation and Contents API writes worked, while ref update/delete/create operations and writes under `.github/workflows/` were blocked by connector permissions.
+The connected GitHub integration is not equivalent to an authenticated local `git push`. In this workspace, its authenticated REST proxy can create Git Data blobs, trees, and commits, advance an existing branch ref, and dispatch an existing Actions workflow. Shell `git push` can still fail when HTTPS credentials are unavailable. Ref creation/deletion and workflow-file writes remain capability-specific; verify them rather than assuming they work or fail.
 
-**Why:** A repository sync can appear to build successfully but still fail to attach its clean commit to `main`, or can leave workflow files missing. Treat branch replacement and workflow publishing as separate capability checks.
+**Why:** An exact-history Git Data API sync succeeded after shell authentication failed. A 404 from `PATCH /git/ref/{ref}` was caused by using the singular read endpoint; updating a ref uses the plural `/git/refs/{ref}` endpoint.
 
-**How to apply:** Verify the remote branch head and final file tree after every sync. For a true history replacement or GitHub Actions workflow upload, use an authenticated Git client or reconnect the GitHub integration with the required repository/workflow permissions; never assume a successfully created tree is reachable from the branch.
+**How to apply:** For an authorized push, compare blob, tree, and commit SHAs; confirm the remote ref is still the expected base; update it non-forcibly through the plural endpoint; then fetch and verify the remote head locally. Check the actual endpoint, method, and response before diagnosing a connector permission failure.
