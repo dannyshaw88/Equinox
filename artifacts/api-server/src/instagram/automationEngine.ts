@@ -5199,8 +5199,10 @@ class AutomationEngine {
         }
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
         const reelViewPctMax = Number(s.reelWatchPercentMax ?? 100);
-        const sharePctMin = Number(execSettings.sharePostPercentMin ?? 0);
-        const sharePctMax = Number(execSettings.sharePostPercentMax ?? 0);
+        const reelSharePctMinRaw = Number(execSettings.reelShareToFeedPercentMin ?? 0);
+        const reelSharePctMaxRaw = Number(execSettings.reelShareToFeedPercentMax ?? 0);
+        const reelSharePctMin = Number.isFinite(reelSharePctMinRaw) ? Math.min(100, Math.max(0, reelSharePctMinRaw)) : 0;
+        const reelSharePctMax = Number.isFinite(reelSharePctMaxRaw) ? Math.min(100, Math.max(0, reelSharePctMaxRaw)) : 0;
         try {
           const result = await client.viewReelsTab(reelCount, reelViewPctMin, reelViewPctMax);
           if (result.sessionExpired) {
@@ -5219,12 +5221,12 @@ class AutomationEngine {
           }
           for (const reel of result.reelWatches) {
             this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% · ${reel.durationSec}s`);
-            if (sharePctMax <= 0) continue;
+            if (reelSharePctMax <= 0 || reelSharePctMin > reelSharePctMax) continue;
 
-            // Reels use the same per-item chance and share settings as timeline posts.
-            // A failed or ambiguous share is logged once and never retried.
+            // Reels-tab shares use their own per-Reel chance, independent of the
+            // timeline Share % setting. A failed or ambiguous share is never retried.
             const shareRoll = Math.random() * 100;
-            const shareThreshold = randInt(sharePctMin, sharePctMax);
+            const shareThreshold = randInt(reelSharePctMin, reelSharePctMax);
             if (shareRoll >= shareThreshold) continue;
 
             try {

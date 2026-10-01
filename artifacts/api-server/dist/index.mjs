@@ -160131,10 +160131,11 @@ var InstagramWebClient = class {
           url: "/api/v1/clips/discover/stream/",
           form: warmed.ig.request.sign(nativeParams)
         });
-        const nativeItems = nativeResponse?.items ?? nativeResponse?.feed_items;
-        if (Array.isArray(nativeItems) && nativeItems.length) {
+        const nativeResponseData = nativeResponse;
+        const nativeItems = nativeResponseData?.items ?? nativeResponseData?.feed_items;
+        if (nativeResponseData?.status !== "fail" && Array.isArray(nativeItems) && nativeItems.length) {
           console.log(`[webClient] viewReelsTab: native API Clips primary returned ${nativeItems.length} item(s)`);
-          j = { ...nativeResponse, items: nativeItems };
+          j = { ...nativeResponseData, items: nativeItems };
         } else {
           console.warn(`[webClient] viewReelsTab: native API Clips primary returned no items; using mobile fallback`);
         }
@@ -160177,10 +160178,11 @@ var InstagramWebClient = class {
             url: "/api/v1/clips/discover/stream/",
             form: warmed.ig.request.sign(streamParams)
           });
-          const nativeItems = nativeResponse?.items ?? nativeResponse?.feed_items;
-          if (Array.isArray(nativeItems) && nativeItems.length) {
+          const nativeResponseData = nativeResponse;
+          const nativeItems = nativeResponseData?.items ?? nativeResponseData?.feed_items;
+          if (nativeResponseData?.status !== "fail" && Array.isArray(nativeItems) && nativeItems.length) {
             console.log(`[webClient] viewReelsTab: warmed API Clips fallback returned ${nativeItems.length} item(s)`);
-            j = { ...nativeResponse, items: nativeItems };
+            j = { ...nativeResponseData, items: nativeItems };
           } else {
             console.warn(`[webClient] viewReelsTab: warmed API Clips fallback returned no items`);
           }
@@ -160188,78 +160190,11 @@ var InstagramWebClient = class {
       } catch (nativeErr) {
         console.warn(`[webClient] viewReelsTab: warmed API Clips fallback failed \u2014 ${nativeErr?.message ?? "unknown error"}`);
       }
-      if (userId) {
-        const fallbackBody = new URLSearchParams({
-          user_id: userId,
-          max_id: "",
-          count: String(Math.max(reelCount, 6)),
-          include_feed_video: "true"
-        }).toString();
-        const fallback = await this.mobileSessionPost(`/api/v1/clips/user/`, fallbackBody);
-        if (fallback && fallback.status !== "fail" && Array.isArray(fallback.items)) {
-          console.log(`[webClient] viewReelsTab: Discover stream rejected; clips/user fallback returned ${fallback.items.length} item(s)`);
-          j = fallback;
-        } else {
-          console.warn(`[webClient] viewReelsTab: clips/user fallback also returned no usable reel data; trying timeline reel fallback`);
-          const timeline = await this.mobileSessionPost(
-            `/api/v1/feed/timeline/`,
-            new URLSearchParams({ reason: "cold_start_fetch", is_pull_to_refresh: "0" }).toString()
-          );
-          const timelineItems = timeline?.feed_items ?? timeline?.items;
-          if (timeline && timeline.status !== "fail" && Array.isArray(timelineItems)) {
-            const timelineHasReel = timelineItems.some((raw) => {
-              const media = raw?.media_or_ad ?? raw?.media ?? raw;
-              return media?.media_type === 2 || media?.product_type === "clips";
-            });
-            console.log(`[webClient] viewReelsTab: timeline media classification=${JSON.stringify(timelineItems.slice(0, 8).map((raw) => {
-              const media = raw?.media_or_ad ?? raw?.media ?? raw;
-              return {
-                mediaType: media?.media_type ?? null,
-                productType: media?.product_type ?? null,
-                hasVideoVersions: Array.isArray(media?.video_versions),
-                hasVideoDuration: media?.video_duration != null,
-                hasMediaId: Boolean(media?.id ?? media?.pk)
-              };
-            }))}`);
-            if (timelineHasReel) {
-              console.log(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} item(s), including reel media`);
-              j = { ...timeline, items: timelineItems };
-            } else {
-              console.warn(`[webClient] viewReelsTab: timeline fallback returned ${timelineItems.length} non-reel item(s); trying authenticated web Clips fallback`);
-              try {
-                const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
-                const webItems = webClips?.items ?? webClips?.feed_items;
-                if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
-                  console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
-                  j = { ...webClips, items: webItems };
-                } else {
-                  console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
-                  return { watched: 0, reelWatches: [] };
-                }
-              } catch (webErr) {
-                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed \u2014 ${webErr?.message ?? "unknown error"}`);
-                return { watched: 0, reelWatches: [] };
-              }
-            }
-          } else {
-            console.warn(`[webClient] viewReelsTab: timeline fallback also returned no usable data; trying authenticated web Clips fallback`);
-            try {
-              const webClips = await this.webPost(`/api/v1/clips/discover/stream/`, streamBody);
-              const webItems = webClips?.items ?? webClips?.feed_items;
-              if (webClips && webClips.status !== "fail" && Array.isArray(webItems)) {
-                console.log(`[webClient] viewReelsTab: authenticated web Clips fallback returned ${webItems.length} item(s)`);
-                j = { ...webClips, items: webItems };
-              } else {
-                console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback returned no usable data`);
-                return { watched: 0, reelWatches: [] };
-              }
-            } catch (webErr) {
-              console.warn(`[webClient] viewReelsTab: authenticated web Clips fallback failed \u2014 ${webErr?.message ?? "unknown error"}`);
-              return { watched: 0, reelWatches: [] };
-            }
-          }
-        }
-      } else {
+      const reelsItems = j?.items ?? j?.feed_items;
+      if (j?.status === "fail" || !Array.isArray(reelsItems) || reelsItems.length === 0) {
+        console.warn(
+          `[webClient] viewReelsTab: dedicated Clips-tab stream returned no usable Reels \u2014 status=${String(j?.status ?? "missing")}; itemCount=${Array.isArray(reelsItems) ? reelsItems.length : 0}; message=${String(j?.message ?? "none").slice(0, 120)}`
+        );
         return { watched: 0, reelWatches: [] };
       }
     }
@@ -169109,8 +169044,10 @@ ${err?.stack ?? ""}`);
         }
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
         const reelViewPctMax = Number(s.reelWatchPercentMax ?? 100);
-        const sharePctMin = Number(execSettings.sharePostPercentMin ?? 0);
-        const sharePctMax = Number(execSettings.sharePostPercentMax ?? 0);
+        const reelSharePctMinRaw = Number(execSettings.reelShareToFeedPercentMin ?? 0);
+        const reelSharePctMaxRaw = Number(execSettings.reelShareToFeedPercentMax ?? 0);
+        const reelSharePctMin = Number.isFinite(reelSharePctMinRaw) ? Math.min(100, Math.max(0, reelSharePctMinRaw)) : 0;
+        const reelSharePctMax = Number.isFinite(reelSharePctMaxRaw) ? Math.min(100, Math.max(0, reelSharePctMaxRaw)) : 0;
         try {
           const result = await client.viewReelsTab(reelCount, reelViewPctMin, reelViewPctMax);
           if (result.sessionExpired) {
@@ -169129,9 +169066,9 @@ ${err?.stack ?? ""}`);
           }
           for (const reel of result.reelWatches) {
             this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% \xB7 ${reel.durationSec}s`);
-            if (sharePctMax <= 0) continue;
+            if (reelSharePctMax <= 0 || reelSharePctMin > reelSharePctMax) continue;
             const shareRoll = Math.random() * 100;
-            const shareThreshold = randInt2(sharePctMin, sharePctMax);
+            const shareThreshold = randInt2(reelSharePctMin, reelSharePctMax);
             if (shareRoll >= shareThreshold) continue;
             try {
               const shared = await client.sharePostToFeed(reel.mediaId);

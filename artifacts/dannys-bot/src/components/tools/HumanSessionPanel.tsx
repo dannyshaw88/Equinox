@@ -100,7 +100,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vtf_like_pct",    label: "% posts to like",                  settingKeys: ["likeTimelinePostsPercentMin","likeTimelinePostsPercentMax"] },
         { key: "vtf_like_delay",  label: "Delay between likes in sec",       settingKeys: ["likeTimelinePostsDelayMin","likeTimelinePostsDelayMax"] },
         { key: "vtf_save_media",  label: "Save media",                     settingKeys: ["saveMediaEnabled","saveMediaPercentMin","saveMediaPercentMax"] },
-        { key: "vtf_share_post",  label: "Share % (chance per timeline post or watched Reel)", settingKeys: ["sharePostPercentMin","sharePostPercentMax"] },
+        { key: "vtf_share_post",  label: "Share % (chance per timeline media item)", settingKeys: ["sharePostPercentMin","sharePostPercentMax"] },
         { key: "vtf_view_profile",     label: "Visit profile %",             settingKeys: ["viewPostProfilePercentMin","viewPostProfilePercentMax"] },
         { key: "vtf_profile_feed",     label: "View profile feed % + count", settingKeys: ["viewProfileFeedPercentMin","viewProfileFeedPercentMax","viewProfileFeedCountMin","viewProfileFeedCountMax"] },
         { key: "vtf_profile_posts",    label: "Open profile posts count + %",settingKeys: ["viewProfilePostsCountMin","viewProfilePostsCountMax","viewProfilePostsPercentMin","viewProfilePostsPercentMax"] },
@@ -119,12 +119,13 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "ep_prof_scroll", label: "Posts to scroll on profile", settingKeys: ["exploreProfileScrollMin","exploreProfileScrollMax"] },
         { key: "ep_prof_click",  label: "Posts to click on profile",  settingKeys: ["exploreProfileClickMin","exploreProfileClickMax"] },
       ]},
-      { key: "viewReels", label: "View Reels", description: "Independent reels-watching session; watched Reels use the timeline Share % chance", subOptions: [
+      { key: "viewReels", label: "View Reels", description: "Reels-tab-only session with an independent share chance per Reel", subOptions: [
         { key: "vr_enabled",  label: "Enabled",           settingKeys: ["viewReelsEnabled"] },
         { key: "vr_order",    label: "Execution order",   settingKeys: ["viewReelsOrderMin","viewReelsOrderMax"] },
         { key: "vr_count",    label: "Reels/Op (how many reels to watch)", settingKeys: ["reelWatchCountMin","reelWatchCountMax"] },
         { key: "vr_view_pct", label: "% of each reel to watch", settingKeys: ["reelWatchPercentMin","reelWatchPercentMax"] },
         { key: "vr_like_pct", label: "% of reels to like",      settingKeys: ["reelLikePercentMin","reelLikePercentMax"] },
+        { key: "vr_share_pct", label: "Share to Feed % (per Reel)", settingKeys: ["reelShareToFeedPercentMin","reelShareToFeedPercentMax"] },
         { key: "vr_skip",     label: "Skip chance %",     settingKeys: ["viewReelsNotUsedMin","viewReelsNotUsedMax"] },
         { key: "vr_rerun",    label: "Re-run chance %",   settingKeys: ["viewReelsRerunChanceMin","viewReelsRerunChanceMax"] },
       ]},
@@ -699,6 +700,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       reelWatchCountMax: 3,
       reelLikePercentMin: 0,
       reelLikePercentMax: 0,
+      reelShareToFeedPercentMin: 0,
+      reelShareToFeedPercentMax: 0,
       repostMin: 1,
       repostMax: 1,
       webBrowsingEnabled: false,
@@ -809,6 +812,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       reelWatchPercentMin: 0, reelWatchPercentMax: 100,
       reelWatchCountMin: 1, reelWatchCountMax: 3,
       reelLikePercentMin: 0, reelLikePercentMax: 0,
+      reelShareToFeedPercentMin: 0, reelShareToFeedPercentMax: 0,
       repostMin: 1, repostMax: 1,
       webBrowsingEnabled: false,
       webBrowsingOrderMin: 0, webBrowsingOrderMax: 0,
@@ -1534,9 +1538,14 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   <Heart className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Reel Like%</span>
                 </div>
+                <div className="h-4 w-px bg-border/60 shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  {pctInputs("reelShareToFeedPercentMin", "reelShareToFeedPercentMax")}
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Reel Share%</span>
+                </div>
               </div>
               <p className="text-[10px] text-muted-foreground">
-                Watched Reels use the same Share % chance configured under View Timeline Feed.
+                Each watched Reel gets its own share roll using this Min–Max range; timeline Share % is separate.
               </p>
             </div>
 
