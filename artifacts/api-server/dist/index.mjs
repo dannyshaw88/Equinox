@@ -150070,6 +150070,7 @@ var import_instagram_private_api2 = __toESM(require_dist2(), 1);
 
 // src/instagram/tlsTransport.ts
 var import_instagram_private_api = __toESM(require_dist2(), 1);
+import { STATUS_CODES } from "node:http";
 
 // src/instagram/http2ProxyTransport.ts
 import * as http from "node:http";
@@ -150706,6 +150707,7 @@ function patchIgClientTls(ig, proxyUrl, sessionOverride) {
     logGenericFailure("tls:ig", method, rawUrl, response.status, parsedBody, body, cookieStr);
     return {
       statusCode: response.status,
+      statusMessage: STATUS_CODES[response.status] ?? "Unknown Status",
       headers: response.headers,
       body: parsedBody,
       request: {
@@ -157594,25 +157596,26 @@ var InstagramWebClient = class {
       const igMethod = typeof opts === "object" && opts?.method ? String(opts.method) : "POST";
       try {
         const result = await _origSend(opts, onlyCheckHttpStatus);
+        const responseBody = result?.body ?? result;
         let successMsg;
         let resultIsError = false;
         if (igPath.includes("/direct_v2/inbox")) {
-          const threads = result?.inbox?.threads ?? result?.threads ?? [];
+          const threads = responseBody?.inbox?.threads ?? responseBody?.threads ?? [];
           successMsg = `Inbox overview: ${threads.length} thread${threads.length !== 1 ? "s" : ""}`;
         } else if (igPath.includes("/news/inbox")) {
-          const count = result?.counts?.relationships ?? result?.new_stories?.length ?? 0;
+          const count = responseBody?.counts?.relationships ?? responseBody?.new_stories?.length ?? 0;
           successMsg = count > 0 ? `${count} new activit${count !== 1 ? "ies" : "y"}` : "Activity checked";
         } else if (igPath.includes("/feed/reels_tray")) {
-          const n = (result?.tray ?? []).length;
+          const n = (responseBody?.tray ?? []).length;
           successMsg = `${n} stor${n === 1 ? "y" : "ies"} in tray`;
         } else if (igPath.includes("/discover/explore")) {
           successMsg = "Explore feed loaded";
         } else if (igPath.includes("/clips/discover/stream")) {
-          const summary = _self._clipsStreamLogSummary(result);
+          const summary = _self._clipsStreamLogSummary(responseBody);
           successMsg = summary.message;
           resultIsError = summary.isError;
         } else if (igPath.includes("/feed/timeline")) {
-          const n = (result?.feed_items ?? result?.items ?? []).length;
+          const n = (responseBody?.feed_items ?? responseBody?.items ?? []).length;
           successMsg = n > 0 ? `${n} post${n !== 1 ? "s" : ""} in timeline` : "Loading timeline feed";
         } else if (igPath.includes("/friendships/destroy")) {
           successMsg = "Unfollowed";
@@ -157627,7 +157630,24 @@ var InstagramWebClient = class {
         _self._absorbIgClientState(ig);
         return result;
       } catch (err) {
-        const clipsFailure = igPath.includes("/clips/discover/stream") ? `Reels feed failed${err?.message ? ` \u2014 ${String(err.message).slice(0, 180)}` : ""}` : void 0;
+        const errorResponse = err?.response;
+        const errorBody = errorResponse?.body;
+        const errorItems = errorBody?.items ?? errorBody?.feed_items;
+        const httpStatus = Number(errorResponse?.statusCode);
+        const bodyStatus = String(errorBody?.status ?? "").toLowerCase();
+        const isClipsStream = igPath.includes("/clips/discover/stream");
+        if (isClipsStream && httpStatus >= 200 && httpStatus < 300 && !bodyStatus && Array.isArray(errorItems) && errorItems.length > 0) {
+          const summary = _self._clipsStreamLogSummary(errorBody, httpStatus);
+          _logT(igPath, igMethod, Date.now() - t0, summary.isError, summary.message);
+          _self._absorbIgClientState(ig);
+          return errorResponse;
+        }
+        const statusText = Number.isFinite(httpStatus) && httpStatus > 0 ? ` (HTTP ${httpStatus}${errorResponse?.statusMessage ? ` ${errorResponse.statusMessage}` : ""})` : "";
+        const errorDetail = String(
+          errorBody?.message ?? errorBody?.error_type ?? (errorBody?.error_code !== void 0 ? `error_code=${errorBody.error_code}` : "")
+        ).trim();
+        const responseShape = errorBody && typeof errorBody === "object" ? `status=${bodyStatus || "missing"}; items=${Array.isArray(errorItems) ? errorItems.length : "missing"}` : "empty or non-JSON response";
+        const clipsFailure = isClipsStream ? `Reels feed failed${statusText} \u2014 ${responseShape}${errorDetail ? `; detail=${errorDetail.slice(0, 160)}` : !errorResponse && err?.message ? `; ${String(err.message).slice(0, 160)}` : ""}` : void 0;
         _logT(igPath, igMethod, Date.now() - t0, true, clipsFailure);
         throw err;
       }
@@ -157902,10 +157922,10 @@ var InstagramWebClient = class {
     ).trim();
     const failed = httpStatus !== void 0 && httpStatus >= 400 || responseStatus === "fail" || responseStatus === "error";
     if (failed) {
-      const statusText = httpStatus !== void 0 ? ` (HTTP ${httpStatus})` : "";
+      const statusText2 = httpStatus !== void 0 ? ` (HTTP ${httpStatus})` : "";
       return {
         isError: true,
-        message: `Reels feed failed${statusText}${detail ? ` \u2014 ${detail}` : ""}`
+        message: `Reels feed failed${statusText2}${detail ? ` \u2014 ${detail}` : ` \u2014 status=${responseStatus || "missing"}`}`
       };
     }
     if (Array.isArray(itemList)) {
@@ -157914,9 +157934,11 @@ var InstagramWebClient = class {
         message: itemList.length ? `Reels feed loaded: ${itemList.length} item${itemList.length === 1 ? "" : "s"}` : "Reels feed returned 0 items"
       };
     }
+    const statusText = httpStatus !== void 0 ? ` (HTTP ${httpStatus})` : "";
+    const responseShape = response == null || typeof response !== "object" ? "empty or non-JSON response" : `response missing items/feed_items (status=${responseStatus || "missing"})`;
     return {
-      isError: false,
-      message: "Reels feed response received without an item list"
+      isError: true,
+      message: `Reels feed failed${statusText} \u2014 ${responseShape}${detail ? `; detail=${detail.slice(0, 160)}` : ""}`
     };
   }
   // Single source of truth for all API call log messages.
@@ -160113,10 +160135,9 @@ var InstagramWebClient = class {
       container_module: "clips_viewer_clips_tab"
     }).toString();
     const streamHeaders = {
-      // This is a Clips-tab request.  Advertising feed_timeline here
-      // contradicts container_module=clips_viewer_clips_tab and can make the
-      // discover stream return the generic HTTP 200/status=fail response.
-      "X-Ig-Client-Endpoint": "clips_viewer_clips_tab",
+      // Keep the value from the captured native request contract, even though
+      // container_module identifies the Clips-tab surface.
+      "X-Ig-Client-Endpoint": "feed_timeline",
       "X-Fb-Friendly-Name": "IgApi: clips/discover/stream/",
       "x-ig-prefetch-request": "foreground"
     };
@@ -160131,7 +160152,7 @@ var InstagramWebClient = class {
           url: "/api/v1/clips/discover/stream/",
           form: warmed.ig.request.sign(nativeParams)
         });
-        const nativeResponseData = nativeResponse;
+        const nativeResponseData = nativeResponse?.body ?? nativeResponse;
         const nativeItems = nativeResponseData?.items ?? nativeResponseData?.feed_items;
         if (nativeResponseData?.status !== "fail" && Array.isArray(nativeItems) && nativeItems.length) {
           console.log(`[webClient] viewReelsTab: native API Clips primary returned ${nativeItems.length} item(s)`);
@@ -160178,7 +160199,7 @@ var InstagramWebClient = class {
             url: "/api/v1/clips/discover/stream/",
             form: warmed.ig.request.sign(streamParams)
           });
-          const nativeResponseData = nativeResponse;
+          const nativeResponseData = nativeResponse?.body ?? nativeResponse;
           const nativeItems = nativeResponseData?.items ?? nativeResponseData?.feed_items;
           if (nativeResponseData?.status !== "fail" && Array.isArray(nativeItems) && nativeItems.length) {
             console.log(`[webClient] viewReelsTab: warmed API Clips fallback returned ${nativeItems.length} item(s)`);

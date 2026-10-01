@@ -1,3 +1,4 @@
+import { STATUS_CODES } from "node:http";
 import { IgNetworkError } from "instagram-private-api";
 import type { IgApiClient } from "instagram-private-api";
 import {
@@ -389,6 +390,7 @@ export function patchIgClientTls(
 
     return {
       statusCode: response.status,
+      statusMessage: STATUS_CODES[response.status] ?? "Unknown Status",
       headers: response.headers,
       body: parsedBody,
       request: {

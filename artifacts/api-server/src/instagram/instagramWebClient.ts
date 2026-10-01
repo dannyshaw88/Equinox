@@ -840,26 +840,31 @@ export class InstagramWebClient {
       const igMethod: string = (typeof opts === "object" && opts?.method) ? String(opts.method) : "POST";
       try {
         const result = await _origSend(opts, onlyCheckHttpStatus);
+        // instagram-private-api returns the full request-promise response
+        // (`{ statusCode, headers, body, ... }`), not the parsed JSON body.
+        // Keep returning the wrapper to preserve the library contract, but
+        // inspect its body for summaries and application-level status.
+        const responseBody = result?.body ?? result;
         // Derive a human-readable success message from the parsed response when possible.
         let successMsg: string | undefined;
         let resultIsError = false;
         if (igPath.includes("/direct_v2/inbox")) {
-          const threads: any[] = result?.inbox?.threads ?? result?.threads ?? [];
+          const threads: any[] = responseBody?.inbox?.threads ?? responseBody?.threads ?? [];
           successMsg = `Inbox overview: ${threads.length} thread${threads.length !== 1 ? "s" : ""}`;
         } else if (igPath.includes("/news/inbox")) {
-          const count: number = result?.counts?.relationships ?? result?.new_stories?.length ?? 0;
+          const count: number = responseBody?.counts?.relationships ?? responseBody?.new_stories?.length ?? 0;
           successMsg = count > 0 ? `${count} new activit${count !== 1 ? "ies" : "y"}` : "Activity checked";
         } else if (igPath.includes("/feed/reels_tray")) {
-          const n: number = (result?.tray ?? []).length;
+          const n: number = (responseBody?.tray ?? []).length;
           successMsg = `${n} stor${n === 1 ? "y" : "ies"} in tray`;
         } else if (igPath.includes("/discover/explore")) {
           successMsg = "Explore feed loaded";
         } else if (igPath.includes("/clips/discover/stream")) {
-          const summary = _self._clipsStreamLogSummary(result);
+          const summary = _self._clipsStreamLogSummary(responseBody);
           successMsg = summary.message;
           resultIsError = summary.isError;
         } else if (igPath.includes("/feed/timeline")) {
-          const n: number = (result?.feed_items ?? result?.items ?? []).length;
+          const n: number = (responseBody?.feed_items ?? responseBody?.items ?? []).length;
           successMsg = n > 0 ? `${n} post${n !== 1 ? "s" : ""} in timeline` : "Loading timeline feed";
         } else if (igPath.includes("/friendships/destroy")) {
           successMsg = "Unfollowed";
@@ -879,8 +884,44 @@ export class InstagramWebClient {
         _self._absorbIgClientState(ig);
         return result;
       } catch (err: any) {
-        const clipsFailure = igPath.includes("/clips/discover/stream")
-          ? `Reels feed failed${err?.message ? ` — ${String(err.message).slice(0, 180)}` : ""}`
+        const errorResponse = err?.response;
+        const errorBody = errorResponse?.body;
+        const errorItems = errorBody?.items ?? errorBody?.feed_items;
+        const httpStatus = Number(errorResponse?.statusCode);
+        const bodyStatus = String(errorBody?.status ?? "").toLowerCase();
+        const isClipsStream = igPath.includes("/clips/discover/stream");
+
+        // IgApiClient throws when a 200 JSON response omits `status:"ok"`,
+        // even if the Clips response contains usable items. Preserve the
+        // response only when it is a successful HTTP response with a non-empty
+        // item list and no explicit application failure.
+        if (
+          isClipsStream &&
+          httpStatus >= 200 &&
+          httpStatus < 300 &&
+          !bodyStatus &&
+          Array.isArray(errorItems) &&
+          errorItems.length > 0
+        ) {
+          const summary = _self._clipsStreamLogSummary(errorBody, httpStatus);
+          _logT(igPath, igMethod, Date.now() - t0, summary.isError, summary.message);
+          _self._absorbIgClientState(ig);
+          return errorResponse;
+        }
+
+        const statusText = Number.isFinite(httpStatus) && httpStatus > 0
+          ? ` (HTTP ${httpStatus}${errorResponse?.statusMessage ? ` ${errorResponse.statusMessage}` : ""})`
+          : "";
+        const errorDetail = String(
+          errorBody?.message ??
+          errorBody?.error_type ??
+          (errorBody?.error_code !== undefined ? `error_code=${errorBody.error_code}` : ""),
+        ).trim();
+        const responseShape = errorBody && typeof errorBody === "object"
+          ? `status=${bodyStatus || "missing"}; items=${Array.isArray(errorItems) ? errorItems.length : "missing"}`
+          : "empty or non-JSON response";
+        const clipsFailure = isClipsStream
+          ? `Reels feed failed${statusText} — ${responseShape}${errorDetail ? `; detail=${errorDetail.slice(0, 160)}` : !errorResponse && err?.message ? `; ${String(err.message).slice(0, 160)}` : ""}`
           : undefined;
         _logT(igPath, igMethod, Date.now() - t0, true, clipsFailure);
         throw err;
@@ -1222,7 +1263,7 @@ export class InstagramWebClient {
       const statusText = httpStatus !== undefined ? ` (HTTP ${httpStatus})` : "";
       return {
         isError: true,
-        message: `Reels feed failed${statusText}${detail ? ` — ${detail}` : ""}`,
+        message: `Reels feed failed${statusText}${detail ? ` — ${detail}` : ` — status=${responseStatus || "missing"}`}`,
       };
     }
     if (Array.isArray(itemList)) {
@@ -1233,9 +1274,13 @@ export class InstagramWebClient {
           : "Reels feed returned 0 items",
       };
     }
+    const statusText = httpStatus !== undefined ? ` (HTTP ${httpStatus})` : "";
+    const responseShape = response == null || typeof response !== "object"
+      ? "empty or non-JSON response"
+      : `response missing items/feed_items (status=${responseStatus || "missing"})`;
     return {
-      isError: false,
-      message: "Reels feed response received without an item list",
+      isError: true,
+      message: `Reels feed failed${statusText} — ${responseShape}${detail ? `; detail=${detail.slice(0, 160)}` : ""}`,
     };
   }
 
@@ -3994,10 +4039,9 @@ export class InstagramWebClient {
       container_module: "clips_viewer_clips_tab",
     }).toString();
     const streamHeaders = {
-      // This is a Clips-tab request.  Advertising feed_timeline here
-      // contradicts container_module=clips_viewer_clips_tab and can make the
-      // discover stream return the generic HTTP 200/status=fail response.
-      "X-Ig-Client-Endpoint": "clips_viewer_clips_tab",
+      // Keep the value from the captured native request contract, even though
+      // container_module identifies the Clips-tab surface.
+      "X-Ig-Client-Endpoint": "feed_timeline",
       "X-Fb-Friendly-Name": "IgApi: clips/discover/stream/",
       "x-ig-prefetch-request": "foreground",
     };
@@ -4016,7 +4060,7 @@ export class InstagramWebClient {
           url: "/api/v1/clips/discover/stream/",
           form: warmed.ig.request.sign(nativeParams),
         });
-        const nativeResponseData = nativeResponse as any;
+        const nativeResponseData = (nativeResponse as any)?.body ?? nativeResponse;
         const nativeItems = nativeResponseData?.items ?? nativeResponseData?.feed_items;
         if (nativeResponseData?.status !== "fail" && Array.isArray(nativeItems) && nativeItems.length) {
           console.log(`[webClient] viewReelsTab: native API Clips primary returned ${nativeItems.length} item(s)`);
@@ -4067,7 +4111,7 @@ export class InstagramWebClient {
             url: "/api/v1/clips/discover/stream/",
             form: warmed.ig.request.sign(streamParams),
           });
-          const nativeResponseData = nativeResponse as any;
+          const nativeResponseData = (nativeResponse as any)?.body ?? nativeResponse;
           const nativeItems = nativeResponseData?.items ?? nativeResponseData?.feed_items;
           if (nativeResponseData?.status !== "fail" && Array.isArray(nativeItems) && nativeItems.length) {
             console.log(`[webClient] viewReelsTab: warmed API Clips fallback returned ${nativeItems.length} item(s)`);
