@@ -17,6 +17,80 @@ import { IgNetworkError } from "instagram-private-api";
 import type { IgApiClient } from "instagram-private-api";
 import * as net from "node:net";
 
+/**
+ * Parse Instagram JSON without rounding unsafe integer literals such as media
+ * and user IDs. Native JSON.parse converts those values to imprecise Numbers;
+ * quote only out-of-range integer tokens before parsing so callers can keep
+ * using String(id) without losing digits.
+ */
+export function parseInstagramJson(rawBody: string): any {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  const maxSafeInteger = BigInt(Number.MAX_SAFE_INTEGER);
+
+  for (let i = 0; i < rawBody.length;) {
+    const char = rawBody[i];
+
+    if (inString) {
+      output += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      i++;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      output += char;
+      i++;
+      continue;
+    }
+
+    if (char === "-" || (char >= "0" && char <= "9")) {
+      const start = i;
+      if (rawBody[i] === "-") i++;
+
+      if (rawBody[i] === "0") {
+        i++;
+      } else if (rawBody[i] >= "1" && rawBody[i] <= "9") {
+        while (rawBody[i] >= "0" && rawBody[i] <= "9") i++;
+      } else {
+        output += rawBody[start];
+        i = start + 1;
+        continue;
+      }
+
+      if (rawBody[i] === ".") {
+        i++;
+        while (rawBody[i] >= "0" && rawBody[i] <= "9") i++;
+      }
+      if (rawBody[i] === "e" || rawBody[i] === "E") {
+        i++;
+        if (rawBody[i] === "+" || rawBody[i] === "-") i++;
+        while (rawBody[i] >= "0" && rawBody[i] <= "9") i++;
+      }
+
+      const token = rawBody.slice(start, i);
+      if (/^-?(?:0|[1-9]\d*)$/.test(token)) {
+        const integer = BigInt(token);
+        output += integer > maxSafeInteger || integer < -maxSafeInteger
+          ? JSON.stringify(token)
+          : token;
+      } else {
+        output += token;
+      }
+      continue;
+    }
+
+    output += char;
+    i++;
+  }
+
+  return JSON.parse(output);
+}
+
 // Finds a free TCP port by binding a throwaway server to port 0 (OS picks any
 // free port) and reading back the kernel-assigned port. Used so CycleTLS's Go
 // sidecar never collides with another process's WS_PORT on this machine — the
@@ -297,6 +371,7 @@ export async function tlsRequest(opts: {
           ja3: ja3Override ?? OKHTTP4_JA3,
           userAgent,
           headers: headersWithoutUA,
+          responseType: "text",
           proxy: proxyUrl,
           timeout: 30,
           disableRedirect: false,
@@ -336,7 +411,7 @@ export async function tlsRequest(opts: {
           ? (resp.data as Buffer).toString("utf8")
           : (resp.data != null ? JSON.stringify(resp.data) : "");
       let json: any = null;
-      try { json = JSON.parse(rawBody); } catch {
+      try { json = parseInstagramJson(rawBody); } catch {
         // resp.data may already be a parsed object when responseType==="json"
         if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json = resp.data;
       }
@@ -466,7 +541,7 @@ export async function tlsRequest(opts: {
     const rawSC = res.headers["set-cookie"];
     const cookies = (Array.isArray(rawSC) ? rawSC : rawSC ? [rawSC] : []).map((c: string) => c.split(";")[0]);
     let json: any = null;
-    try { json = JSON.parse(res.body); } catch {}
+    try { json = parseInstagramJson(res.body); } catch {}
 
     return { status: res.status, cookies, json, rawBody: res.body, responseHeaders: res.headers };
   } catch (err: any) {
@@ -617,6 +692,7 @@ export function patchIgClientTls(ig: IgApiClient, proxyUrl: string | undefined):
           ja3: OKHTTP4_JA3,
           userAgent,
           headers: headersWithoutUA,
+          responseType: "text",
           proxy: proxyUrl,
           timeout: 30,
           disableRedirect: false,
@@ -691,21 +767,20 @@ export function patchIgClientTls(ig: IgApiClient, proxyUrl: string | undefined):
     }
 
     // ── Parse response body ───────────────────────────────────────────────────
-    // CycleTLS v2.x: body is in .data (already-parsed JSON or raw string).
-    // When .data is a Buffer (binary response), convert to UTF-8 string first —
-    // JSON.stringify(Buffer) produces {"type":"Buffer","data":[...]} which is
-    // not useful and breaks error message display.
+    // Request text so unsafe 64-bit Instagram IDs reach the lossless parser
+    // before any Number conversion can round them.
     const rawBody = typeof resp.data === "string"
       ? resp.data
       : Buffer.isBuffer(resp.data)
         ? (resp.data as Buffer).toString("utf8")
         : (resp.data != null ? JSON.stringify(resp.data) : "");
-    // .data may already be a parsed object when responseType==="json"
-    let parsedBody: any = (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data))
-      ? resp.data
-      : rawBody;
-    if (typeof parsedBody === "string") {
-      try { parsedBody = JSON.parse(parsedBody); } catch {}
+    let parsedBody: any = rawBody;
+    try {
+      parsedBody = parseInstagramJson(rawBody);
+    } catch {
+      if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) {
+        parsedBody = resp.data;
+      }
     }
 
     // ── Diagnostic: dump full request/response context on a generic technical
@@ -843,6 +918,7 @@ export async function tlsMultipartPost(
           ja3: OKHTTP4_JA3,
           userAgent,
           headers: headersWithoutUA,
+          responseType: "text",
           proxy: proxyUrl,
           timeout: 60,
           disableRedirect: false,
@@ -856,7 +932,7 @@ export async function tlsMultipartPost(
           ? (resp.data as Buffer).toString("utf8")
           : (resp.data != null ? JSON.stringify(resp.data) : "");
       let json: any = null;
-      try { json = JSON.parse(rawBody); } catch {
+      try { json = parseInstagramJson(rawBody); } catch {
         if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json = resp.data;
       }
       if (json === null) {
@@ -902,7 +978,7 @@ export async function tlsMultipartPost(
       req.end();
     });
     let json: any = null;
-    try { json = JSON.parse(res.body); } catch {
+    try { json = parseInstagramJson(res.body); } catch {
       const preview = res.body.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
       console.warn(`[tls:node-https] POST ${host}${path} status=${res.status} — non-JSON response: ${preview}`);
     }

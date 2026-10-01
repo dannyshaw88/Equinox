@@ -3205,6 +3205,84 @@ export class InstagramWebClient {
     }
   }
 
+  /**
+   * Create a signed mobile API client from the current session cookies without
+   * running the DM-specific warm-up sequence. SDK repository methods use this
+   * state to populate request signatures and required identity fields.
+   */
+  private async _newRestoredMobileIgClient(): Promise<IgApiClient | null> {
+    const cookieHeader = this.igApiCookies || this.mobileCookieJar.join(";");
+    const pairs = cookieHeader.split(";").map(s => s.trim()).filter(Boolean);
+    const sessionPair = pairs.find(pair => pair.toLowerCase().startsWith("sessionid="));
+    if (!sessionPair) return null;
+
+    const savedState: {
+      deviceId?: string;
+      uuid?: string;
+      phoneId?: string;
+      adid?: string;
+      deviceString?: string;
+      authorization?: string;
+      igWWWClaim?: string;
+    } = (() => {
+      try { return JSON.parse(this.igDeviceState ?? "{}"); } catch { return {}; }
+    })();
+
+    const ig = this._newAutomationIgClient();
+    const deviceSeed = (this.userAgentApi ?? this.username ?? "instagram") + "|" + (this.username ?? "instagram");
+    ig.state.generateDevice(deviceSeed);
+    if (savedState.deviceId) ig.state.deviceId = savedState.deviceId;
+    if (savedState.uuid) ig.state.uuid = savedState.uuid;
+    if (savedState.phoneId) ig.state.phoneId = savedState.phoneId;
+    if (savedState.adid) ig.state.adid = savedState.adid;
+    if (savedState.deviceString) ig.state.deviceString = savedState.deviceString;
+    if (savedState.authorization) ig.state.authorization = savedState.authorization;
+    if (savedState.igWWWClaim) ig.state.igWWWClaim = savedState.igWWWClaim;
+
+    const dsUserId = pairs.find(pair => pair.toLowerCase().startsWith("ds_user_id="));
+    let ownUserId = dsUserId?.slice(dsUserId.indexOf("=") + 1);
+    if (!ownUserId) {
+      let sessionValue = sessionPair.slice(sessionPair.indexOf("=") + 1);
+      try { sessionValue = decodeURIComponent(sessionValue); } catch { /* keep raw */ }
+      ownUserId = sessionValue.split(":")[0] || undefined;
+    }
+    const normalizedPairs = [...pairs];
+    if (ownUserId && !dsUserId) normalizedPairs.push(`ds_user_id=${ownUserId}`);
+    if (
+      this.mobileCsrf &&
+      this.mobileCsrf !== "missing" &&
+      !normalizedPairs.some(pair => pair.toLowerCase().startsWith("csrftoken="))
+    ) {
+      normalizedPairs.push(`csrftoken=${this.mobileCsrf}`);
+    }
+
+    const now = new Date().toISOString();
+    const cookieEntries = normalizedPairs.flatMap(pair => {
+      const eqIdx = pair.indexOf("=");
+      if (eqIdx === -1) return [];
+      const key = pair.slice(0, eqIdx).trim();
+      let value = pair.slice(eqIdx + 1).trim();
+      try { value = decodeURIComponent(value); } catch { /* keep raw */ }
+      return [
+        { key, value, domain: "i.instagram.com", path: "/", secure: true, httpOnly: true, hostOnly: true, creation: now, lastAccessed: now },
+        { key, value, domain: ".instagram.com", path: "/", secure: true, httpOnly: true, hostOnly: false, creation: now, lastAccessed: now },
+      ];
+    });
+    await ig.state.deserializeCookieJar(JSON.stringify({
+      version: "tough-cookie@4.1.3",
+      storeType: "MemoryCookieStore",
+      rejectPublicSuffixes: true,
+      cookies: cookieEntries,
+    }));
+
+    ig.state.constants.APP_VERSION = MOBILE_VERSION;
+    ig.state.constants.APP_VERSION_CODE = MOBILE_VERSION_CODE;
+    patchDeviceStringVersionCode(ig, MOBILE_VERSION_CODE);
+    if (this.proxyUrl) ig.state.proxyUrl = this.proxyUrl;
+    patchIgClientTls(ig, this.proxyUrl);
+    return ig;
+  }
+
   // Like a media post using IgApiClient (properly signs the request body).
   // The hand-rolled mobileSessionPost sends an empty body which Instagram
   // rejects with "something went wrong" — IgApiClient includes all required
@@ -4123,7 +4201,9 @@ export class InstagramWebClient {
   // inject-browsing appear individually in the Export API Calls CSV.
   async viewFeedPost(mediaId: string): Promise<boolean> {
     return this.timed("ViewPost", async () => {
-      const j = await this.mobileSessionGet(`/api/v1/media/${mediaId}/info/`);
+      const ig = await this._newRestoredMobileIgClient();
+      if (!ig) return false;
+      const j = await ig.media.info(mediaId);
       return !!(j?.items?.length);
     }, `View post ${mediaId}`);
   }
