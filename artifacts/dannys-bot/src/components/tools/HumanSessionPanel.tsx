@@ -91,7 +91,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "hs_emulationGroup", label: "Emulation Group", description: "Enable / disable the entire Emulation section", subOptions: [
         { key: "emg_enabled", label: "Enabled", settingKeys: ["emulationGroupEnabled"] },
       ]},
-      { key: "postInfoLookup", label: "Post Info Lookup", description: "Shared chance for post-info requests triggered by explicit post opens", subOptions: [
+      { key: "postInfoLookup", label: "Post Metrics Lookup", description: "Shared chance to collect metrics on explicit post opens", subOptions: [
         { key: "post_info_chance", label: "Chance per opened post", settingKeys: ["viewPostInfoPercentMin","viewPostInfoPercentMax"] },
       ]},
       { key: "viewTimelineFeed", label: "View Timeline Feed", description: "Scrolling through the main feed + inline liking", subOptions: [
@@ -1064,9 +1064,9 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
           <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5">
               {pctInputs("viewPostInfoPercentMin", "viewPostInfoPercentMax")}
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Post info lookup %</span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Post metrics lookup %</span>
             </div>
-            <span className="text-[10px] text-muted-foreground">Per-post chance shared across tools; 0–0 skips opening and lookup.</span>
+            <span className="text-[10px] text-muted-foreground">Chance per explicit post open for likes, comments, views and plays; shared across tools. 0–0 skips opening.</span>
           </div>
           {(settings as any).emulationGroupEnabled !== false && (
           <div className="divide-y divide-border">
