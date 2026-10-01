@@ -2253,12 +2253,13 @@ export class InstagramWebClient {
     const clipsSummary = isClipsStream
       ? this._clipsStreamLogSummary(res.json, res.status)
       : undefined;
+    const shareSummary = this._shareToFeedLogSummary(path, res, "www.instagram.com");
     this._logTransport(
       path,
       "POST",
       Date.now() - _t0,
-      res.status >= 400 || applicationFailed || !!clipsSummary?.isError,
-      clipsSummary?.message ?? responseDetail,
+      res.status >= 400 || applicationFailed || !!clipsSummary?.isError || !!shareSummary?.isError,
+      shareSummary?.message ?? clipsSummary?.message ?? responseDetail,
     );
     return { json: res.json, status: res.status, rawBody: res.rawBody };
   }
@@ -4761,6 +4762,32 @@ export class InstagramWebClient {
     }, `Save media ${mediaId}`);
   }
 
+  private _shareToFeedLogSummary(
+    path: string,
+    response: { status: number; json: any; responseHeaders: Record<string, string | string[] | undefined> },
+    origin: string,
+  ): { isError: boolean; message: string } | undefined {
+    const base = path.split("?")[0].replace(/\/+$/, "");
+    if (!/^\/api\/v1\/media\/[^/]+\/re_share_to_feed$/.test(base)) return undefined;
+
+    const responseStatus = String(response.json?.status ?? "").toLowerCase();
+    const succeeded = response.status < 400 && responseStatus === "ok";
+    const contentTypeHeader = Object.entries(response.responseHeaders ?? {})
+      .find(([key]) => key.toLowerCase() === "content-type")?.[1];
+    const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
+    const responseShape = response.json
+      ? `JSON status=${String(response.json?.status ?? "missing")}`
+      : `non-JSON response${contentType ? ` (${String(contentType).slice(0, 80)})` : ""}`;
+    const responseDetail = response.json?.message
+      ?? response.json?.error_type
+      ?? (response.json?.error_code !== undefined ? `error_code=${response.json.error_code}` : "");
+
+    return {
+      isError: !succeeded,
+      message: `Share to feed ${succeeded ? "confirmed" : "failed"} via ${origin} — HTTP ${response.status}; ${responseShape}${responseDetail ? `; detail=${String(responseDetail).replace(/\s+/g, " ").slice(0, 160)}` : ""}`,
+    };
+  }
+
   async sharePostToFeed(mediaId: string): Promise<boolean> {
     return this.timed("SharePostToFeed", async () => {
       const body = new URLSearchParams({ media_id: mediaId }).toString();
@@ -5453,13 +5480,15 @@ export class InstagramWebClient {
     const clipsSummary = isClipsStream
       ? this._clipsStreamLogSummary(res.json, res.status)
       : undefined;
-    const transportFailed = res.status >= 400 || applicationFailed || !!clipsSummary?.isError;
+    const shareSummary = this._shareToFeedLogSummary(path, res, "i.instagram.com");
+    const transportFailed = res.status >= 400 || applicationFailed || !!clipsSummary?.isError || !!shareSummary?.isError;
     this._logTransport(
       path,
       "POST",
       Date.now() - _t0,
       transportFailed,
-      clipsSummary?.message ??
+      shareSummary?.message ??
+        clipsSummary?.message ??
         (transportFailed ? `HTTP ${res.status}${responseDetail ? ` — ${responseDetail}` : ""}` : undefined),
     );
     return res.json;

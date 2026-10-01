@@ -4978,6 +4978,9 @@ class AutomationEngine {
                   if (shared) {
                     console.log(`[engine] @${profile.username}: 🔁 shared post ${item.shortcode} by @${item.username} to feed`);
                     this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "ok", "Shared timeline post to feed");
+                  } else {
+                    console.warn(`[engine] @${profile.username}: share timeline post ${item.shortcode} failed — Instagram did not confirm the share`);
+                    this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "fail", "Instagram did not confirm sharing timeline post to feed");
                   }
                 } catch (se: any) {
                   if (await checkSessionErr(se, "share_post")) {
@@ -5196,6 +5199,8 @@ class AutomationEngine {
         }
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
         const reelViewPctMax = Number(s.reelWatchPercentMax ?? 100);
+        const sharePctMin = Number(execSettings.sharePostPercentMin ?? 0);
+        const sharePctMax = Number(execSettings.sharePostPercentMax ?? 0);
         try {
           const result = await client.viewReelsTab(reelCount, reelViewPctMin, reelViewPctMax);
           if (result.sessionExpired) {
@@ -5214,6 +5219,29 @@ class AutomationEngine {
           }
           for (const reel of result.reelWatches) {
             this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% · ${reel.durationSec}s`);
+            if (sharePctMax <= 0) continue;
+
+            // Reels use the same per-item chance and share settings as timeline posts.
+            // A failed or ambiguous share is logged once and never retried.
+            const shareRoll = Math.random() * 100;
+            const shareThreshold = randInt(sharePctMin, sharePctMax);
+            if (shareRoll >= shareThreshold) continue;
+
+            try {
+              const shared = await client.sharePostToFeed(reel.mediaId);
+              if (shared) {
+                console.log(`[engine] @${profile.username}: 🔁 shared watched Reel ${reel.shortcode} by @${reel.username} to feed`);
+                this.logAction(profile.id, tool.id, "share_post", reel.username, reel.shortcode, "reel", "ok", "Shared watched Reel to feed");
+              } else {
+                console.warn(`[engine] @${profile.username}: share watched Reel ${reel.shortcode} failed — Instagram did not confirm the share`);
+                this.logAction(profile.id, tool.id, "share_post", reel.username, reel.shortcode, "reel", "fail", "Instagram did not confirm sharing watched Reel to feed");
+              }
+            } catch (se: any) {
+              if (await checkSessionErr(se, "share_reel_to_feed")) return;
+              const message = se?.message ?? "unknown error";
+              console.warn(`[engine] @${profile.username}: share watched Reel ${reel.shortcode} error: ${message}`);
+              this.logAction(profile.id, tool.id, "share_post", reel.username, reel.shortcode, "reel", "fail", message.slice(0, 300));
+            }
           }
         } catch (e: any) {
           if (await checkSessionErr(e, "view_reels")) return;

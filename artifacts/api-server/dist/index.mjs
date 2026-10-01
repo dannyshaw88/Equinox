@@ -158775,12 +158775,13 @@ var InstagramWebClient = class {
     const responseDetail = applicationFailed ? `HTTP ${res.status} \u2014 status=${responseStatus}${res.json?.message ? ` \u2014 ${String(res.json.message).slice(0, 180)}` : ""}` : void 0;
     const isClipsStream = path6.split("?")[0].replace(/\/+$/, "") === "/api/v1/clips/discover/stream";
     const clipsSummary = isClipsStream ? this._clipsStreamLogSummary(res.json, res.status) : void 0;
+    const shareSummary = this._shareToFeedLogSummary(path6, res, "www.instagram.com");
     this._logTransport(
       path6,
       "POST",
       Date.now() - _t0,
-      res.status >= 400 || applicationFailed || !!clipsSummary?.isError,
-      clipsSummary?.message ?? responseDetail
+      res.status >= 400 || applicationFailed || !!clipsSummary?.isError || !!shareSummary?.isError,
+      shareSummary?.message ?? clipsSummary?.message ?? responseDetail
     );
     return { json: res.json, status: res.status, rawBody: res.rawBody };
   }
@@ -160724,6 +160725,20 @@ var InstagramWebClient = class {
       return j?.status === "ok";
     }, `Save media ${mediaId}`);
   }
+  _shareToFeedLogSummary(path6, response, origin) {
+    const base = path6.split("?")[0].replace(/\/+$/, "");
+    if (!/^\/api\/v1\/media\/[^/]+\/re_share_to_feed$/.test(base)) return void 0;
+    const responseStatus = String(response.json?.status ?? "").toLowerCase();
+    const succeeded = response.status < 400 && responseStatus === "ok";
+    const contentTypeHeader = Object.entries(response.responseHeaders ?? {}).find(([key]) => key.toLowerCase() === "content-type")?.[1];
+    const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
+    const responseShape = response.json ? `JSON status=${String(response.json?.status ?? "missing")}` : `non-JSON response${contentType ? ` (${String(contentType).slice(0, 80)})` : ""}`;
+    const responseDetail = response.json?.message ?? response.json?.error_type ?? (response.json?.error_code !== void 0 ? `error_code=${response.json.error_code}` : "");
+    return {
+      isError: !succeeded,
+      message: `Share to feed ${succeeded ? "confirmed" : "failed"} via ${origin} \u2014 HTTP ${response.status}; ${responseShape}${responseDetail ? `; detail=${String(responseDetail).replace(/\s+/g, " ").slice(0, 160)}` : ""}`
+    };
+  }
   async sharePostToFeed(mediaId) {
     return this.timed("SharePostToFeed", async () => {
       const body = new URLSearchParams({ media_id: mediaId }).toString();
@@ -161274,13 +161289,14 @@ var InstagramWebClient = class {
     const responseDetail = res.json?.message || res.json?.error_type || (res.json?.error_code !== void 0 ? `error_code=${res.json.error_code}` : "") || String(res.rawBody ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
     const isClipsStream = path6.split("?")[0].replace(/\/+$/, "") === "/api/v1/clips/discover/stream";
     const clipsSummary = isClipsStream ? this._clipsStreamLogSummary(res.json, res.status) : void 0;
-    const transportFailed = res.status >= 400 || applicationFailed || !!clipsSummary?.isError;
+    const shareSummary = this._shareToFeedLogSummary(path6, res, "i.instagram.com");
+    const transportFailed = res.status >= 400 || applicationFailed || !!clipsSummary?.isError || !!shareSummary?.isError;
     this._logTransport(
       path6,
       "POST",
       Date.now() - _t0,
       transportFailed,
-      clipsSummary?.message ?? (transportFailed ? `HTTP ${res.status}${responseDetail ? ` \u2014 ${responseDetail}` : ""}` : void 0)
+      shareSummary?.message ?? clipsSummary?.message ?? (transportFailed ? `HTTP ${res.status}${responseDetail ? ` \u2014 ${responseDetail}` : ""}` : void 0)
     );
     return res.json;
   }
@@ -168909,6 +168925,9 @@ ${err?.stack ?? ""}`);
                   if (shared) {
                     console.log(`[engine] @${profile.username}: \u{1F501} shared post ${item.shortcode} by @${item.username} to feed`);
                     this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "ok", "Shared timeline post to feed");
+                  } else {
+                    console.warn(`[engine] @${profile.username}: share timeline post ${item.shortcode} failed \u2014 Instagram did not confirm the share`);
+                    this.logAction(profile.id, tool.id, "share_post", item.username, item.shortcode, "post", "fail", "Instagram did not confirm sharing timeline post to feed");
                   }
                 } catch (se) {
                   if (await checkSessionErr(se, "share_post")) {
@@ -169090,6 +169109,8 @@ ${err?.stack ?? ""}`);
         }
         const reelViewPctMin = Number(s.reelWatchPercentMin ?? 50);
         const reelViewPctMax = Number(s.reelWatchPercentMax ?? 100);
+        const sharePctMin = Number(execSettings.sharePostPercentMin ?? 0);
+        const sharePctMax = Number(execSettings.sharePostPercentMax ?? 0);
         try {
           const result = await client.viewReelsTab(reelCount, reelViewPctMin, reelViewPctMax);
           if (result.sessionExpired) {
@@ -169108,6 +169129,25 @@ ${err?.stack ?? ""}`);
           }
           for (const reel of result.reelWatches) {
             this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% \xB7 ${reel.durationSec}s`);
+            if (sharePctMax <= 0) continue;
+            const shareRoll = Math.random() * 100;
+            const shareThreshold = randInt2(sharePctMin, sharePctMax);
+            if (shareRoll >= shareThreshold) continue;
+            try {
+              const shared = await client.sharePostToFeed(reel.mediaId);
+              if (shared) {
+                console.log(`[engine] @${profile.username}: \u{1F501} shared watched Reel ${reel.shortcode} by @${reel.username} to feed`);
+                this.logAction(profile.id, tool.id, "share_post", reel.username, reel.shortcode, "reel", "ok", "Shared watched Reel to feed");
+              } else {
+                console.warn(`[engine] @${profile.username}: share watched Reel ${reel.shortcode} failed \u2014 Instagram did not confirm the share`);
+                this.logAction(profile.id, tool.id, "share_post", reel.username, reel.shortcode, "reel", "fail", "Instagram did not confirm sharing watched Reel to feed");
+              }
+            } catch (se) {
+              if (await checkSessionErr(se, "share_reel_to_feed")) return;
+              const message = se?.message ?? "unknown error";
+              console.warn(`[engine] @${profile.username}: share watched Reel ${reel.shortcode} error: ${message}`);
+              this.logAction(profile.id, tool.id, "share_post", reel.username, reel.shortcode, "reel", "fail", message.slice(0, 300));
+            }
           }
         } catch (e) {
           if (await checkSessionErr(e, "view_reels")) return;

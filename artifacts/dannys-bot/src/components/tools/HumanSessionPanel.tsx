@@ -100,7 +100,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vtf_like_pct",    label: "% posts to like",                  settingKeys: ["likeTimelinePostsPercentMin","likeTimelinePostsPercentMax"] },
         { key: "vtf_like_delay",  label: "Delay between likes in sec",       settingKeys: ["likeTimelinePostsDelayMin","likeTimelinePostsDelayMax"] },
         { key: "vtf_save_media",  label: "Save media",                     settingKeys: ["saveMediaEnabled","saveMediaPercentMin","saveMediaPercentMax"] },
-        { key: "vtf_share_post",  label: "Share % (chance to share viewed posts to feed)", settingKeys: ["sharePostPercentMin","sharePostPercentMax"] },
+        { key: "vtf_share_post",  label: "Share % (chance per timeline post or watched Reel)", settingKeys: ["sharePostPercentMin","sharePostPercentMax"] },
         { key: "vtf_view_profile",     label: "Visit profile %",             settingKeys: ["viewPostProfilePercentMin","viewPostProfilePercentMax"] },
         { key: "vtf_profile_feed",     label: "View profile feed % + count", settingKeys: ["viewProfileFeedPercentMin","viewProfileFeedPercentMax","viewProfileFeedCountMin","viewProfileFeedCountMax"] },
         { key: "vtf_profile_posts",    label: "Open profile posts count + %",settingKeys: ["viewProfilePostsCountMin","viewProfilePostsCountMax","viewProfilePostsPercentMin","viewProfilePostsPercentMax"] },
@@ -119,7 +119,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "ep_prof_scroll", label: "Posts to scroll on profile", settingKeys: ["exploreProfileScrollMin","exploreProfileScrollMax"] },
         { key: "ep_prof_click",  label: "Posts to click on profile",  settingKeys: ["exploreProfileClickMin","exploreProfileClickMax"] },
       ]},
-      { key: "viewReels", label: "View Reels", description: "Independent reels-watching session, not tied to the timeline feed", subOptions: [
+      { key: "viewReels", label: "View Reels", description: "Independent reels-watching session; watched Reels use the timeline Share % chance", subOptions: [
         { key: "vr_enabled",  label: "Enabled",           settingKeys: ["viewReelsEnabled"] },
         { key: "vr_order",    label: "Execution order",   settingKeys: ["viewReelsOrderMin","viewReelsOrderMax"] },
         { key: "vr_count",    label: "Reels/Op (how many reels to watch)", settingKeys: ["reelWatchCountMin","reelWatchCountMax"] },
@@ -1535,6 +1535,9 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Reel Like%</span>
                 </div>
               </div>
+              <p className="text-[10px] text-muted-foreground">
+                Watched Reels use the same Share % chance configured under View Timeline Feed.
+              </p>
             </div>
 
             {/* ── Check Stories from Timeline ── */}
