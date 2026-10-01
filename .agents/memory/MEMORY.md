@@ -47,3 +47,4 @@
 - [API source versus packaged build](api-source-packaging.md) — Windows can run stale API code after source fixes; rebuild the installer artifacts and bump the version before validating.
 - [Standalone API runner gates](standalone-api-runner-gates.md) — a disabled Human Sessions row must not suppress enabled standalone tools; incomplete browser cookies must not erase mobile CSRF state.
 - [Explore endpoint contract](explore-endpoint-distinction.md) — API Explore uses topical_explore; runtime diagnostics must confirm media_feed rather than topic/pill-only content
+- [Vendor transport evidence](vendor-transport-evidence.md) — API-parity docs do not establish Jarvee/SU Social's HTTP/TLS stack; require source history or a captured request.

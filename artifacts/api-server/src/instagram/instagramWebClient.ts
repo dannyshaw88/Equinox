@@ -7254,7 +7254,7 @@ export class InstagramWebClient {
     return this.timed("FollowSuggestedUsers", async () => {
       const ig = await this._newRestoredMobileIgClient();
       if (!ig) throw new Error("Suggested users request has no mobile session");
-      const suggestions = await ig.feed.discover().items();
+      const suggestions: any[] = await ig.feed.discover().items();
       const toFollow = suggestions.slice(0, count);
       const followed: string[] = [];
       for (const item of toFollow) {

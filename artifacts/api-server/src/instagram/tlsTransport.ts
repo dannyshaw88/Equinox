@@ -8,9 +8,10 @@
  *  - Cipher suite order matches Android's TLS implementation
  *  - HTTP/2 SETTINGS frame matches Android OkHttp
  *
- * If CycleTLS fails to initialise (e.g. binary path issues in some Electron
- * build configurations), every function degrades gracefully to the original
- * Node.js HTTPS transport so nothing breaks.
+ * Fallback behavior is operation-specific: patched SDK calls fail closed when
+ * CycleTLS is unavailable, while multipart uploads have an explicit native
+ * HTTPS path. These branches do not establish the historical transport used
+ * before CycleTLS or the private transport used by another automation product.
  */
 
 import { IgNetworkError } from "instagram-private-api";
@@ -362,7 +363,7 @@ export async function tlsRequest(opts: {
     }
 
     const t0 = Date.now();
-    let resp: { status: number; body: string; headers: Record<string, string | string[]> };
+    let resp: { status: number; data: any; headers: Record<string, string | string[]> };
     try {
       resp = await client(
         url,
@@ -485,11 +486,9 @@ export async function tlsRequest(opts: {
   }
 
   // ── Node.js TLS — forceNodeTls=true ──────────────────────────────────────────
-  // Used for account creation AND for action calls (follow, like, unfollow, DM)
-  // where CycleTLS/OkHttp4 introduced a regression (HTTP 200 status:fail "something
-  // went wrong") that did not exist with the original got-based transport.
-  // Jarvee confirms Android JA3 is not required on i.instagram.com — plain
-  // Node.js HTTPS works and follows succeed.
+  // This is the current implementation's explicit native HTTPS branch. Its
+  // presence does not establish the pre-CycleTLS transport or the private
+  // transport used by Jarvee or SU Social.
   if (body) allHeaders["Content-Length"] = String(Buffer.byteLength(body, "utf8"));
   console.log(`[tls:req] forceNodeTls — using Node.js TLS for ${method} ${host}${path}`);
   const { HttpsProxyAgent } = await import("https-proxy-agent");
@@ -569,8 +568,8 @@ export async function tlsRequest(opts: {
  *    proxy, and body. We just swap the wire transport.
  *  - After the response, Set-Cookie headers are written back to the library's
  *    tough-cookie jar so session state is maintained correctly.
- *  - Falls back transparently to the original transport if CycleTLS is
- *    unavailable (e.g. binary not found in some Electron distributions).
+ *  - Throws if CycleTLS is unavailable; this patch does not silently switch
+ *    the SDK request to a different TLS fingerprint.
  *
  * Call immediately after `ig.state.proxyUrl = proxyUrl` and before any
  * ig.request.* call.  If proxyUrl is undefined we skip patching (callers
@@ -683,7 +682,7 @@ export function patchIgClientTls(ig: IgApiClient, proxyUrl: string | undefined):
     } = headers;
 
     const t0 = Date.now();
-    let resp: { status: number; body: string; headers: Record<string, string | string[]> };
+    let resp: { status: number; data: any; headers: Record<string, string | string[]> };
     try {
       resp = await client(
         fullUrl,
