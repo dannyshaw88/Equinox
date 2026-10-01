@@ -15,6 +15,12 @@ The private `/api/v1/media/{id}/re_share_to_feed/` route has returned HTML 404 r
 
 **How to apply:** Require explicit JSON `status:"ok"` before recording a share as successful. Do not retry the same share on another origin after an unconfirmed response; obtain a fresh native/browser request capture to establish the supported route and host before changing routing again.
 
+Keep upload/publish separate from resharing an existing Reel. The upload configure flow requires an `upload_id` for newly uploaded media and uses `clips_share_preview_to_feed`; it is not evidence that `configure_to_reel` or `upload_finish` can reshare a fetched media ID.
+
+**Why:** The project’s upload path carries uploaded-media metadata, while `sharePostToFeed` acts on an existing media ID. Substituting upload/finalize endpoints could create or alter a post rather than repost the selected Reel.
+
+**How to apply:** Only change the existing-media share route from a capture of the native action performed on an existing Reel, outside the upload/create flow.
+
 A 500 `Oops, an error occurred` from `/api/v1/media/seen/` is a real Instagram response, but it is non-fatal to timeline loading and does not by itself mean the mobile session is invalid. Keep that transport error visible; label the companion timeline summary as a best-effort seen signal, not confirmed success.
 
 **Why:** Instagram has returned this 5xx while timeline-feed fetches continued successfully, and the seen marker is a best-effort signal.
