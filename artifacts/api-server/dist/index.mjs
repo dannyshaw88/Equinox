@@ -159894,6 +159894,44 @@ var InstagramWebClient = class {
       return !!j && j.status !== "fail";
     }, "View saved media");
   }
+  // ── Read a bounded number of comments for one media item ───────────────────
+  async viewMediaComments(mediaId, maxComments) {
+    const target = Math.min(50, Math.max(0, Math.floor(Number(maxComments) || 0)));
+    if (!mediaId || target === 0) return 0;
+    let viewed = 0;
+    let maxId = "";
+    let minId = "";
+    let pages = 0;
+    const requestedCursors = /* @__PURE__ */ new Set();
+    const MAX_PAGES = target;
+    while (viewed < target && pages < MAX_PAGES) {
+      const cursorKey = `${maxId}\0${minId}`;
+      if (requestedCursors.has(cursorKey)) break;
+      requestedCursors.add(cursorKey);
+      const query = new URLSearchParams({ can_support_threading: "true" });
+      if (maxId) query.set("max_id", maxId);
+      if (minId) query.set("min_id", minId);
+      const response = await this.mobileSessionGet(
+        `/api/v1/media/${encodeURIComponent(mediaId)}/comments/?${query.toString()}`
+      );
+      pages++;
+      if (!response) break;
+      const status = String(response?.status ?? "").toLowerCase();
+      if (status === "fail" || status === "error") {
+        throw new Error(String(response?.message ?? response?.error_type ?? `comments_request_${status}`));
+      }
+      const comments = Array.isArray(response?.comments) ? response.comments : [];
+      if (!comments.length) break;
+      viewed += Math.min(comments.length, target - viewed);
+      if (viewed >= target) break;
+      const nextMaxId = String(response?.next_max_id ?? "");
+      const nextMinId = String(response?.next_min_id ?? "");
+      if (!nextMaxId && !nextMinId || nextMaxId === maxId && nextMinId === minId) break;
+      maxId = nextMaxId;
+      minId = nextMinId;
+    }
+    return viewed;
+  }
   // ── Scroll the home timeline feed ────────────────────────────────────────
   // Fetches the main home feed and marks up to `count` posts as seen,
   // simulating a user scrolling through their Instagram home feed.
@@ -164799,6 +164837,17 @@ function igErrMsg(e) {
 function randInt2(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+var MAX_COMMENTS_PER_MEDIA = 50;
+function pickCommentCount(minValue, maxValue) {
+  const toCount = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.min(MAX_COMMENTS_PER_MEDIA, Math.max(0, Math.floor(parsed))) : 0;
+  };
+  const a2 = toCount(minValue);
+  const b3 = toCount(maxValue);
+  if (a2 === 0 && b3 === 0) return 0;
+  return randInt2(Math.min(a2, b3), Math.max(a2, b3));
+}
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -168844,6 +168893,42 @@ ${err?.stack ?? ""}`);
         const processSeenBatch = async (items) => {
           for (const item of items) {
             if (!item.mediaId) continue;
+            const commentsToView = pickCommentCount(
+              s.viewTimelineCommentsMin,
+              s.viewTimelineCommentsMax
+            );
+            if (commentsToView > 0) {
+              try {
+                const commentsViewed = await client.viewMediaComments(item.mediaId, commentsToView);
+                this.logAction(
+                  profile.id,
+                  tool.id,
+                  "view_media_comments",
+                  item.username,
+                  item.shortcode,
+                  "post",
+                  "ok",
+                  `Viewed ${commentsViewed} of ${commentsToView} requested comments`
+                );
+              } catch (commentError) {
+                if (await checkSessionErr(commentError, "view_timeline_comments")) {
+                  stopFeedAfterPostActionError = true;
+                  return false;
+                }
+                const message = commentError?.message ?? "unknown error";
+                console.warn(`[engine] @${profile.username}: view timeline comments error: ${message}`);
+                this.logAction(
+                  profile.id,
+                  tool.id,
+                  "view_media_comments",
+                  item.username,
+                  item.shortcode,
+                  "post",
+                  "fail",
+                  `Viewing comments failed \u2014 ${message.slice(0, 300)}`
+                );
+              }
+            }
             if (saveEnabled && savePctMax > 0) {
               const saveChancePct = randInt2(savePctMin, savePctMax);
               if (Math.random() * 100 < saveChancePct) {
@@ -169087,6 +169172,39 @@ ${err?.stack ?? ""}`);
           }
           for (const reel of result.reelWatches) {
             this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% \xB7 ${reel.durationSec}s`);
+            const commentsToView = pickCommentCount(
+              execSettings.viewReelsCommentsMin,
+              execSettings.viewReelsCommentsMax
+            );
+            if (commentsToView > 0) {
+              try {
+                const commentsViewed = await client.viewMediaComments(reel.mediaId, commentsToView);
+                this.logAction(
+                  profile.id,
+                  tool.id,
+                  "view_media_comments",
+                  reel.username,
+                  reel.shortcode,
+                  "reel",
+                  "ok",
+                  `Viewed ${commentsViewed} of ${commentsToView} requested comments`
+                );
+              } catch (commentError) {
+                if (await checkSessionErr(commentError, "view_reels_comments")) return;
+                const message = commentError?.message ?? "unknown error";
+                console.warn(`[engine] @${profile.username}: view Reel comments error: ${message}`);
+                this.logAction(
+                  profile.id,
+                  tool.id,
+                  "view_media_comments",
+                  reel.username,
+                  reel.shortcode,
+                  "reel",
+                  "fail",
+                  `Viewing comments failed \u2014 ${message.slice(0, 300)}`
+                );
+              }
+            }
             if (reelSharePctMax <= 0 || reelSharePctMin > reelSharePctMax) continue;
             const shareRoll = Math.random() * 100;
             const shareThreshold = randInt2(reelSharePctMin, reelSharePctMax);

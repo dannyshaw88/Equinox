@@ -94,6 +94,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "viewTimelineFeed", label: "View Timeline Feed", description: "Scrolling through the main feed + inline liking", subOptions: [
         { key: "vtf_enabled",    label: "Enabled",                                       settingKeys: ["viewTimelineFeedEnabled"] },
         { key: "vtf_count",      label: "Posts per session",                 settingKeys: ["viewTimelineFeedMin","viewTimelineFeedMax"] },
+        { key: "vtf_comments",   label: "Comments per post",                 settingKeys: ["viewTimelineCommentsMin","viewTimelineCommentsMax"] },
         { key: "vtf_order",      label: "Execution order",                   settingKeys: ["viewTimelineFeedOrderMin","viewTimelineFeedOrderMax"] },
         { key: "vtf_chance",     label: "Skip chance %",       settingKeys: ["viewTimelineFeedNotUsedMin","viewTimelineFeedNotUsedMax"] },
         { key: "vtf_rerun",      label: "Re-run chance %",      settingKeys: ["viewTimelineFeedRerunChanceMin","viewTimelineFeedRerunChanceMax"] },
@@ -123,6 +124,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
         { key: "vr_enabled",  label: "Enabled",           settingKeys: ["viewReelsEnabled"] },
         { key: "vr_order",    label: "Execution order",   settingKeys: ["viewReelsOrderMin","viewReelsOrderMax"] },
         { key: "vr_count",    label: "Reels/Op (how many reels to watch)", settingKeys: ["reelWatchCountMin","reelWatchCountMax"] },
+        { key: "vr_comments", label: "Comments per Reel",                  settingKeys: ["viewReelsCommentsMin","viewReelsCommentsMax"] },
         { key: "vr_view_pct", label: "% of each reel to watch", settingKeys: ["reelWatchPercentMin","reelWatchPercentMax"] },
         { key: "vr_like_pct", label: "% of reels to like",      settingKeys: ["reelLikePercentMin","reelLikePercentMax"] },
         { key: "vr_share_pct", label: "Share to Feed % (per Reel)", settingKeys: ["reelShareToFeedPercentMin","reelShareToFeedPercentMax"] },
@@ -523,6 +525,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       viewTimelineFeedEnabled: true,
       viewTimelineFeedMin: 3,
       viewTimelineFeedMax: 8,
+      viewTimelineCommentsMin: 0,
+      viewTimelineCommentsMax: 0,
       viewTimelineFeedOrderMin: 5,
       viewTimelineFeedOrderMax: 10,
       viewTimelineFeedNotUsedMin: 0,
@@ -608,6 +612,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       likeTimelinePostsPercentMin: 0,
       likeTimelinePostsPercentMax: 0,
       viewReelsEnabled: false,
+      viewReelsCommentsMin: 0,
+      viewReelsCommentsMax: 0,
       viewReelsOrderMin: 0,
       viewReelsOrderMax: 0,
       viewReelsNotUsedMin: 0,
@@ -733,6 +739,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
     const def: Record<string, any> = {
       randomiseTiming: false, delayMin: 30, delayMax: 60,
       viewTimelineFeedEnabled: true, viewTimelineFeedMin: 3, viewTimelineFeedMax: 8,
+      viewTimelineCommentsMin: 0, viewTimelineCommentsMax: 0,
       viewTimelineFeedOrderMin: 5, viewTimelineFeedOrderMax: 10,
       viewTimelineFeedNotUsedMin: 0, viewTimelineFeedNotUsedMax: 0,
       viewTimelineFeedRerunChanceMin: 0, viewTimelineFeedRerunChanceMax: 0,
@@ -770,7 +777,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       saveMediaEnabled: false, saveMediaPercentMin: 20, saveMediaPercentMax: 20,
       sharePostPercentMin: 0, sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0, likeTimelinePostsPercentMax: 0,
-      viewReelsEnabled: false, viewReelsOrderMin: 0, viewReelsOrderMax: 0,
+      viewReelsEnabled: false, viewReelsCommentsMin: 0, viewReelsCommentsMax: 0,
+      viewReelsOrderMin: 0, viewReelsOrderMax: 0,
       viewReelsNotUsedMin: 0, viewReelsNotUsedMax: 0,
       viewReelsRerunChanceMin: 0, viewReelsRerunChanceMax: 0,
       viewPostProfilePercentMin: 0, viewPostProfilePercentMax: 0,
@@ -883,6 +891,29 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
           <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
         </div>
       </div>
+    </>
+  );
+
+  const commentCountInputs = (minKey: string, maxKey: string) => (
+    <>
+      <Label className="text-xs text-muted-foreground uppercase">Min</Label>
+      <NumField min={0} max={50} className="w-14 h-7 text-xs"
+        value={settings[minKey] ?? 0}
+        onChange={(v) => setSettings({
+          ...settings,
+          [minKey]: v,
+          [maxKey]: Math.max(v, Number(settings[maxKey] ?? 0)),
+        })}
+      />
+      <Label className="text-xs text-muted-foreground uppercase">Max</Label>
+      <NumField min={0} max={50} className="w-14 h-7 text-xs"
+        value={settings[maxKey] ?? 0}
+        onChange={(v) => setSettings({
+          ...settings,
+          [minKey]: Math.min(v, Number(settings[minKey] ?? 0)),
+          [maxKey]: v,
+        })}
+      />
     </>
   );
 
@@ -1088,6 +1119,11 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                   />
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Posts to View</span>
                 </div>
+              </div>
+              <div className={`flex items-center gap-2 flex-wrap pt-1.5 border-t border-border/40 transition-opacity ${!settings.viewTimelineFeedEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                {commentCountInputs("viewTimelineCommentsMin", "viewTimelineCommentsMax")}
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Comments per post</span>
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">0–0 disables</span>
               </div>
               {/* ROW 2: Like Delay | Save Media | Like% — left-aligned */}
               <div className={`flex items-center gap-3 flex-wrap pt-1.5 border-t border-border/40 transition-opacity ${!settings.viewTimelineFeedEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
@@ -1525,6 +1561,12 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
                     onChange={(v) => setSettings({ ...settings, reelWatchCountMax: v })}
                   />
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Reels/Op</span>
+                </div>
+                <div className="h-4 w-px bg-border/60 shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  {commentCountInputs("viewReelsCommentsMin", "viewReelsCommentsMax")}
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Comments per Reel</span>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">0–0 disables</span>
                 </div>
                 <div className="h-4 w-px bg-border/60 shrink-0" />
                 <div className="flex items-center gap-1.5">

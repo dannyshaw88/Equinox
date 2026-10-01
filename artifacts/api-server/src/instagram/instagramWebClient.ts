@@ -3740,6 +3740,52 @@ export class InstagramWebClient {
     }, "View saved media");
   }
 
+  // ── Read a bounded number of comments for one media item ───────────────────
+  async viewMediaComments(mediaId: string, maxComments: number): Promise<number> {
+    const target = Math.min(50, Math.max(0, Math.floor(Number(maxComments) || 0)));
+    if (!mediaId || target === 0) return 0;
+
+    let viewed = 0;
+    let maxId = "";
+    let minId = "";
+    let pages = 0;
+    const requestedCursors = new Set<string>();
+    const MAX_PAGES = target;
+
+    while (viewed < target && pages < MAX_PAGES) {
+      const cursorKey = `${maxId}\u0000${minId}`;
+      if (requestedCursors.has(cursorKey)) break;
+      requestedCursors.add(cursorKey);
+
+      const query = new URLSearchParams({ can_support_threading: "true" });
+      if (maxId) query.set("max_id", maxId);
+      if (minId) query.set("min_id", minId);
+      const response = await this.mobileSessionGet(
+        `/api/v1/media/${encodeURIComponent(mediaId)}/comments/?${query.toString()}`,
+      );
+      pages++;
+      if (!response) break;
+
+      const status = String(response?.status ?? "").toLowerCase();
+      if (status === "fail" || status === "error") {
+        throw new Error(String(response?.message ?? response?.error_type ?? `comments_request_${status}`));
+      }
+
+      const comments = Array.isArray(response?.comments) ? response.comments : [];
+      if (!comments.length) break;
+      viewed += Math.min(comments.length, target - viewed);
+      if (viewed >= target) break;
+
+      const nextMaxId = String(response?.next_max_id ?? "");
+      const nextMinId = String(response?.next_min_id ?? "");
+      if ((!nextMaxId && !nextMinId) || (nextMaxId === maxId && nextMinId === minId)) break;
+      maxId = nextMaxId;
+      minId = nextMinId;
+    }
+
+    return viewed;
+  }
+
   // ── Scroll the home timeline feed ────────────────────────────────────────
   // Fetches the main home feed and marks up to `count` posts as seen,
   // simulating a user scrolling through their Instagram home feed.

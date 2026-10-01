@@ -166,6 +166,19 @@ function igErrMsg(e: any): string {
 function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+const MAX_COMMENTS_PER_MEDIA = 50;
+function pickCommentCount(minValue: unknown, maxValue: unknown): number {
+  const toCount = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed)
+      ? Math.min(MAX_COMMENTS_PER_MEDIA, Math.max(0, Math.floor(parsed)))
+      : 0;
+  };
+  const a = toCount(minValue);
+  const b = toCount(maxValue);
+  if (a === 0 && b === 0) return 0;
+  return randInt(Math.min(a, b), Math.max(a, b));
+}
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -4945,6 +4958,31 @@ class AutomationEngine {
           for (const item of items) {
             if (!item.mediaId) continue;
 
+            const commentsToView = pickCommentCount(
+              s.viewTimelineCommentsMin,
+              s.viewTimelineCommentsMax,
+            );
+            if (commentsToView > 0) {
+              try {
+                const commentsViewed = await client.viewMediaComments(item.mediaId, commentsToView);
+                this.logAction(
+                  profile.id, tool.id, "view_media_comments", item.username, item.shortcode, "post",
+                  "ok", `Viewed ${commentsViewed} of ${commentsToView} requested comments`,
+                );
+              } catch (commentError: any) {
+                if (await checkSessionErr(commentError, "view_timeline_comments")) {
+                  stopFeedAfterPostActionError = true;
+                  return false;
+                }
+                const message = commentError?.message ?? "unknown error";
+                console.warn(`[engine] @${profile.username}: view timeline comments error: ${message}`);
+                this.logAction(
+                  profile.id, tool.id, "view_media_comments", item.username, item.shortcode, "post",
+                  "fail", `Viewing comments failed — ${message.slice(0, 300)}`,
+                );
+              }
+            }
+
             if (saveEnabled && savePctMax > 0) {
               const saveChancePct = randInt(savePctMin, savePctMax);
               if (Math.random() * 100 < saveChancePct) {
@@ -5221,6 +5259,27 @@ class AutomationEngine {
           }
           for (const reel of result.reelWatches) {
             this.logAction(profile.id, tool.id, "view_reel_from_reels_tab", reel.username, reel.shortcode, "post", "ok", `Watched reel from Reels tab at ${reel.pct}% · ${reel.durationSec}s`);
+            const commentsToView = pickCommentCount(
+              execSettings.viewReelsCommentsMin,
+              execSettings.viewReelsCommentsMax,
+            );
+            if (commentsToView > 0) {
+              try {
+                const commentsViewed = await client.viewMediaComments(reel.mediaId, commentsToView);
+                this.logAction(
+                  profile.id, tool.id, "view_media_comments", reel.username, reel.shortcode, "reel",
+                  "ok", `Viewed ${commentsViewed} of ${commentsToView} requested comments`,
+                );
+              } catch (commentError: any) {
+                if (await checkSessionErr(commentError, "view_reels_comments")) return;
+                const message = commentError?.message ?? "unknown error";
+                console.warn(`[engine] @${profile.username}: view Reel comments error: ${message}`);
+                this.logAction(
+                  profile.id, tool.id, "view_media_comments", reel.username, reel.shortcode, "reel",
+                  "fail", `Viewing comments failed — ${message.slice(0, 300)}`,
+                );
+              }
+            }
             if (reelSharePctMax <= 0 || reelSharePctMin > reelSharePctMax) continue;
 
             // Reels-tab shares use their own per-Reel chance, independent of the
