@@ -13,7 +13,7 @@
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 import { storage } from "../storage";
 import { triggerBanPipeline } from "./banPipeline";
-import { InstagramWebClient } from "./instagramWebClient";
+import { InstagramWebClient, type MediaInfoSummary } from "./instagramWebClient";
 import { HikerApiClient, HikerCacheMissError } from "./hikerApiClient";
 import { alterJpegBuffer, type AlterationLevel } from "./imageAlteration";
 import { makeUniqueImage, makeUniqueVideo, isImageFile, isVideoFile, ALL_MEDIA_EXTS } from "./makeUnique";
@@ -166,6 +166,16 @@ function igErrMsg(e: any): string {
 function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+
+function formatMediaInfoSummary(summary: MediaInfoSummary): string {
+  const metrics: string[] = [];
+  if (summary.likeCount !== undefined) metrics.push(`${summary.likeCount.toLocaleString("en-US")} likes`);
+  if (summary.commentCount !== undefined) metrics.push(`${summary.commentCount.toLocaleString("en-US")} comments`);
+  if (summary.viewCount !== undefined) metrics.push(`${summary.viewCount.toLocaleString("en-US")} views`);
+  if (summary.playCount !== undefined) metrics.push(`${summary.playCount.toLocaleString("en-US")} plays`);
+  return metrics.length > 0 ? metrics.join(" · ") : "no public count fields returned";
+}
+
 const MAX_COMMENTS_PER_MEDIA = 50;
 function pickCommentCount(minValue: unknown, maxValue: unknown): number {
   const toCount = (value: unknown) => {
@@ -2808,6 +2818,25 @@ class AutomationEngine {
     return Math.random() * 100 < skipChance;
   }
 
+  private rollPostInfoLookupChance(settings: any): { allowed: boolean; chance: number } {
+    const readPercent = (key: string): number => {
+      const raw = settings?.[key];
+      const parsed = raw === undefined || raw === null ? 100 : Number(raw);
+      return Number.isFinite(parsed)
+        ? Math.min(100, Math.max(0, Math.floor(parsed)))
+        : 100;
+    };
+    const min = readPercent("viewPostInfoPercentMin");
+    const max = readPercent("viewPostInfoPercentMax");
+    const chance = randInt(Math.min(min, max), Math.max(min, max));
+    return { chance, allowed: Math.random() * 100 < chance };
+  }
+
+  private async getSharedPostInfoSettings(profileId: number): Promise<any> {
+    const tools = await storage.getToolsByProfile(profileId);
+    return tools.find(t => t.type === "human_sessions")?.settings ?? {};
+  }
+
   // Legacy browser human session helper.
   // Navigates the EB to Instagram pages to simulate human presence without any mobile API call.
   private async runBrowserOnlyHumanSession(profile: Profile, tool: Tool, state: ProfileState): Promise<void> {
@@ -5185,10 +5214,20 @@ class AutomationEngine {
                       for (const profilePost of profilePosts) {
                         if (postsOpened >= postViewMax) break;
                         if (Math.random() * 100 >= postViewPct) continue;
+                        const infoChance = this.rollPostInfoLookupChance(s);
+                        if (!infoChance.allowed) {
+                          this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
+                          continue;
+                        }
                         try {
-                          await client.viewFeedPost(profilePost.mediaId);
-                          console.log(`[engine] @${profile.username}: 🖼 opened post ${profilePost.shortcode} from @${item.username}'s profile`);
-                          this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile`);
+                          const postInfo = await client.viewFeedPost(profilePost.mediaId);
+                          if (!postInfo) {
+                            this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "error", "Post info request returned no media item");
+                            continue;
+                          }
+                          const metrics = formatMediaInfoSummary(postInfo);
+                          console.log(`[engine] @${profile.username}: 🖼 opened post ${profilePost.shortcode} from @${item.username}'s profile · ${metrics}`);
+                          this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile · ${metrics}`);
                           postsOpened++;
                         } catch (e: any) {
                           if (await checkSessionErr(e, "view_profile_post")) return;
@@ -6072,10 +6111,20 @@ class AutomationEngine {
            const exploreSavePctMax = Math.min(100, Math.max(exploreSavePctMin, Number((s as any).exploreSaveMediaPctMax ?? 0)));
 
           for (const item of toClick) {
+            const infoChance = this.rollPostInfoLookupChance(s);
+            if (!infoChance.allowed) {
+              this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
+              continue;
+            }
             try {
-              await c.viewFeedPost(item.mediaId);
-              console.log(`[engine] @${profile.username}: 🔍 opened explore post ${item.shortcode} by @${item.username}`);
-              this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "ok", "Opened post from explore page");
+              const postInfo = await c.viewFeedPost(item.mediaId);
+              if (!postInfo) {
+                this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "error", "Post info request returned no media item");
+                continue;
+              }
+              const metrics = formatMediaInfoSummary(postInfo);
+              console.log(`[engine] @${profile.username}: 🔍 opened explore post ${item.shortcode} by @${item.username} · ${metrics}`);
+              this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "ok", `Opened post from explore page · ${metrics}`);
             } catch (e: any) {
               if (await checkSessionErr(e, "explore_view_post")) return;
               console.warn(`[engine] @${profile.username}: explore view post error: ${e?.message}`);
@@ -6180,10 +6229,20 @@ class AutomationEngine {
                 let profilePostsOpened = 0;
                 for (const profilePost of profilePosts) {
                   if (profilePostsOpened >= profileClickMax) break;
+                  const infoChance = this.rollPostInfoLookupChance(s);
+                  if (!infoChance.allowed) {
+                    this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
+                    continue;
+                  }
                   try {
-                    await c.viewFeedPost(profilePost.mediaId);
-                    console.log(`[engine] @${profile.username}: 🖼 opened post ${profilePost.shortcode} from @${item.username}'s profile (explore)`);
-                    this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile (explore)`);
+                    const postInfo = await c.viewFeedPost(profilePost.mediaId);
+                    if (!postInfo) {
+                      this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "error", "Post info request returned no media item");
+                      continue;
+                    }
+                    const metrics = formatMediaInfoSummary(postInfo);
+                    console.log(`[engine] @${profile.username}: 🖼 opened post ${profilePost.shortcode} from @${item.username}'s profile (explore) · ${metrics}`);
+                    this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile (explore) · ${metrics}`);
                     profilePostsOpened++;
                   } catch (e: any) {
                     if (await checkSessionErr(e, "explore_profile_post")) return;
@@ -6501,6 +6560,9 @@ class AutomationEngine {
     // Click Feed Posts — how many scrolled posts to click and individually view (likes fire inside each clicked post).
     const injectProfileBrowsingClickPostMin       = Math.max(0, s.injectProfileBrowsingClickPostMin ?? 0);
     const injectProfileBrowsingClickPostMax       = Math.max(injectProfileBrowsingClickPostMin, s.injectProfileBrowsingClickPostMax ?? 0);
+    const postInfoSettings = injectProfileBrowsingClickPostMax > 0
+      ? await this.getSharedPostInfoSettings(profile.id)
+      : {};
     const injectProfileBrowsingSaveMediaPctMin    = Math.max(0, s.injectProfileBrowsingSaveMediaPctMin ?? 0);
     const injectProfileBrowsingSaveMediaPctMax    = Math.max(0, s.injectProfileBrowsingSaveMediaPctMax ?? 0);
     const injectProfileBrowsingSaveMediaScrollMin = Math.max(0, s.injectProfileBrowsingSaveMediaScrollMin ?? 0);
@@ -6681,10 +6743,20 @@ class AutomationEngine {
             const toClick = shuffled.slice(0, clickCount);
             engineLog("INFO", `@${profile.username}: [${label}] clicking ${clickCount} post(s) from @${targetUser.username}'s profile`);
             for (const post of toClick) {
+              const infoChance = this.rollPostInfoLookupChance(postInfoSettings);
+              if (!infoChance.allowed) {
+                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
+                continue;
+              }
               try {
-                await client.viewFeedPost(post.mediaId);
-                engineLog("INFO", `@${profile.username}: [${label}] opened post ${post.shortcode} from @${targetUser.username}'s profile`);
-                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "ok", `Clicked post from profile`);
+                const postInfo = await client.viewFeedPost(post.mediaId);
+                if (!postInfo) {
+                  this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "error", "Post info request returned no media item");
+                  continue;
+                }
+                const metrics = formatMediaInfoSummary(postInfo);
+                engineLog("INFO", `@${profile.username}: [${label}] opened post ${post.shortcode} from @${targetUser.username}'s profile · ${metrics}`);
+                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "ok", `Clicked post from profile · ${metrics}`);
                 // Apply like inside the clicked post view if configured.
                 if (injectProfileBrowsingLikePctMax > 0) {
                   const likePct = randInt(injectProfileBrowsingLikePctMin, injectProfileBrowsingLikePctMax);
@@ -6699,7 +6771,10 @@ class AutomationEngine {
                     } catch { /* non-critical */ }
                   }
                 }
-              } catch { /* non-critical */ }
+              } catch (e: any) {
+                engineLog("WARN", `@${profile.username}: [${label}] post open failed for ${post.shortcode}: ${e?.message ?? e}`);
+                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "error", `Post open failed: ${e?.message ?? e}`);
+              }
             }
           },
         );

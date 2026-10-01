@@ -160335,7 +160335,24 @@ var InstagramWebClient = class {
       const ig = await this._newRestoredMobileIgClient();
       if (!ig) return false;
       const j = await ig.media.info(mediaId);
-      return !!j?.items?.length;
+      const media = j?.items?.[0];
+      if (!media) return false;
+      const count = (...values) => {
+        for (const value of values) {
+          if (typeof value === "number" && Number.isFinite(value)) return value;
+          if (typeof value === "string" && value.trim()) {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) return parsed;
+          }
+        }
+        return void 0;
+      };
+      return {
+        likeCount: count(media.like_count),
+        commentCount: count(media.comment_count),
+        viewCount: count(media.view_count, media.video_view_count),
+        playCount: count(media.play_count, media.video_play_count)
+      };
     }, `View post ${mediaId}`);
   }
   // ── Open and play a reel from the feed (simulates tapping + watching) ────
@@ -164837,6 +164854,14 @@ function igErrMsg(e) {
 function randInt2(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+function formatMediaInfoSummary(summary) {
+  const metrics = [];
+  if (summary.likeCount !== void 0) metrics.push(`${summary.likeCount.toLocaleString("en-US")} likes`);
+  if (summary.commentCount !== void 0) metrics.push(`${summary.commentCount.toLocaleString("en-US")} comments`);
+  if (summary.viewCount !== void 0) metrics.push(`${summary.viewCount.toLocaleString("en-US")} views`);
+  if (summary.playCount !== void 0) metrics.push(`${summary.playCount.toLocaleString("en-US")} plays`);
+  return metrics.length > 0 ? metrics.join(" \xB7 ") : "no public count fields returned";
+}
 var MAX_COMMENTS_PER_MEDIA = 50;
 function pickCommentCount(minValue, maxValue) {
   const toCount = (value) => {
@@ -167099,6 +167124,21 @@ ${err?.stack ?? ""}`);
     const skipChance = randInt2(min, max);
     return Math.random() * 100 < skipChance;
   }
+  rollPostInfoLookupChance(settings) {
+    const readPercent = (key) => {
+      const raw = settings?.[key];
+      const parsed = raw === void 0 || raw === null ? 100 : Number(raw);
+      return Number.isFinite(parsed) ? Math.min(100, Math.max(0, Math.floor(parsed))) : 100;
+    };
+    const min = readPercent("viewPostInfoPercentMin");
+    const max = readPercent("viewPostInfoPercentMax");
+    const chance2 = randInt2(Math.min(min, max), Math.max(min, max));
+    return { chance: chance2, allowed: Math.random() * 100 < chance2 };
+  }
+  async getSharedPostInfoSettings(profileId) {
+    const tools2 = await storage.getToolsByProfile(profileId);
+    return tools2.find((t2) => t2.type === "human_sessions")?.settings ?? {};
+  }
   // Legacy browser human session helper.
   // Navigates the EB to Instagram pages to simulate human presence without any mobile API call.
   async runBrowserOnlyHumanSession(profile, tool, state) {
@@ -169107,10 +169147,20 @@ ${err?.stack ?? ""}`);
                       for (const profilePost of profilePosts) {
                         if (postsOpened >= postViewMax) break;
                         if (Math.random() * 100 >= postViewPct) continue;
+                        const infoChance = this.rollPostInfoLookupChance(s);
+                        if (!infoChance.allowed) {
+                          this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
+                          continue;
+                        }
                         try {
-                          await client.viewFeedPost(profilePost.mediaId);
-                          console.log(`[engine] @${profile.username}: \u{1F5BC} opened post ${profilePost.shortcode} from @${item.username}'s profile`);
-                          this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile`);
+                          const postInfo = await client.viewFeedPost(profilePost.mediaId);
+                          if (!postInfo) {
+                            this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "error", "Post info request returned no media item");
+                            continue;
+                          }
+                          const metrics = formatMediaInfoSummary(postInfo);
+                          console.log(`[engine] @${profile.username}: \u{1F5BC} opened post ${profilePost.shortcode} from @${item.username}'s profile \xB7 ${metrics}`);
+                          this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile \xB7 ${metrics}`);
                           postsOpened++;
                         } catch (e) {
                           if (await checkSessionErr(e, "view_profile_post")) return;
@@ -169918,10 +169968,20 @@ ${err?.stack ?? ""}`);
           const exploreSavePctMin = Math.min(100, Math.max(0, Number(s.exploreSaveMediaPctMin ?? 0)));
           const exploreSavePctMax = Math.min(100, Math.max(exploreSavePctMin, Number(s.exploreSaveMediaPctMax ?? 0)));
           for (const item of toClick) {
+            const infoChance = this.rollPostInfoLookupChance(s);
+            if (!infoChance.allowed) {
+              this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
+              continue;
+            }
             try {
-              await c3.viewFeedPost(item.mediaId);
-              console.log(`[engine] @${profile.username}: \u{1F50D} opened explore post ${item.shortcode} by @${item.username}`);
-              this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "ok", "Opened post from explore page");
+              const postInfo = await c3.viewFeedPost(item.mediaId);
+              if (!postInfo) {
+                this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "error", "Post info request returned no media item");
+                continue;
+              }
+              const metrics = formatMediaInfoSummary(postInfo);
+              console.log(`[engine] @${profile.username}: \u{1F50D} opened explore post ${item.shortcode} by @${item.username} \xB7 ${metrics}`);
+              this.logAction(profile.id, tool.id, "view_post", item.username, item.shortcode, "post", "ok", `Opened post from explore page \xB7 ${metrics}`);
             } catch (e) {
               if (await checkSessionErr(e, "explore_view_post")) return;
               console.warn(`[engine] @${profile.username}: explore view post error: ${e?.message}`);
@@ -170022,10 +170082,20 @@ ${err?.stack ?? ""}`);
                 let profilePostsOpened = 0;
                 for (const profilePost of profilePosts) {
                   if (profilePostsOpened >= profileClickMax) break;
+                  const infoChance2 = this.rollPostInfoLookupChance(s);
+                  if (!infoChance2.allowed) {
+                    this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "skipped", `Post open skipped by ${infoChance2.chance}% post-info chance`);
+                    continue;
+                  }
                   try {
-                    await c3.viewFeedPost(profilePost.mediaId);
-                    console.log(`[engine] @${profile.username}: \u{1F5BC} opened post ${profilePost.shortcode} from @${item.username}'s profile (explore)`);
-                    this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile (explore)`);
+                    const postInfo = await c3.viewFeedPost(profilePost.mediaId);
+                    if (!postInfo) {
+                      this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "error", "Post info request returned no media item");
+                      continue;
+                    }
+                    const metrics = formatMediaInfoSummary(postInfo);
+                    console.log(`[engine] @${profile.username}: \u{1F5BC} opened post ${profilePost.shortcode} from @${item.username}'s profile (explore) \xB7 ${metrics}`);
+                    this.logAction(profile.id, tool.id, "view_profile_post", item.username, profilePost.shortcode, "post", "ok", `Opened post from @${item.username}'s profile (explore) \xB7 ${metrics}`);
                     profilePostsOpened++;
                   } catch (e) {
                     if (await checkSessionErr(e, "explore_profile_post")) return;
@@ -170306,6 +170376,7 @@ ${err?.stack ?? ""}`);
     const injectProfileBrowsingLikeScrollMax = Math.max(0, s.injectProfileBrowsingLikeScrollMax ?? 0);
     const injectProfileBrowsingClickPostMin = Math.max(0, s.injectProfileBrowsingClickPostMin ?? 0);
     const injectProfileBrowsingClickPostMax = Math.max(injectProfileBrowsingClickPostMin, s.injectProfileBrowsingClickPostMax ?? 0);
+    const postInfoSettings = injectProfileBrowsingClickPostMax > 0 ? await this.getSharedPostInfoSettings(profile.id) : {};
     const injectProfileBrowsingSaveMediaPctMin = Math.max(0, s.injectProfileBrowsingSaveMediaPctMin ?? 0);
     const injectProfileBrowsingSaveMediaPctMax = Math.max(0, s.injectProfileBrowsingSaveMediaPctMax ?? 0);
     const injectProfileBrowsingSaveMediaScrollMin = Math.max(0, s.injectProfileBrowsingSaveMediaScrollMin ?? 0);
@@ -170425,10 +170496,20 @@ ${err?.stack ?? ""}`);
             const toClick = shuffled.slice(0, clickCount);
             engineLog("INFO", `@${profile.username}: [${label}] clicking ${clickCount} post(s) from @${targetUser.username}'s profile`);
             for (const post of toClick) {
+              const infoChance = this.rollPostInfoLookupChance(postInfoSettings);
+              if (!infoChance.allowed) {
+                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "skipped", `Post open skipped by ${infoChance.chance}% post-info chance`);
+                continue;
+              }
               try {
-                await client.viewFeedPost(post.mediaId);
-                engineLog("INFO", `@${profile.username}: [${label}] opened post ${post.shortcode} from @${targetUser.username}'s profile`);
-                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "ok", `Clicked post from profile`);
+                const postInfo = await client.viewFeedPost(post.mediaId);
+                if (!postInfo) {
+                  this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "error", "Post info request returned no media item");
+                  continue;
+                }
+                const metrics = formatMediaInfoSummary(postInfo);
+                engineLog("INFO", `@${profile.username}: [${label}] opened post ${post.shortcode} from @${targetUser.username}'s profile \xB7 ${metrics}`);
+                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "ok", `Clicked post from profile \xB7 ${metrics}`);
                 if (injectProfileBrowsingLikePctMax > 0) {
                   const likePct = randInt2(injectProfileBrowsingLikePctMin, injectProfileBrowsingLikePctMax);
                   if (Math.random() * 100 < likePct) {
@@ -170443,7 +170524,9 @@ ${err?.stack ?? ""}`);
                     }
                   }
                 }
-              } catch {
+              } catch (e) {
+                engineLog("WARN", `@${profile.username}: [${label}] post open failed for ${post.shortcode}: ${e?.message ?? e}`);
+                this.logAction(profile.id, tool.id, "view_profile_post", targetUser.username, post.shortcode, "post", "error", `Post open failed: ${e?.message ?? e}`);
               }
             }
           }

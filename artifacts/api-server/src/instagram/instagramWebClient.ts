@@ -362,6 +362,13 @@ function normalizeMobileDeviceString(deviceString: string): string {
 // no direct HTTP call at this level; the transport is "Equinox" (internal).
 type ApiCallLogger = (op: string, durationMs: number, message?: string, isError?: boolean, isTransportCall?: boolean) => void;
 
+export type MediaInfoSummary = {
+  likeCount?: number;
+  commentCount?: number;
+  viewCount?: number;
+  playCount?: number;
+};
+
 // Keep this version current — Instagram rejects signup requests from versions
 // older than a few months with error_type:"needs_upgrade".
 // Instagram login currently requires the 449 release line as of 2026-09-22.
@@ -4257,12 +4264,29 @@ export class InstagramWebClient {
   // Fetches /media/{mediaId}/info/ — the call Instagram makes when you tap a post.
   // Produces a "ViewPost" entry in the API-call log so per-post views from
   // inject-browsing appear individually in the Export API Calls CSV.
-  async viewFeedPost(mediaId: string): Promise<boolean> {
+  async viewFeedPost(mediaId: string): Promise<MediaInfoSummary | false> {
     return this.timed("ViewPost", async () => {
       const ig = await this._newRestoredMobileIgClient();
       if (!ig) return false;
       const j = await ig.media.info(mediaId);
-      return !!(j?.items?.length);
+      const media = j?.items?.[0] as any;
+      if (!media) return false;
+      const count = (...values: unknown[]): number | undefined => {
+        for (const value of values) {
+          if (typeof value === "number" && Number.isFinite(value)) return value;
+          if (typeof value === "string" && value.trim()) {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) return parsed;
+          }
+        }
+        return undefined;
+      };
+      return {
+        likeCount: count(media.like_count),
+        commentCount: count(media.comment_count),
+        viewCount: count(media.view_count, media.video_view_count),
+        playCount: count(media.play_count, media.video_play_count),
+      };
     }, `View post ${mediaId}`);
   }
 

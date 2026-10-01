@@ -91,6 +91,9 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       { key: "hs_emulationGroup", label: "Emulation Group", description: "Enable / disable the entire Emulation section", subOptions: [
         { key: "emg_enabled", label: "Enabled", settingKeys: ["emulationGroupEnabled"] },
       ]},
+      { key: "postInfoLookup", label: "Post Info Lookup", description: "Shared chance for post-info requests triggered by explicit post opens", subOptions: [
+        { key: "post_info_chance", label: "Chance per opened post", settingKeys: ["viewPostInfoPercentMin","viewPostInfoPercentMax"] },
+      ]},
       { key: "viewTimelineFeed", label: "View Timeline Feed", description: "Scrolling through the main feed + inline liking", subOptions: [
         { key: "vtf_enabled",    label: "Enabled",                                       settingKeys: ["viewTimelineFeedEnabled"] },
         { key: "vtf_count",      label: "Posts per session",                 settingKeys: ["viewTimelineFeedMin","viewTimelineFeedMax"] },
@@ -611,6 +614,8 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0,
       likeTimelinePostsPercentMax: 0,
+      viewPostInfoPercentMin: 100,
+      viewPostInfoPercentMax: 100,
       viewReelsEnabled: false,
       viewReelsCommentsMin: 0,
       viewReelsCommentsMax: 0,
@@ -777,6 +782,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
       saveMediaEnabled: false, saveMediaPercentMin: 20, saveMediaPercentMax: 20,
       sharePostPercentMin: 0, sharePostPercentMax: 0,
       likeTimelinePostsPercentMin: 0, likeTimelinePostsPercentMax: 0,
+      viewPostInfoPercentMin: 100, viewPostInfoPercentMax: 100,
       viewReelsEnabled: false, viewReelsCommentsMin: 0, viewReelsCommentsMax: 0,
       viewReelsOrderMin: 0, viewReelsOrderMax: 0,
       viewReelsNotUsedMin: 0, viewReelsNotUsedMax: 0,
@@ -1057,6 +1063,13 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
             />
             <Zap className="w-5 h-5 text-white shrink-0" />
             <h4 className="font-bold text-[17px] text-white">Emulation</h4>
+          </div>
+          <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              {pctInputs("viewPostInfoPercentMin", "viewPostInfoPercentMax")}
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Post info lookup %</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground">Per-post chance shared across tools; 0–0 skips opening and lookup.</span>
           </div>
           {(settings as any).emulationGroupEnabled !== false && (
           <div className="divide-y divide-border">
