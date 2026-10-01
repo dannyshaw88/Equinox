@@ -15,6 +15,12 @@ The private `/api/v1/media/{id}/re_share_to_feed/` route has returned HTML 404 r
 
 **How to apply:** Require explicit JSON `status:"ok"` before recording a share as successful. Do not retry the same share on another origin after an unconfirmed response; obtain a fresh native/browser request capture to establish the supported route and host before changing routing again.
 
+Public source research found that Instagram Android 447.0.0.21.81's home-feed Repost action runs `com.instagram.reposts.data.RepostsRepository$postRepost$2` and commits an `xdt_update_media_note_repost_text` mutation. The source documents the operation name, not its URL, document ID, variables, or wire payload: https://github.com/ReSo7200/InstaEclipse/blob/74bd7e1bc97386b06b595440d82106d9daa2dfae/app/src/main/java/ps/reso/instaeclipse/mods/ui/DisableRepostHook.java
+
+**Why:** This confirms the native feature's operation family, but not enough request data to safely implement it. A separate Threads client uses `POST /api/v1/media/{id}/repost/` against `i.instagram.com` with Threads signing; the shared host does not make that route evidence for Instagram Repost: https://github.com/molkex/instagram-private-api/blob/7e5f33532977f578e9ec9c1326343069b880ad29/ts/src/threads.ts
+
+**How to apply:** Do not substitute the Threads `/repost/` route or the old `/re_share_to_feed/` route for Instagram's Repost feature. Require a native Instagram capture containing the request URL, method, operation/doc_id, non-sensitive variables/body, and response before changing the route. Never replay or trigger a live repost merely to test a guess.
+
 Keep upload/publish separate from resharing an existing Reel. The upload configure flow requires an `upload_id` for newly uploaded media and uses `clips_share_preview_to_feed`; it is not evidence that `configure_to_reel` or `upload_finish` can reshare a fetched media ID.
 
 **Why:** The project’s upload path carries uploaded-media metadata, while `sharePostToFeed` acts on an existing media ID. Substituting upload/finalize endpoints could create or alter a post rather than repost the selected Reel.
