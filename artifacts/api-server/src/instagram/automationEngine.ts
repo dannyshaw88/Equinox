@@ -2194,7 +2194,7 @@ class AutomationEngine {
         // fire simultaneously in the API call log even when the full
         // inter-action delay had been respected.
         //
-        // isTransportCall=true  → real HTTP hit (FriendshipsCreate, MediaLike, etc.) → transport "ja3"
+        // isTransportCall=true  → real HTTP hit (FriendshipsCreate, MediaLike, etc.) → standard TLS + HTTP/2
         // isTransportCall=false → high-level operation wrapper (FollowedUser, LikeMedia, etc.) → transport "Equinox"
         storage.createInstagramApiCall({
           profileId: profile.id,
@@ -2205,7 +2205,7 @@ class AutomationEngine {
           source: state.client!.apiCallSource,
           durationMs,
           isError: isError ?? false,
-          transport: isTransportCall ? "ja3" : "Equinox",
+          transport: isTransportCall ? "node-tls-http2" : "Equinox",
         }).catch(() => {});
       });
     }

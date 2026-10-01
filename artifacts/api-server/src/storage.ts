@@ -614,7 +614,7 @@ export class DatabaseStorage implements IStorage {
         ipAddress: call.ipAddress ?? "",
         durationMs: call.durationMs ?? 0,
         isError: call.isError ?? false,
-        transport: call.transport ?? "ja3",
+        transport: call.transport ?? "node-tls-http2",
       }).returning();
 
       // Prune to keep the 1,000 most recent rows PER profile — checked every 50 inserts.

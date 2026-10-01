@@ -1,22 +1,9 @@
-/**
- * tlsTransport.ts — CycleTLS-based HTTP transport for Instagram API calls.
- *
- * Replaces Node.js's OpenSSL TLS stack with a Go-based OkHttp4-compatible TLS
- * implementation. This makes every Instagram API request look like it was sent
- * from a real Android phone (Pixel 9 / Android 13) at the wire level:
- *  - JA3 fingerprint matches OkHttp 4.x (Android Instagram app)
- *  - Cipher suite order matches Android's TLS implementation
- *  - HTTP/2 SETTINGS frame matches Android OkHttp
- *
- * Fallback behavior is operation-specific: patched SDK calls fail closed when
- * CycleTLS is unavailable, while multipart uploads have an explicit native
- * HTTPS path. These branches do not establish the historical transport used
- * before CycleTLS or the private transport used by another automation product.
- */
-
 import { IgNetworkError } from "instagram-private-api";
 import type { IgApiClient } from "instagram-private-api";
-import * as net from "node:net";
+import {
+  requestHttp2ThroughProxy,
+  type Http2ProxySession,
+} from "./http2ProxyTransport.js";
 
 /**
  * Parse Instagram JSON without rounding unsafe integer literals such as media
@@ -92,148 +79,109 @@ export function parseInstagramJson(rawBody: string): any {
   return JSON.parse(output);
 }
 
-// Finds a free TCP port by binding a throwaway server to port 0 (OS picks any
-// free port) and reading back the kernel-assigned port. Used so CycleTLS's Go
-// sidecar never collides with another process's WS_PORT on this machine — the
-// library defaults to a fixed port 9119, which crash-loops if two processes
-// (e.g. a duplicate "artifact" workflow running the same package) both try to
-// bind it at once. Falls back to the library default if the probe fails.
-async function findFreeTcpPort(fallback = 9119): Promise<number> {
-  return new Promise((resolve) => {
-    const srv = net.createServer();
-    srv.unref();
-    srv.on("error", () => resolve(fallback));
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : fallback;
-      srv.close(() => resolve(port));
-    });
-  });
-}
-
-// ── OkHttp 4 / Android 13 JA3 fingerprint ────────────────────────────────────
-// Cipher suites (decimal):
-//   TLS_AES_128_GCM_SHA256 (4865), TLS_AES_256_GCM_SHA384 (4866),
-//   TLS_CHACHA20_POLY1305_SHA256 (4867),
-//   TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (49195),
-//   TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (49199),
-//   TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 (49196),
-//   TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 (49200),
-//   TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 (52393),
-//   TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 (52392),
-//   TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA (49171),
-//   TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA (49172),
-//   TLS_RSA_WITH_AES_128_GCM_SHA256 (156), TLS_RSA_WITH_AES_256_GCM_SHA384 (157),
-//   TLS_RSA_WITH_AES_128_CBC_SHA (47), TLS_RSA_WITH_AES_256_CBC_SHA (53)
-// Extension 98 = compress_certificate (RFC 8879).  CycleTLS's Go binary
-// advertises it in the ClientHello (because it's listed in the JA3) but
-// cannot actually handle the handshake when the server accepts it — the
-// subprocess returns status 0 with "Extension {{ 98 }} is not Supported by
-// CycleTLS".  Removing it from the JA3 lets CycleTLS complete the handshake.
-// The remaining fingerprint is still a valid OkHttp4 ClientHello.
-export const OKHTTP4_JA3 =
-  "771," +
-  "4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53," +
-  "0-23-65281-10-11-35-16-5-13-51-43-17513-27-21," +
-  "29-23-24," +
-  "0";
-
-// ── Chrome 120 JA3 fingerprint ────────────────────────────────────────────────
-// Used for action calls (follow, like, DM, unfollow) that originate from a
-// Chrome-based EB session.  Instagram's backend gates write-operation endpoints
-// (friendships/create etc.) on the presence of a Bearer token when it sees the
-// OkHttp4 Android JA3 fingerprint — because real Android apps always carry one.
-// EB sessions use web cookies (Chrome origin) so no Bearer token is ever issued.
-// Switching these calls to Chrome JA3 removes the Bearer requirement: Instagram
-// treats the request as a browser-origin write call and accepts it on cookies alone.
-// Bootstrap/verify calls stay on OkHttp4_JA3 — they are read-only and work fine.
-export const CHROME120_JA3 =
-  "771," +
-  "4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53," +
-  "0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513," +
-  "29-23-24," +
-  "0";
-
-// ── Singleton CycleTLS client ─────────────────────────────────────────────────
-
-type CycleTLSClient = {
-  (url: string, options: Record<string, unknown>, method: string): Promise<{
-    status: number;
-    // CycleTLS v2.x changed the response field name from `.body` to `.data`.
-    // `.data` holds the parsed body (JSON object) or the raw string, depending
-    // on the responseType option.  `.body` no longer exists in v2.x.
-    data: any;
-    body?: never; // explicitly absent — do not read this
-    headers: Record<string, string | string[]>;
-  }>;
-  exit(): void;
-};
-
-let _client: CycleTLSClient | null = null;
-let _initPromise: Promise<CycleTLSClient | null> | null = null;
-let _initFailed = false;
-
-async function getClient(): Promise<CycleTLSClient | null> {
-  if (_initFailed) return null;
-  if (_client) return _client;
-  if (_initPromise) return _initPromise;
-
-  _initPromise = (async (): Promise<CycleTLSClient | null> => {
-    try {
-      const { default: initCycleTLS } = await import("cycletls");
-      const port = await findFreeTcpPort();
-      const client = await initCycleTLS({ port });
-      _client = client as unknown as CycleTLSClient;
-      console.log("[tlsTrans] CycleTLS initialised — OkHttp4 JA3 fingerprint active");
-
-      const cleanup = () => {
-        try { (_client as any)?.exit(); } catch {}
-      };
-      process.once("exit", cleanup);
-      process.once("SIGTERM", cleanup);
-      process.once("SIGINT", cleanup);
-
-      return _client;
-    } catch (err: any) {
-      console.warn(
-        `[tlsTrans] CycleTLS init failed — falling back to Node.js TLS: ${err?.message ?? err}`,
-      );
-      _initFailed = true;
-      return null;
-    }
-  })();
-
-  return _initPromise;
-}
-
-/**
- * Call once at server startup to pre-warm the CycleTLS Go subprocess.
- * Without this the very first request pays the subprocess startup cost (~300 ms).
- */
-export function warmupTls(): void {
-  getClient().catch(() => {});
-}
-
-// ── Shared helpers ────────────────────────────────────────────────────────────
-
 function proxyHost(proxyUrl: string): string {
-  try { return new URL(proxyUrl).hostname; } catch { return proxyUrl; }
+  try {
+    return new URL(proxyUrl).hostname;
+  } catch {
+    return "unknown";
+  }
 }
 
-function extractSetCookies(headers: Record<string, string | string[]>): string[] {
+function responseCookies(headers: Record<string, string | string[]>): string[] {
   const raw = headers["set-cookie"];
-  const list: string[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  return list.map((c) => c.split(";")[0]);
+  const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return values.map((cookie) => cookie.split(";")[0]);
 }
 
-// ── tlsRequest ────────────────────────────────────────────────────────────────
+function headerValue(
+  headers: Record<string, string | string[]>,
+  name: string,
+): string | undefined {
+  const value = headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getCookieString(options: any, url: string): string {
+  if (!options.jar) return "";
+  try {
+    const innerJar = options.jar["_jar"];
+    if (innerJar?.getCookiesSync) {
+      return (innerJar.getCookiesSync(url) as any[])
+        .map((cookie: any) => `${cookie.key}=${cookie.value}`)
+        .join("; ");
+    }
+    if (typeof options.jar.getCookieStringSync === "function") {
+      return options.jar.getCookieStringSync(url) ?? "";
+    }
+  } catch {
+    // The SDK can still provide a Cookie header in options.headers.
+  }
+  return "";
+}
+
+function parseJsonOrRaw(rawBody: string): any {
+  try {
+    return parseInstagramJson(rawBody);
+  } catch {
+    return null;
+  }
+}
+
+function logGenericFailure(
+  label: string,
+  method: string,
+  path: string,
+  status: number,
+  json: any,
+  body: string,
+  cookieStr: string,
+): void {
+  if (
+    status !== 200 ||
+    !json ||
+    typeof json !== "object" ||
+    json.status !== "fail" ||
+    ("spam" in json) ||
+    ("feedback_required" in json) ||
+    !/something went wrong|sorry/i.test(String(json.message ?? ""))
+  ) {
+    return;
+  }
+
+  const cookieCsrf = cookieStr.match(/csrftoken=([^;]+)/)?.[1];
+  let signedCsrf: string | undefined;
+  let signedUuid: string | undefined;
+  const match = body.match(/signed_body=([^&]+)/);
+  if (match) {
+    const raw = match[1];
+    const dotIndex = raw.indexOf(".");
+    const jsonPart = dotIndex === -1 ? raw : raw.slice(dotIndex + 1);
+    try {
+      const payload = JSON.parse(jsonPart);
+      signedCsrf = payload._csrftoken;
+      signedUuid = payload._uuid;
+    } catch {
+      // Some signed bodies are percent-encoded; avoid logging the full payload.
+    }
+  }
+  const csrfMismatch = signedCsrf != null && cookieCsrf != null && signedCsrf !== cookieCsrf;
+  console.warn(
+    `[${label}][DIAG] ${method} ${path} — generic rejection (HTTP 200, status:fail). ` +
+    `cookie_csrf=${cookieCsrf ?? "MISSING"} signed_csrf=${signedCsrf ?? "n/a"} ` +
+    `csrf_MISMATCH=${csrfMismatch} uuid=${signedUuid ?? "n/a"} ` +
+    `req_body_preview=${body.slice(0, 300)}`,
+  );
+  if (csrfMismatch) {
+    console.error(
+      `[${label}][DIAG] CSRF token mismatch: signed body and Cookie header carry different values.`,
+    );
+  }
+}
+
 /**
- * Drop-in replacement for the igReq() helper in instagramWebClient.ts.
- *
- * Routes through CycleTLS (OkHttp4 JA3) when available; falls back to
- * Node.js HTTPS via https-proxy-agent when CycleTLS is unavailable.
- *
- * IP-leak prevention is enforced: a missing proxyUrl always throws.
+ * Sends an Instagram API request through a configured HTTP proxy using
+ * Node's standard TLS implementation and HTTP/2. No custom TLS fingerprint
+ * is supplied. A missing proxy always fails closed.
  */
 export async function tlsRequest(opts: {
   host?: string;
@@ -243,34 +191,7 @@ export async function tlsRequest(opts: {
   body?: string;
   cookieJar?: string[];
   proxyUrl?: string;
-  /**
-   * Skip CycleTLS (OkHttp4 JA3) and use Node.js HTTPS directly.
-   *
-   * Use this when the request must appear to come from a standard TLS client
-   * (e.g. Chrome/Node.js) rather than an Android OkHttp4 client.  The primary
-   * use-case is account *creation*: there is no existing device fingerprint to
-   * preserve, so CycleTLS's Android JA3 fingerprint offers no benefit and can
-   * trigger Instagram's bot detection when paired with a non-Android User-Agent.
-   */
-  forceNodeTls?: boolean;
-  /**
-   * Override the JA3 fingerprint used for this specific request.
-   * Defaults to OKHTTP4_JA3 (Android) when omitted.
-   * Pass CHROME120_JA3 for write-operation endpoints (friendships/create,
-   * media/like, etc.) that originate from EB web sessions — Instagram requires
-   * a Bearer token for Android-fingerprinted write calls but not for Chrome ones.
-   * Only used when forceNodeTls=false (the CycleTLS path).
-   */
-  ja3Override?: string;
-  /**
-   * Pre-created HttpsProxyAgent to reuse for this request.
-   * When supplied the agent is NOT destroyed after the request — the caller
-   * owns the lifecycle and must destroy it when done.
-   * Used to share the same proxy tunnel between rupload and configure so
-   * Instagram routes both to the same backend shard.
-   * Only honoured when forceNodeTls=true (Node.js HTTPS path).
-   */
-  agentOverride?: any;
+  sessionOverride?: Http2ProxySession;
 }): Promise<{
   status: number;
   cookies: string[];
@@ -286,12 +207,8 @@ export async function tlsRequest(opts: {
     body,
     cookieJar = [],
     proxyUrl,
-    forceNodeTls = false,
-    ja3Override,
-    agentOverride,
+    sessionOverride,
   } = opts;
-
-  // ── IP-LEAK PREVENTION ──────────────────────────────────────────────────────
   if (!proxyUrl) {
     throw new Error(
       `[IP-LEAK BLOCKED] TLS request ${method} ${path} refused — no proxy configured. ` +
@@ -299,297 +216,70 @@ export async function tlsRequest(opts: {
     );
   }
 
+  const url = new URL(path, `https://${host}`);
+  const cookieStr = cookieJar.join("; ");
   const allHeaders: Record<string, string> = {
     ...headers,
-    ...(cookieJar.length ? { Cookie: cookieJar.join("; ") } : {}),
-    // NOTE: Content-Length is NOT added here for the CycleTLS path — Go's fhttp
-    // transport derives it automatically from the body string. Passing it as a
-    // regular header produces a duplicate Content-Length which some Instagram
-    // servers reject. It IS added for the forceNodeTls (Node.js HTTPS) path below.
+    ...(cookieStr ? { Cookie: cookieStr } : {}),
   };
-
-  const client = await getClient();
-
-  // ── CycleTLS path (OkHttp4 JA3) — REQUIRED for all non-account-creation calls ─
-  // Node.js TLS is only permitted when forceNodeTls=true (account creation, where
-  // no device fingerprint exists yet).  Any other path that reaches Node.js TLS
-  // exposes the OpenSSL JA3 fingerprint to Instagram — which is a clear bot signal.
-  if (!forceNodeTls) {
-    if (!client) {
-      throw new Error(
-        `[TLS-BLOCKED] CycleTLS failed to initialise — refusing to use Node.js TLS (exposes bot fingerprint). ` +
-        `Check that the CycleTLS Go binary is present and restart the server.`,
-      );
-    }
-
-    const url = `https://${host}${path}`;
-    const userAgent = allHeaders["User-Agent"] ?? "";
-    // Strip headers that Go's HTTP/2 transport manages automatically or explicitly
-    // forbids as regular headers (RFC 7540 §8.1.2.2):
-    //
-    //   User-Agent    → CycleTLS takes it as a dedicated top-level field, not a header.
-    //   Accept-Encoding → Go's fhttp adds "gzip" automatically and decompresses before
-    //                     returning resp.data; setting "identity" manually was a bot signal.
-    //   Host          → In HTTP/2 Go derives :authority from the URL.  Passing Host as a
-    //                   regular header alongside the auto-generated :authority causes a
-    //                   header conflict that Instagram rejects with "something went wrong".
-    //   Connection    → Hop-by-hop; FORBIDDEN in HTTP/2.  IgApiClient injects
-    //                   "Connection: close" via getDefaultHeaders(); removing it here
-    //                   prevents the generic 200 status:"fail" rejection on write calls.
-    //   Content-Length → Go sets it automatically from the body parameter.  Passing it
-    //                    manually produces a duplicate Content-Length header which can
-    //                    cause Instagram to reject the request.
-    const {
-      "User-Agent": _ua,
-      "Accept-Encoding": _ae,
-      "Host": _host,
-      "Connection": _conn,
-      "Content-Length": _cl,
-      ...headersWithoutUA
-    } = allHeaders;
-
-    // ── FULL WIRE DIAG (fires for every POST to friendships/create) ─────────────
-    const isFriendshipCall = path.includes("/friendships/");
-    if (isFriendshipCall) {
-      const maskedProxy = proxyUrl
-        .replace(/:[^:@]+@/, ":***@")        // hide proxy password
-        .replace(/^(https?:\/\/)[^:]+:/, "$1***:"); // hide proxy user too
-      console.warn(
-        `[tls:WIRE] ${method} ${url} via proxy=${maskedProxy}\n` +
-        `  userAgent: ${userAgent.slice(0, 80)}\n` +
-        `  headers: ${JSON.stringify(headersWithoutUA, null, 2)}\n` +
-        `  body(full): ${body ?? ""}`,
-      );
-    }
-
-    const t0 = Date.now();
-    let resp: { status: number; data: any; headers: Record<string, string | string[]> };
-    try {
-      resp = await client(
-        url,
-        {
-          body: body ?? "",
-          ja3: ja3Override ?? OKHTTP4_JA3,
-          userAgent,
-          headers: headersWithoutUA,
-          responseType: "text",
-          proxy: proxyUrl,
-          timeout: 30,
-          disableRedirect: false,
-          // Some proxy providers do SSL inspection (MITM) inside the CONNECT
-          // tunnel — they present their own cert instead of Instagram's.
-          // CycleTLS's Go binary verifies certs strictly by default, so it
-          // rejects the proxy cert and returns status=0 with an empty body.
-          // Setting insecureSkipVerify gives the Go binary the same leniency
-          // so it can route through MITM proxies.
-          insecureSkipVerify: true,
-        },
-        method.toLowerCase(),
-      );
-    } catch (err: any) {
-      const ph = proxyHost(proxyUrl);
-      console.error(
-        `[tls:req] ${method} ${host}${path} FAILED after ${Date.now() - t0}ms — proxy=${ph} err=${err?.message ?? err}`,
-      );
-      throw err;
-    }
-
-    const elapsed = Date.now() - t0;
-    if (elapsed > 10000) {
-      console.warn(
-        `[tls:req] ${method} ${host}${path} SLOW ${elapsed}ms via proxy=${proxyHost(proxyUrl)} status=${resp.status}`,
-      );
-    }
-
-    // NOTE: CycleTLS v2.x stores the response body in `.data`, NOT `.body`.
-    // `.data` is an already-parsed JSON object (or a raw string) when the
-    // request succeeds, or the Go error message string when status === 0.
-    if (resp.status !== 0) {
-      const cookies = extractSetCookies(resp.headers);
-      const rawBody = typeof resp.data === "string"
-        ? resp.data
-        : Buffer.isBuffer(resp.data)
-          ? (resp.data as Buffer).toString("utf8")
-          : (resp.data != null ? JSON.stringify(resp.data) : "");
-      let json: any = null;
-      try { json = parseInstagramJson(rawBody); } catch {
-        // resp.data may already be a parsed object when responseType==="json"
-        if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json = resp.data;
-      }
-
-      if (isFriendshipCall) {
-        console.warn(
-          `[tls:WIRE] ${method} ${url} → HTTP ${resp.status} elapsed=${elapsed}ms\n` +
-          `  resp_headers: ${JSON.stringify(resp.headers)}\n` +
-          `  resp_body(full): ${rawBody}`,
-        );
-      }
-
-      // ── Diagnostic: log full context when Instagram returns the generic technical
-      // rejection ("something went wrong" HTTP 200, status:"fail", no spam/feedback_required).
-      // This fires for all direct igReq() callers (follow, unfollow, DM, etc.) and tells
-      // us immediately whether it's a CSRF mismatch, missing fields, or an unknown cause.
-      if (
-        resp.status === 200 &&
-        json && typeof json === "object" &&
-        json.status === "fail" &&
-        !("spam" in json) && !("feedback_required" in json) &&
-        /something went wrong|sorry/i.test(String(json.message ?? ""))
-      ) {
-        const cookieStr = cookieJar.join("; ");
-        const cookieCsrf = cookieStr.match(/csrftoken=([^;]+)/)?.[1];
-        let signedCsrf: string | undefined;
-        let signedUuid: string | undefined;
-        if (typeof body === "string" && body.includes("signed_body=")) {
-          const m = body.match(/signed_body=([^&]+)/);
-          if (m) {
-            const raw = m[1];
-            const dotIdx = raw.indexOf(".");
-            const jsonPart = dotIdx !== -1 ? raw.slice(dotIdx + 1) : raw;
-            try {
-              const payload = JSON.parse(jsonPart);
-              signedCsrf = payload._csrftoken;
-              signedUuid = payload._uuid;
-            } catch { /* ignore parse errors */ }
-          }
-        }
-        const csrfMismatch = signedCsrf != null && cookieCsrf != null && signedCsrf !== cookieCsrf;
-        console.warn(
-          `[tls:req][DIAG] ${method} ${host}${path} — generic rejection (HTTP 200, status:fail). ` +
-          `cookie_csrf=${cookieCsrf ?? "MISSING"} signed_csrf=${signedCsrf ?? "n/a"} ` +
-          `csrf_MISMATCH=${csrfMismatch} uuid=${signedUuid ?? "n/a"} ` +
-          `req_body_preview=${(body ?? "").slice(0, 300)}`,
-        );
-        if (csrfMismatch) {
-          console.error(
-            `[tls:req][DIAG] *** CSRF TOKEN MISMATCH *** signed with csrf=${signedCsrf} ` +
-            `but Cookie header has csrf=${cookieCsrf}. ` +
-            `This is the root cause of "something went wrong" on write calls.`,
-          );
-        }
-      }
-
-      return { status: resp.status, cookies, json, rawBody, responseHeaders: resp.headers };
-    }
-
-    // Status 0 = CycleTLS got no HTTP response (proxy blocked the Go subprocess,
-    // CONNECT tunnel rejected, or connection refused).
-    // Do NOT fall back to Node.js TLS — that would expose the OpenSSL fingerprint.
-    const cycleTlsErr = resp.data != null
-      ? (typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data))
-      : "";
-    throw new Error(
-      `[TLS-BLOCKED] CycleTLS returned status 0 for ${method} ${host}${path}` +
-      ` (proxy blocked Go subprocess — check proxy settings).` +
-      ` err=${cycleTlsErr.slice(0, 200) || "(empty)"}`,
-    );
-  }
-
-  // ── Node.js TLS — forceNodeTls=true ──────────────────────────────────────────
-  // This is the current implementation's explicit native HTTPS branch. Its
-  // presence does not establish the pre-CycleTLS transport or the private
-  // transport used by Jarvee or SU Social.
-  if (body) allHeaders["Content-Length"] = String(Buffer.byteLength(body, "utf8"));
-  console.log(`[tls:req] forceNodeTls — using Node.js TLS for ${method} ${host}${path}`);
-  const { HttpsProxyAgent } = await import("https-proxy-agent");
-  const https = await import("node:https");
-  const zlib = await import("node:zlib");
-
-  // Use caller-supplied agent when provided (rupload/configure shared-tunnel mode).
-  // When we own the agent we destroy it in finally; when borrowed we leave it alive.
-  const ownedAgent = agentOverride == null;
-  const agent = agentOverride ?? new HttpsProxyAgent(proxyUrl, { keepAlive: true, maxSockets: 1 });
-  const t0 = Date.now();
+  const startedAt = Date.now();
+  const isFriendshipCall = path.includes("/friendships/");
   try {
-    const res = await new Promise<{
-      status: number;
-      headers: Record<string, string | string[] | undefined>;
-      body: string;
-    }>((resolve, reject) => {
-      const req = https.request(
-        { host, port: 443, path, method, headers: allHeaders, agent, rejectUnauthorized: false },
-        (r) => {
-          const chunks: Buffer[] = [];
-          r.on("data", (chunk: Buffer) => chunks.push(chunk));
-          r.on("end", () => {
-            let raw = Buffer.concat(chunks);
-            const enc = r.headers["content-encoding"];
-            try {
-              if (enc === "gzip") raw = zlib.gunzipSync(raw);
-              else if (enc === "deflate") raw = zlib.inflateSync(raw);
-              else if (enc === "br") raw = zlib.brotliDecompressSync(raw);
-            } catch {}
-            resolve({ status: r.statusCode ?? 0, headers: r.headers as any, body: raw.toString("utf8") });
-          });
-          r.on("error", reject);
-        },
-      );
-      req.on("error", reject);
-      req.setTimeout(25000, () => req.destroy(new Error("request_timeout")));
-      if (body) req.write(body);
-      req.end();
+    const response = await requestHttp2ThroughProxy({
+      url: url.href,
+      method,
+      headers: allHeaders,
+      body: body ?? "",
+      proxyUrl,
+      timeoutMs: 30_000,
+      session: sessionOverride,
+      followRedirects: true,
     });
-
-    const elapsed = Date.now() - t0;
-    if (elapsed > 10000) {
+    const rawBody = response.body.toString("utf8");
+    const json = parseJsonOrRaw(rawBody);
+    const cookies = responseCookies(response.headers);
+    if (Date.now() - startedAt > 10_000) {
       console.warn(
-        `[tls:fallback] ${method} ${host}${path} SLOW ${elapsed}ms via proxy=${proxyHost(proxyUrl)} status=${res.status}`,
+        `[tls:req] ${method} ${host}${path} SLOW ${Date.now() - startedAt}ms ` +
+        `via proxy=${proxyHost(proxyUrl)} status=${response.status}`,
       );
     }
-
-    const rawSC = res.headers["set-cookie"];
-    const cookies = (Array.isArray(rawSC) ? rawSC : rawSC ? [rawSC] : []).map((c: string) => c.split(";")[0]);
-    let json: any = null;
-    try { json = parseInstagramJson(res.body); } catch {}
-
-    return { status: res.status, cookies, json, rawBody: res.body, responseHeaders: res.headers };
-  } catch (err: any) {
-    const ph = proxyHost(proxyUrl);
+    if (isFriendshipCall) {
+      console.warn(
+        `[tls:WIRE] ${method} ${url.href} → HTTP ${response.status} ` +
+        `elapsed=${Date.now() - startedAt}ms protocol=h2`,
+      );
+    }
+    logGenericFailure("tls:req", method, path, response.status, json, body ?? "", cookieStr);
+    return {
+      status: response.status,
+      cookies,
+      json,
+      rawBody,
+      responseHeaders: response.headers,
+    };
+  } catch (error: any) {
     console.error(
-      `[tls:fallback] ${method} ${host}${path} FAILED after ${Date.now() - t0}ms — proxy=${ph} code=${err?.code ?? "?"} msg=${err?.message ?? err}`,
+      `[tls:req] ${method} ${host}${path} FAILED after ${Date.now() - startedAt}ms ` +
+      `via proxy=${proxyHost(proxyUrl)} err=${error?.message ?? error}`,
     );
-    throw err;
-  } finally {
-    if (ownedAgent) (agent as any).destroy?.();
+    throw error;
   }
 }
 
-// ── patchIgClientTls ──────────────────────────────────────────────────────────
 /**
- * Patches a freshly-created IgApiClient instance so that all outbound HTTP
- * calls it makes go through CycleTLS (OkHttp4 JA3) instead of Node.js's
- * OpenSSL TLS stack.
- *
- * How it works:
- *  - Replaces ig.request.faultTolerantRequest (the innermost HTTP dispatch
- *    method) with a CycleTLS-backed version.
- *  - By the time faultTolerantRequest is called, the library has already
- *    assembled the full request: headers (User-Agent, X-IG-*, cookies), URL,
- *    proxy, and body. We just swap the wire transport.
- *  - After the response, Set-Cookie headers are written back to the library's
- *    tough-cookie jar so session state is maintained correctly.
- *  - Throws if CycleTLS is unavailable; this patch does not silently switch
- *    the SDK request to a different TLS fingerprint.
- *
- * Call immediately after `ig.state.proxyUrl = proxyUrl` and before any
- * ig.request.* call.  If proxyUrl is undefined we skip patching (callers
- * without a proxy are already blocked elsewhere).
+ * Patches a freshly-created IgApiClient so its requests use the same ordinary
+ * TLS + HTTP/2 proxy transport as direct mobile API calls.
  */
-export function patchIgClientTls(ig: IgApiClient, proxyUrl: string | undefined): void {
+export function patchIgClientTls(
+  ig: IgApiClient,
+  proxyUrl: string | undefined,
+  sessionOverride?: Http2ProxySession,
+): void {
   if (!proxyUrl) return;
+  const requestObject = ig.request as any;
 
-  const _reqObj = ig.request as any;
-
-  _reqObj.faultTolerantRequest = async function (options: any) {
-    const client = await getClient();
-    if (!client) {
-      throw new IgNetworkError(new Error(
-        "[TLS-BLOCKED] CycleTLS failed to initialise — refusing to use Node.js TLS (exposes bot fingerprint). " +
-        "Check that the CycleTLS Go binary is present and restart the server.",
-      ));
-    }
-
-    // ── Resolve full URL ──────────────────────────────────────────────────────
+  requestObject.faultTolerantRequest = async function (options: any) {
     const baseUrl: string = options.baseUrl ?? "https://i.instagram.com/";
     const rawUrl: string = options.url ?? options.uri ?? "";
     let fullUrl: string;
@@ -598,269 +288,116 @@ export function patchIgClientTls(ig: IgApiClient, proxyUrl: string | undefined):
     } catch {
       fullUrl = baseUrl.replace(/\/$/, "") + rawUrl;
     }
-
-    // Append query string parameters
     if (options.qs && typeof options.qs === "object" && Object.keys(options.qs).length > 0) {
       const params = new URLSearchParams(
         Object.entries(options.qs as Record<string, any>)
-          .filter(([, v]) => v != null)
-          .map(([k, v]) => [k, String(v)]),
+          .filter(([, value]) => value != null)
+          .map(([key, value]) => [key, String(value)]),
       );
       fullUrl += (fullUrl.includes("?") ? "&" : "?") + params.toString();
     }
 
-    // ── Read cookies from the request-promise cookie jar (tough-cookie) ───────
-    let cookieStr = "";
-    if (options.jar) {
-      try {
-        // request-promise wraps tough-cookie; inner jar is at ._jar
-        const innerJar = options.jar["_jar"];
-        if (innerJar?.getCookiesSync) {
-          cookieStr = (innerJar.getCookiesSync(fullUrl) as any[])
-            .map((c: any) => `${c.key}=${c.value}`)
-            .join("; ");
-        } else if (typeof options.jar.getCookieString === "function") {
-          cookieStr = (options.jar.getCookieString(fullUrl) as string) ?? "";
-        }
-      } catch {}
-    }
-
-    // ── Build headers — filter undefined values ───────────────────────────────
+    const cookieStr = getCookieString(options, fullUrl);
     const headers: Record<string, string> = {};
     if (options.headers) {
-      for (const [k, v] of Object.entries(options.headers as Record<string, any>)) {
-        if (v != null) headers[k] = String(v);
+      for (const [key, value] of Object.entries(options.headers as Record<string, any>)) {
+        if (value != null) headers[key] = String(value);
       }
     }
-    if (cookieStr) headers["Cookie"] = cookieStr;
+    if (cookieStr) headers.Cookie = cookieStr;
 
-    // ── Build request body ────────────────────────────────────────────────────
-    const method = (options.method ?? "GET").toUpperCase();
+    const method = String(options.method ?? "GET").toUpperCase();
     let body = "";
     if (method !== "GET" && options.form && typeof options.form === "object") {
-      // IMPORTANT: use raw string concatenation — do NOT use URLSearchParams here.
-      // Instagram's mobile API uses signed_body=<hmac>.<raw-JSON> format.  The
-      // server splits on the first '.' to extract the HMAC and the JSON payload,
-      // then re-computes the HMAC over the raw JSON to verify the signature.
-      // URLSearchParams would %-encode the JSON value (e.g. { → %7B), so Instagram
-      // would see URL-encoded garbage instead of JSON, the HMAC comparison would
-      // fail, and Instagram would return HTTP 200 "We're sorry, but something went
-      // wrong. Please try again." — exactly the error we were seeing on every
-      // friendship.create, media.like, and currentUser() call through IgApiClient.
+      // Preserve the signed_body bytes exactly; URLSearchParams would encode
+      // the raw signed JSON and invalidate Instagram's signature.
       body = Object.entries(options.form as Record<string, any>)
-        .filter(([, v]) => v != null)
-        .map(([k, v]) => `${k}=${String(v)}`)
+        .filter(([, value]) => value != null)
+        .map(([key, value]) => `${key}=${String(value)}`)
         .join("&");
       headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
-      headers["Content-Length"] = String(Buffer.byteLength(body));
     } else if (options.body) {
       body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
     }
 
-    // CycleTLS takes User-Agent as a dedicated field — remove from header map.
-    // Accept-Encoding is intentionally NOT set: Go's fhttp transport adds
-    // "Accept-Encoding: gzip" to the wire automatically and transparently
-    // decompresses the response before returning resp.data, so the body is
-    // always clean JSON. Explicitly setting "identity" was a visible bot signal
-    // on every single API call — real OkHttp4 always advertises gzip.
-    //
-    // Host — derived from the URL by Go's HTTP transport; forwarding it as a
-    // regular header causes a duplicate :authority / Host mismatch in HTTP/2.
-    //
-    // Connection — hop-by-hop header FORBIDDEN in HTTP/2 per RFC 7540 §8.1.2.2.
-    // IgApiClient's getDefaultHeaders() always includes "Connection: close",
-    // which causes Instagram's HTTP/2 server to reject the request with a generic
-    // 200 status:"fail" "We're sorry, but something went wrong." error — the
-    // exact failure seen on every friendship.create call through CycleTLS.
-    const userAgent = headers["User-Agent"] ?? "";
-    const {
-      "User-Agent": _ua,
-      "Accept-Encoding": _ae,
-      "Host": _host,
-      "Connection": _conn,
-      ...headersWithoutUA
-    } = headers;
-
-    const t0 = Date.now();
-    let resp: { status: number; data: any; headers: Record<string, string | string[]> };
+    const startedAt = Date.now();
+    let response;
     try {
-      resp = await client(
-        fullUrl,
-        {
-          body,
-          ja3: OKHTTP4_JA3,
-          userAgent,
-          headers: headersWithoutUA,
-          responseType: "text",
-          proxy: proxyUrl,
-          timeout: 30,
-          disableRedirect: false,
-          // Allow MITM proxies that present their own cert inside the CONNECT
-          // tunnel (matches the same flag in tlsRequest used by mobileSessionPost).
-          insecureSkipVerify: true,
-        },
-        method.toLowerCase(),
-      );
-    } catch (err: any) {
+      response = await requestHttp2ThroughProxy({
+        url: fullUrl,
+        method,
+        headers,
+        body,
+        proxyUrl,
+        timeoutMs: 30_000,
+        session: sessionOverride,
+        followRedirects: true,
+      });
+    } catch (error: any) {
       console.error(
-        `[tls:ig] ${method} ${rawUrl} FAILED after ${Date.now() - t0}ms — err=${err?.message ?? err}`,
+        `[tls:ig] ${method} ${rawUrl} FAILED after ${Date.now() - startedAt}ms ` +
+        `err=${error?.message ?? error}`,
       );
-      throw new IgNetworkError(err);
+      throw new IgNetworkError(error);
+    }
+    if (Date.now() - startedAt > 10_000) {
+      console.warn(
+        `[tls:ig] ${method} ${rawUrl} SLOW ${Date.now() - startedAt}ms status=${response.status}`,
+      );
     }
 
-    if (Date.now() - t0 > 10000) {
-      console.warn(`[tls:ig] ${method} ${rawUrl} SLOW ${Date.now() - t0}ms status=${resp.status}`);
-    }
-
-    // ── Write Set-Cookie back to the library's tough-cookie jar ──────────────
+    const setCookies = response.headers["set-cookie"];
+    const cookieValues = Array.isArray(setCookies) ? setCookies : setCookies ? [setCookies] : [];
     if (options.jar) {
       try {
         const innerJar = options.jar["_jar"];
-        const rawSetCookie = resp.headers["set-cookie"];
-        const setCookies = Array.isArray(rawSetCookie) ? rawSetCookie : rawSetCookie ? [rawSetCookie] : [];
         if (innerJar?.setCookieSync) {
-          for (const cs of setCookies) {
-            try { innerJar.setCookieSync(cs, fullUrl, {}); } catch {}
-          }
-        }
-      } catch {}
-    }
-
-    // ── Process Instagram state response headers ───────────────────────────────
-    // IgApiClient's normal transport uses got, which has a response interceptor
-    // that reads these headers and updates ig.state automatically. patchIgClientTls
-    // replaces the entire got pipeline with CycleTLS, bypassing that interceptor
-    // completely. Set every state header needed by both restored-session calls
-    // and fresh password login here.
-    const getResponseHeader = (name: string): string | string[] | undefined => {
-      const key = Object.keys(resp.headers).find(k => k.toLowerCase() === name);
-      return key ? resp.headers[key] : undefined;
-    };
-    const rawIgAuth = getResponseHeader("ig-set-authorization");
-    if (rawIgAuth) {
-      const authVal = Array.isArray(rawIgAuth) ? rawIgAuth[0] : rawIgAuth;
-      // Instagram returns the complete value expected by instagram-private-api:
-      // "Bearer IGT:2:<base64>".  Older code only accepted the token suffix
-      // ("IGT:"), so a valid response header was silently discarded and every
-      // subsequent write ran without the session's Bearer credential.
-      if (authVal && !authVal.endsWith(":") && /^(?:Bearer )?IGT:2:/i.test(authVal)) {
-        (ig.state as any).authorization = authVal;
-      }
-    }
-    const rawIgClaim = getResponseHeader("ig-set-www-claim");
-    if (rawIgClaim) {
-      const claimVal = Array.isArray(rawIgClaim) ? rawIgClaim[0] : rawIgClaim;
-      if (claimVal && claimVal !== "0") {
-        (ig.state as any).igWWWClaim = claimVal;
-      }
-    }
-    const rawPasswordKeyId = getResponseHeader("ig-set-password-encryption-key-id");
-    if (rawPasswordKeyId) {
-      const keyId = Array.isArray(rawPasswordKeyId) ? rawPasswordKeyId[0] : rawPasswordKeyId;
-      if (keyId) (ig.state as any).passwordEncryptionKeyId = keyId;
-    }
-    const rawPasswordPubKey = getResponseHeader("ig-set-password-encryption-pub-key");
-    if (rawPasswordPubKey) {
-      const pubKey = Array.isArray(rawPasswordPubKey) ? rawPasswordPubKey[0] : rawPasswordPubKey;
-      if (pubKey) (ig.state as any).passwordEncryptionPubKey = pubKey;
-    }
-
-    // ── Parse response body ───────────────────────────────────────────────────
-    // Request text so unsafe 64-bit Instagram IDs reach the lossless parser
-    // before any Number conversion can round them.
-    const rawBody = typeof resp.data === "string"
-      ? resp.data
-      : Buffer.isBuffer(resp.data)
-        ? (resp.data as Buffer).toString("utf8")
-        : (resp.data != null ? JSON.stringify(resp.data) : "");
-    let parsedBody: any = rawBody;
-    try {
-      parsedBody = parseInstagramJson(rawBody);
-    } catch {
-      if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) {
-        parsedBody = resp.data;
-      }
-    }
-
-    // ── Diagnostic: dump full request/response context on a generic technical
-    // rejection ("something went wrong" with HTTP 200, status:"fail", no spam/
-    // feedback_required field). This is the exact pattern seen on repeated
-    // follow failures — logged here (not just at the call site) because this is
-    // the only place that has the ACTUAL bytes sent on the wire: the Cookie
-    // header built from the tough-cookie jar, and the signed_body sent in the
-    // form. If the csrftoken in the Cookie header differs from the _csrftoken
-    // embedded inside signed_body's JSON, Instagram's CSRF check fails server-
-    // side and returns exactly this generic message — even though the HMAC
-    // signature itself is mathematically valid (it's signed over the JSON
-    // payload, which still contains the stale _csrftoken value).
-    if (
-      resp.status === 200 &&
-      parsedBody && typeof parsedBody === "object" &&
-      parsedBody.status === "fail" &&
-      !("spam" in parsedBody) && !("feedback_required" in parsedBody) &&
-      /something went wrong|sorry/i.test(String(parsedBody.message ?? ""))
-    ) {
-      let signedCsrf: string | undefined;
-      let signedUuid: string | undefined;
-      if (typeof body === "string" && body.includes("signed_body=")) {
-        const m = body.match(/signed_body=([^&]+)/);
-        if (m) {
-          const raw = decodeURIComponent(m[1]);
-          const dotIdx = raw.indexOf(".");
-          const jsonPart = dotIdx !== -1 ? raw.slice(dotIdx + 1) : raw;
-          try {
-            const payload = JSON.parse(jsonPart);
-            signedCsrf = payload._csrftoken;
-            signedUuid = payload._uuid;
-          } catch {
-            // raw concatenation in the body-build step above means signed_body
-            // may not be percent-encoded at all — try the raw (un-decoded) form too.
-            const rawAlt = m[1];
-            const dotIdx2 = rawAlt.indexOf(".");
-            const jsonPart2 = dotIdx2 !== -1 ? rawAlt.slice(dotIdx2 + 1) : rawAlt;
+          for (const cookie of cookieValues) {
             try {
-              const payload2 = JSON.parse(jsonPart2);
-              signedCsrf = payload2._csrftoken;
-              signedUuid = payload2._uuid;
-            } catch { /* give up — log raw below */ }
+              innerJar.setCookieSync(cookie, fullUrl, {});
+            } catch {
+              // Ignore an invalid individual cookie, matching the old adapter.
+            }
           }
         }
-      }
-      const cookieCsrfMatch = cookieStr.match(/csrftoken=([^;]+)/);
-      const cookieCsrf = cookieCsrfMatch?.[1];
-      const csrfMismatch = signedCsrf != null && cookieCsrf != null && signedCsrf !== cookieCsrf;
-      console.warn(
-        `[tls:ig][DIAG] ${method} ${rawUrl} — generic technical rejection (HTTP 200, status:"fail", no block fields). ` +
-        `cookie_csrf=${cookieCsrf ?? "MISSING"} signed_body_csrf=${signedCsrf ?? "n/a"} ` +
-        `csrf_MISMATCH=${csrfMismatch} signed_body_uuid=${signedUuid ?? "n/a"} ` +
-        `content-type_sent=${headersWithoutUA["Content-Type"] ?? "none"} body_len=${body.length} ` +
-        `req_body_preview=${body.slice(0, 300)}`,
-      );
-      if (csrfMismatch) {
-        console.error(
-          `[tls:ig][DIAG] *** CSRF TOKEN MISMATCH CONFIRMED *** — the signed_body was signed with csrftoken=${signedCsrf} ` +
-          `but the Cookie header on this exact request carried csrftoken=${cookieCsrf}. This is almost certainly the ` +
-          `root cause of "something went wrong" — the client.state cached csrftoken used for signing is stale relative ` +
-          `to the tough-cookie jar's current csrftoken (likely rotated by a prior Set-Cookie response).`,
-        );
+      } catch {
+        // The request result remains usable even if the SDK cookie jar rejects a cookie.
       }
     }
 
-    // ── Return synthetic response in the shape instagram-private-api expects ──
-    // The library's Request.send() reads:
-    //   response.statusCode, response.headers, response.body (parsed JSON),
-    //   response.request.method, response.request.uri.path (for error messages)
+    const getResponseHeader = (name: string): string | string[] | undefined =>
+      response.headers[name.toLowerCase()];
+    const firstHeader = (name: string): string | undefined => {
+      const value = getResponseHeader(name);
+      return Array.isArray(value) ? value[0] : value;
+    };
+
+    const authorization = firstHeader("ig-set-authorization");
+    if (authorization && !authorization.endsWith(":") && /^(?:Bearer )?IGT:2:/i.test(authorization)) {
+      (ig.state as any).authorization = authorization;
+    }
+    const claim = firstHeader("ig-set-www-claim");
+    if (claim && claim !== "0") (ig.state as any).igWWWClaim = claim;
+    const passwordKeyId = firstHeader("ig-set-password-encryption-key-id");
+    if (passwordKeyId) (ig.state as any).passwordEncryptionKeyId = passwordKeyId;
+    const passwordPublicKey = firstHeader("ig-set-password-encryption-pub-key");
+    if (passwordPublicKey) (ig.state as any).passwordEncryptionPubKey = passwordPublicKey;
+
+    const rawBody = response.body.toString("utf8");
+    const parsedBody = parseJsonOrRaw(rawBody) ?? rawBody;
+    logGenericFailure("tls:ig", method, rawUrl, response.status, parsedBody, body, cookieStr);
+
     return {
-      statusCode: resp.status,
-      headers: resp.headers,
+      statusCode: response.status,
+      headers: response.headers,
       body: parsedBody,
       request: {
         method,
         uri: {
           path: (() => {
             try {
-              const u = new URL(fullUrl);
-              return u.pathname + u.search;
+              const parsed = new URL(fullUrl);
+              return parsed.pathname + parsed.search;
             } catch {
               return rawUrl;
             }
@@ -872,10 +409,8 @@ export function patchIgClientTls(ig: IgApiClient, proxyUrl: string | undefined):
 }
 
 /**
- * Patches the mobilePostMultipart helper's raw httpsRequest call to use
- * CycleTLS. Unlike igReq / IgApiClient, this function assembles and fires a
- * raw multipart POST. Pass the headers/body/proxyUrl already assembled by
- * the caller; returns the parsed JSON body or null.
+ * Sends binary multipart or rupload payloads without text conversion, through
+ * the same standard TLS + HTTP/2 proxy transport.
  */
 export async function tlsMultipartPost(
   host: string,
@@ -883,112 +418,40 @@ export async function tlsMultipartPost(
   headers: Record<string, string>,
   body: Buffer,
   proxyUrl: string | undefined,
-  /** Force Node.js HTTPS instead of CycleTLS.
-   *  REQUIRED for raw binary uploads (rupload_igphoto / rupload_igvideo):
-   *  CycleTLS serialises the body through JSON, which re-encodes Latin-1
-   *  bytes > 127 as multi-byte UTF-8 sequences, corrupting JPEG/MP4 data.
-   *  Node.js req.write(Buffer) sends raw bytes correctly. */
-  forceNodeHttps = false,
-  /** Optional pre-created HttpsProxyAgent to reuse across requests.
-   *  When supplied, the agent is NOT destroyed after the request — the
-   *  caller owns the lifecycle (and should destroy it when done).
-   *  Used to keep rupload and configure on the same proxy tunnel so
-   *  Instagram routes both to the same backend shard. */
-  agentOverride?: any,
+  sessionOverride?: Http2ProxySession,
 ): Promise<{ json: any; cookies: string[] }> {
   if (!proxyUrl) {
     throw new Error(
       `[IP-LEAK BLOCKED] TLS multipart POST ${host}${path} refused — no proxy configured.`,
     );
   }
-
-  const client = await getClient();
-
-  if (client && !forceNodeHttps) {
-    const url = `https://${host}${path}`;
-    const userAgent = headers["User-Agent"] ?? "";
-    const { "User-Agent": _ua, ...headersWithoutUA } = headers;
-
-    try {
-      const resp = await client(
-        url,
-        {
-          body: body.toString("binary"),
-          ja3: OKHTTP4_JA3,
-          userAgent,
-          headers: headersWithoutUA,
-          responseType: "text",
-          proxy: proxyUrl,
-          timeout: 60,
-          disableRedirect: false,
-        },
-        "post",
-      );
-      // CycleTLS v2.x stores the response in .data, not .body
-      const rawBody = typeof resp.data === "string"
-        ? resp.data
-        : Buffer.isBuffer(resp.data)
-          ? (resp.data as Buffer).toString("utf8")
-          : (resp.data != null ? JSON.stringify(resp.data) : "");
-      let json: any = null;
-      try { json = parseInstagramJson(rawBody); } catch {
-        if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json = resp.data;
-      }
-      if (json === null) {
-        const preview = rawBody.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
-        console.warn(`[tls:multipart] POST ${host}${path} status=${resp.status} — non-JSON response: ${preview}`);
-      }
-      // Extract Set-Cookie from CycleTLS response headers (may be string or array)
-      const rawCookies = (resp as any).headers?.["set-cookie"] ?? (resp as any).headers?.["Set-Cookie"];
-      const cookies: string[] = Array.isArray(rawCookies) ? rawCookies : rawCookies ? [rawCookies] : [];
-      return { json, cookies };
-    } catch (err: any) {
-      console.error(`[tls:multipart] POST ${host}${path} FAILED — err=${err?.message ?? err}`);
-      throw err;
-    }
-  }
-
-  // Node.js HTTPS path — handles raw binary buffers correctly (no JSON re-encoding).
-  // Used when forceNodeHttps=true (binary rupload) or when CycleTLS is unavailable.
-  const { HttpsProxyAgent } = await import("https-proxy-agent");
-  const https = await import("node:https");
-  // Use the caller-supplied agent when provided (keeps-alive between rupload + configure).
-  // When no agent is supplied create a short-lived one and destroy it after the request.
-  const ownedAgent = agentOverride == null;
-  const agent = agentOverride ?? new HttpsProxyAgent(proxyUrl, { keepAlive: true, maxSockets: 1 });
   try {
-    const res = await new Promise<{ status: number; body: string; cookies: string[] }>((resolve, reject) => {
-      const req = https.request(
-        { host, port: 443, path, method: "POST", headers, agent },
-        (r) => {
-          const chunks: Buffer[] = [];
-          r.on("data", (chunk: Buffer) => chunks.push(chunk));
-          r.on("end", () => resolve({
-            status: r.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString("utf8"),
-            cookies: (r.headers["set-cookie"] as string[] | undefined) ?? [],
-          }));
-          r.on("error", reject);
-        },
-      );
-      req.on("error", reject);
-      req.setTimeout(90000, () => req.destroy(new Error("request_timeout")));
-      req.write(body);
-      req.end();
+    const response = await requestHttp2ThroughProxy({
+      url: new URL(path, `https://${host}`).href,
+      method: "POST",
+      headers,
+      body,
+      proxyUrl,
+      timeoutMs: 90_000,
+      session: sessionOverride,
+      followRedirects: true,
     });
-    let json: any = null;
-    try { json = parseInstagramJson(res.body); } catch {
-      const preview = res.body.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
-      console.warn(`[tls:node-https] POST ${host}${path} status=${res.status} — non-JSON response: ${preview}`);
+    const rawBody = response.body.toString("utf8");
+    const json = parseJsonOrRaw(rawBody);
+    const rawCookies = response.headers["set-cookie"];
+    const cookies = Array.isArray(rawCookies) ? rawCookies : rawCookies ? [rawCookies] : [];
+    if (json === null) {
+      const preview = rawBody.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
+      console.warn(
+        `[tls:multipart] POST ${host}${path} status=${response.status} — non-JSON response: ${preview}`,
+      );
     }
-    if (json !== null) {
-      const msg = json.message ? ` msg="${json.message}"` : "";
-      const errType = json.error_type ? ` err_type="${json.error_type}"` : "";
-      console.log(`[tls:node-https] POST ${host}${path} status=${res.status} json.status="${json.status ?? "?"}" upload_id="${json.upload_id ?? "none"}"${msg}${errType}`);
-    }
-    return { json, cookies: res.cookies };
-  } finally {
-    // Only destroy the agent if we created it; shared agents are destroyed by the caller.
-    if (ownedAgent) (agent as any).destroy?.();
+    return { json, cookies };
+  } catch (error: any) {
+    console.error(`[tls:multipart] POST ${host}${path} FAILED — err=${error?.message ?? error}`);
+    throw error;
   }
 }
+
+export type { Http2ProxySession } from "./http2ProxyTransport.js";
+export { createHttp2ProxySession, closeHttp2ProxySession } from "./http2ProxyTransport.js";

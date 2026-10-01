@@ -149,7 +149,7 @@ async function logApiCall(
       navChain,
       ipAddress,
       durationMs,
-      transport: "ja3",
+      transport: "node-tls-http2",
     });
   } catch { /* never crash on logging failure */ }
 }

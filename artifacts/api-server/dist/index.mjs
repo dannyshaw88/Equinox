@@ -15474,7 +15474,7 @@ var require_read = __commonJS({
     var getBody = require_raw_body();
     var iconv = require_lib();
     var onFinished = require_on_finished();
-    var zlib = __require("node:zlib");
+    var zlib2 = __require("node:zlib");
     var hasBody = require_type_is().hasBody;
     var { getCharset } = require_utils();
     module2.exports = read;
@@ -15599,13 +15599,13 @@ var require_read = __commonJS({
       switch (encoding) {
         case "deflate":
           debug4("inflate body");
-          return zlib.createInflate();
+          return zlib2.createInflate();
         case "gzip":
           debug4("gunzip body");
-          return zlib.createGunzip();
+          return zlib2.createGunzip();
         case "br":
           debug4("brotli decompress body");
-          return zlib.createBrotliDecompress();
+          return zlib2.createBrotliDecompress();
         default:
           throw createError(415, 'unsupported content encoding "' + encoding + '"', {
             encoding,
@@ -20893,7 +20893,7 @@ var require_application = __commonJS({
     var finalhandler = require_finalhandler();
     var debug4 = require_src()("express:application");
     var View2 = require_view();
-    var http3 = __require("node:http");
+    var http5 = __require("node:http");
     var methods = require_utils3().methods;
     var compileETag = require_utils3().compileETag;
     var compileQueryParser = require_utils3().compileQueryParser;
@@ -21126,7 +21126,7 @@ var require_application = __commonJS({
       tryRender(view, renderOptions, done);
     };
     app2.listen = function listen() {
-      var server = http3.createServer(this);
+      var server = http5.createServer(this);
       var args = slice.call(arguments);
       if (typeof args[args.length - 1] === "function") {
         var done = args[args.length - 1] = once(args[args.length - 1]);
@@ -21901,12 +21901,12 @@ var require_request = __commonJS({
     var accepts = require_accepts();
     var isIP3 = __require("node:net").isIP;
     var typeis = require_type_is();
-    var http3 = __require("node:http");
+    var http5 = __require("node:http");
     var fresh = require_fresh();
     var parseRange = require_range_parser();
     var parse3 = require_parseurl();
     var proxyaddr = require_proxy_addr();
-    var req = Object.create(http3.IncomingMessage.prototype);
+    var req = Object.create(http5.IncomingMessage.prototype);
     module2.exports = req;
     req.get = req.header = function header(name) {
       if (!name) {
@@ -22954,7 +22954,7 @@ var require_response = __commonJS({
     var deprecate = require_depd()("express");
     var encodeUrl = require_encodeurl();
     var escapeHtml = require_escape_html();
-    var http3 = __require("node:http");
+    var http5 = __require("node:http");
     var onFinished = require_on_finished();
     var mime = require_mime_types();
     var path6 = __require("node:path");
@@ -22970,7 +22970,7 @@ var require_response = __commonJS({
     var resolve = path6.resolve;
     var vary = require_vary();
     var { Buffer: Buffer2 } = __require("node:buffer");
-    var res = Object.create(http3.ServerResponse.prototype);
+    var res = Object.create(http5.ServerResponse.prototype);
     module2.exports = res;
     res.status = function status(code) {
       if (!Number.isInteger(code)) {
@@ -28560,7 +28560,7 @@ var require_limiter = __commonJS({
 var require_permessage_deflate = __commonJS({
   "../../node_modules/.pnpm/ws@8.20.0/node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
     "use strict";
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var bufferUtil = require_buffer_util();
     var Limiter = require_limiter();
     var { kStatusCode } = require_constants2();
@@ -28827,8 +28827,8 @@ var require_permessage_deflate = __commonJS({
         const endpoint = this._isServer ? "client" : "server";
         if (!this._inflate) {
           const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-          this._inflate = zlib.createInflateRaw({
+          const windowBits = typeof this.params[key] !== "number" ? zlib2.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._inflate = zlib2.createInflateRaw({
             ...this._options.zlibInflateOptions,
             windowBits
           });
@@ -28878,8 +28878,8 @@ var require_permessage_deflate = __commonJS({
         const endpoint = this._isServer ? "server" : "client";
         if (!this._deflate) {
           const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-          this._deflate = zlib.createDeflateRaw({
+          const windowBits = typeof this.params[key] !== "number" ? zlib2.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._deflate = zlib2.createDeflateRaw({
             ...this._options.zlibDeflateOptions,
             windowBits
           });
@@ -28889,7 +28889,7 @@ var require_permessage_deflate = __commonJS({
         }
         this._deflate[kCallback] = callback;
         this._deflate.write(data);
-        this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
+        this._deflate.flush(zlib2.Z_SYNC_FLUSH, () => {
           if (!this._deflate) {
             return;
           }
@@ -30607,10 +30607,10 @@ var require_websocket = __commonJS({
   "../../node_modules/.pnpm/ws@8.20.0/node_modules/ws/lib/websocket.js"(exports2, module2) {
     "use strict";
     var EventEmitter2 = __require("events");
-    var https4 = __require("https");
-    var http3 = __require("http");
-    var net7 = __require("net");
-    var tls4 = __require("tls");
+    var https5 = __require("https");
+    var http5 = __require("http");
+    var net6 = __require("net");
+    var tls5 = __require("tls");
     var { randomBytes: randomBytes8, createHash } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL4 } = __require("url");
@@ -31142,7 +31142,7 @@ var require_websocket = __commonJS({
       }
       const defaultPort = isSecure ? 443 : 80;
       const key = randomBytes8(16).toString("base64");
-      const request3 = isSecure ? https4.request : http3.request;
+      const request3 = isSecure ? https5.request : http5.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
       opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
@@ -31343,14 +31343,14 @@ var require_websocket = __commonJS({
     }
     function netConnect(options) {
       options.path = options.socketPath;
-      return net7.connect(options);
+      return net6.connect(options);
     }
     function tlsConnect(options) {
       options.path = void 0;
       if (!options.servername && options.servername !== "") {
-        options.servername = net7.isIP(options.host) ? "" : options.host;
+        options.servername = net6.isIP(options.host) ? "" : options.host;
       }
-      return tls4.connect(options);
+      return tls5.connect(options);
     }
     function abortHandshake(websocket, stream, message) {
       websocket._readyState = WebSocket2.CLOSING;
@@ -31636,7 +31636,7 @@ var require_websocket_server = __commonJS({
   "../../node_modules/.pnpm/ws@8.20.0/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
     var EventEmitter2 = __require("events");
-    var http3 = __require("http");
+    var http5 = __require("http");
     var { Duplex } = __require("stream");
     var { createHash } = __require("crypto");
     var extension2 = require_extension();
@@ -31711,8 +31711,8 @@ var require_websocket_server = __commonJS({
           );
         }
         if (options.port != null) {
-          this._server = http3.createServer((req, res) => {
-            const body = http3.STATUS_CODES[426];
+          this._server = http5.createServer((req, res) => {
+            const body = http5.STATUS_CODES[426];
             res.writeHead(426, {
               "Content-Length": body.length,
               "Content-Type": "text/plain"
@@ -31999,7 +31999,7 @@ var require_websocket_server = __commonJS({
       this.destroy();
     }
     function abortHandshake(socket, code, message, headers) {
-      message = message || http3.STATUS_CODES[code];
+      message = message || http5.STATUS_CODES[code];
       headers = {
         Connection: "close",
         "Content-Type": "text/html",
@@ -32008,7 +32008,7 @@ var require_websocket_server = __commonJS({
       };
       socket.once("finish", socket.destroy);
       socket.end(
-        `HTTP/1.1 ${code} ${http3.STATUS_CODES[code]}\r
+        `HTTP/1.1 ${code} ${http5.STATUS_CODES[code]}\r
 ` + Object.keys(headers).map((h4) => `${h4}: ${headers[h4]}`).join("\r\n") + "\r\n\r\n" + message
       );
     }
@@ -58227,9 +58227,9 @@ var require_cookie2 = __commonJS({
             return cb(new Error(SAME_SITE_CONTEXT_VAL_ERR));
           }
         }
-        let http3 = options.http;
-        if (http3 == null) {
-          http3 = true;
+        let http5 = options.http;
+        if (http5 == null) {
+          http5 = true;
         }
         const now = options.now || Date.now();
         const expireCheck = options.expire !== false;
@@ -58251,7 +58251,7 @@ var require_cookie2 = __commonJS({
           if (c3.secure && !secure) {
             return false;
           }
-          if (c3.httpOnly && !http3) {
+          if (c3.httpOnly && !http5) {
             return false;
           }
           if (sameSiteLevel) {
@@ -72461,7 +72461,7 @@ var require_signer = __commonJS({
   "../../node_modules/.pnpm/http-signature@1.2.0/node_modules/http-signature/lib/signer.js"(exports2, module2) {
     var assert3 = require_assert();
     var crypto3 = __require("crypto");
-    var http3 = __require("http");
+    var http5 = __require("http");
     var util2 = __require("util");
     var sshpk = require_lib5();
     var jsprim = require_jsprim();
@@ -81550,8 +81550,8 @@ var require_forever_agent = __commonJS({
     ForeverAgent.SSL = ForeverAgentSSL;
     var util2 = __require("util");
     var Agent3 = __require("http").Agent;
-    var net7 = __require("net");
-    var tls4 = __require("tls");
+    var net6 = __require("net");
+    var tls5 = __require("tls");
     var AgentSSL = __require("https").Agent;
     function getConnectionName(host, port2) {
       var name = "";
@@ -81589,7 +81589,7 @@ var require_forever_agent = __commonJS({
     }
     util2.inherits(ForeverAgent, Agent3);
     ForeverAgent.defaultMinSockets = 5;
-    ForeverAgent.prototype.createConnection = net7.createConnection;
+    ForeverAgent.prototype.createConnection = net6.createConnection;
     ForeverAgent.prototype.addRequestNoreuse = Agent3.prototype.addRequest;
     ForeverAgent.prototype.addRequest = function(req, host, port2) {
       var name = getConnectionName(host, port2);
@@ -81653,7 +81653,7 @@ var require_forever_agent = __commonJS({
       if (typeof host === "string") {
         options.host = host;
       }
-      return tls4.connect(options);
+      return tls5.connect(options);
     }
   }
 });
@@ -82190,8 +82190,8 @@ var require_form_data = __commonJS({
     var CombinedStream = require_combined_stream();
     var util2 = __require("util");
     var path6 = __require("path");
-    var http3 = __require("http");
-    var https4 = __require("https");
+    var http5 = __require("http");
+    var https5 = __require("https");
     var parseUrl = __require("url").parse;
     var fs6 = __require("fs");
     var crypto3 = __require("crypto");
@@ -82462,9 +82462,9 @@ var require_form_data = __commonJS({
       }
       options.headers = this.getHeaders(params.headers);
       if (options.protocol === "https:") {
-        request3 = https4.request(options);
+        request3 = https5.request(options);
       } else {
-        request3 = http3.request(options);
+        request3 = http5.request(options);
       }
       this.getLength(function(err, length) {
         if (err) {
@@ -90740,10 +90740,10 @@ var require_redirect = __commonJS({
 var require_tunnel_agent = __commonJS({
   "../../node_modules/.pnpm/tunnel-agent@0.6.0/node_modules/tunnel-agent/index.js"(exports2) {
     "use strict";
-    var net7 = __require("net");
-    var tls4 = __require("tls");
-    var http3 = __require("http");
-    var https4 = __require("https");
+    var net6 = __require("net");
+    var tls5 = __require("tls");
+    var http5 = __require("http");
+    var https5 = __require("https");
     var events = __require("events");
     var assert3 = __require("assert");
     var util2 = __require("util");
@@ -90754,24 +90754,24 @@ var require_tunnel_agent = __commonJS({
     exports2.httpsOverHttps = httpsOverHttps;
     function httpOverHttp(options) {
       var agent = new TunnelingAgent(options);
-      agent.request = http3.request;
+      agent.request = http5.request;
       return agent;
     }
     function httpsOverHttp(options) {
       var agent = new TunnelingAgent(options);
-      agent.request = http3.request;
+      agent.request = http5.request;
       agent.createSocket = createSecureSocket;
       agent.defaultPort = 443;
       return agent;
     }
     function httpOverHttps(options) {
       var agent = new TunnelingAgent(options);
-      agent.request = https4.request;
+      agent.request = https5.request;
       return agent;
     }
     function httpsOverHttps(options) {
       var agent = new TunnelingAgent(options);
-      agent.request = https4.request;
+      agent.request = https5.request;
       agent.createSocket = createSecureSocket;
       agent.defaultPort = 443;
       return agent;
@@ -90780,7 +90780,7 @@ var require_tunnel_agent = __commonJS({
       var self2 = this;
       self2.options = options || {};
       self2.proxyOptions = self2.options.proxy || {};
-      self2.maxSockets = self2.options.maxSockets || http3.Agent.defaultMaxSockets;
+      self2.maxSockets = self2.options.maxSockets || http5.Agent.defaultMaxSockets;
       self2.requests = [];
       self2.sockets = [];
       self2.on("free", function onFree(socket, host, port2) {
@@ -90900,7 +90900,7 @@ var require_tunnel_agent = __commonJS({
     function createSecureSocket(options, cb) {
       var self2 = this;
       TunnelingAgent.prototype.createSocket.call(self2, options, function(socket) {
-        var secureSocket = tls4.connect(0, mergeOptions(
+        var secureSocket = tls5.connect(0, mergeOptions(
           {},
           self2.options,
           {
@@ -91128,12 +91128,12 @@ var require_performance_now = __commonJS({
 var require_request3 = __commonJS({
   "../../node_modules/.pnpm/request@2.88.2/node_modules/request/request.js"(exports2, module2) {
     "use strict";
-    var http3 = __require("http");
-    var https4 = __require("https");
+    var http5 = __require("http");
+    var https5 = __require("https");
     var url2 = __require("url");
     var util2 = __require("util");
     var stream = __require("stream");
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var aws2 = require_aws_sign2();
     var aws4 = require_aws4();
     var httpSignature = require_lib6();
@@ -91483,7 +91483,7 @@ var require_request3 = __commonJS({
         self2.oauth(self2._oauth.params);
       }
       var protocol = self2.proxy && !self2.tunnel ? self2.proxy.protocol : self2.uri.protocol;
-      var defaultModules = { "http:": http3, "https:": https4 };
+      var defaultModules = { "http:": http5, "https:": https5 };
       var httpModules = self2.httpModules || {};
       self2.httpModule = httpModules[protocol] || defaultModules[protocol];
       if (!self2.httpModule) {
@@ -91859,7 +91859,7 @@ var require_request3 = __commonJS({
       self2.response = response;
       response.request = self2;
       response.toJSON = responseToJSON;
-      if (self2.httpModule === https4 && self2.strictSSL && (!response.hasOwnProperty("socket") || !response.socket.authorized)) {
+      if (self2.httpModule === https5 && self2.strictSSL && (!response.hasOwnProperty("socket") || !response.socket.authorized)) {
         debug4("strict ssl error", self2.uri.href);
         var sslErr = response.hasOwnProperty("socket") ? response.socket.authorizationError : self2.uri.href + " does not support SSL";
         self2.emit("error", new Error("SSL Error: " + sslErr));
@@ -91912,14 +91912,14 @@ var require_request3 = __commonJS({
           var contentEncoding = response.headers["content-encoding"] || "identity";
           contentEncoding = contentEncoding.trim().toLowerCase();
           var zlibOptions = {
-            flush: zlib.Z_SYNC_FLUSH,
-            finishFlush: zlib.Z_SYNC_FLUSH
+            flush: zlib2.Z_SYNC_FLUSH,
+            finishFlush: zlib2.Z_SYNC_FLUSH
           };
           if (contentEncoding === "gzip") {
-            responseContent = zlib.createGunzip(zlibOptions);
+            responseContent = zlib2.createGunzip(zlibOptions);
             response.pipe(responseContent);
           } else if (contentEncoding === "deflate") {
-            responseContent = zlib.createInflate(zlibOptions);
+            responseContent = zlib2.createInflate(zlibOptions);
             response.pipe(responseContent);
           } else {
             if (contentEncoding !== "identity") {
@@ -118452,356 +118452,16 @@ var require_dist2 = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/helpers.js
-var init_helpers = __esm({
-  "../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/helpers.js"() {
-  }
-});
-
-// ../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/index.js
-import * as net2 from "net";
-import * as http from "http";
-import { Agent as HttpsAgent } from "https";
-var INTERNAL, Agent2;
-var init_dist = __esm({
-  "../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/index.js"() {
-    init_helpers();
-    INTERNAL = /* @__PURE__ */ Symbol("AgentBaseInternalState");
-    Agent2 = class extends http.Agent {
-      constructor(opts) {
-        super(opts);
-        this[INTERNAL] = {};
-      }
-      /**
-       * Determine whether this is an `http` or `https` request.
-       */
-      isSecureEndpoint(options) {
-        if (options) {
-          if (typeof options.secureEndpoint === "boolean") {
-            return options.secureEndpoint;
-          }
-          if (typeof options.protocol === "string") {
-            return options.protocol === "https:";
-          }
-        }
-        const { stack } = new Error();
-        if (typeof stack !== "string")
-          return false;
-        return stack.split("\n").some((l2) => l2.indexOf("(https.js:") !== -1 || l2.indexOf("node:https:") !== -1);
-      }
-      // In order to support async signatures in `connect()` and Node's native
-      // connection pooling in `http.Agent`, the array of sockets for each origin
-      // has to be updated synchronously. This is so the length of the array is
-      // accurate when `addRequest()` is next called. We achieve this by creating a
-      // fake socket and adding it to `sockets[origin]` and incrementing
-      // `totalSocketCount`.
-      incrementSockets(name) {
-        if (this.maxSockets === Infinity && this.maxTotalSockets === Infinity) {
-          return null;
-        }
-        if (!this.sockets[name]) {
-          this.sockets[name] = [];
-        }
-        const fakeSocket = new net2.Socket({ writable: false });
-        this.sockets[name].push(fakeSocket);
-        this.totalSocketCount++;
-        return fakeSocket;
-      }
-      decrementSockets(name, socket) {
-        if (!this.sockets[name] || socket === null) {
-          return;
-        }
-        const sockets = this.sockets[name];
-        const index = sockets.indexOf(socket);
-        if (index !== -1) {
-          sockets.splice(index, 1);
-          this.totalSocketCount--;
-          if (sockets.length === 0) {
-            delete this.sockets[name];
-          }
-        }
-      }
-      // In order to properly update the socket pool, we need to call `getName()` on
-      // the core `https.Agent` if it is a secureEndpoint.
-      getName(options) {
-        const secureEndpoint = this.isSecureEndpoint(options);
-        if (secureEndpoint) {
-          return HttpsAgent.prototype.getName.call(this, options);
-        }
-        return super.getName(options);
-      }
-      createSocket(req, options, cb) {
-        const connectOpts = {
-          ...options,
-          secureEndpoint: this.isSecureEndpoint(options)
-        };
-        const name = this.getName(connectOpts);
-        const fakeSocket = this.incrementSockets(name);
-        Promise.resolve().then(() => this.connect(req, connectOpts)).then((socket) => {
-          this.decrementSockets(name, fakeSocket);
-          if (typeof socket.addRequest === "function") {
-            try {
-              return socket.addRequest(req, connectOpts);
-            } catch (err) {
-              return cb(err);
-            }
-          }
-          this[INTERNAL].currentSocket = socket;
-          super.createSocket(req, options, cb);
-        }, (err) => {
-          this.decrementSockets(name, fakeSocket);
-          cb(err);
-        });
-      }
-      createConnection() {
-        const socket = this[INTERNAL].currentSocket;
-        this[INTERNAL].currentSocket = void 0;
-        if (!socket) {
-          throw new Error("No socket was returned in the `connect()` function");
-        }
-        return socket;
-      }
-      get defaultPort() {
-        return this[INTERNAL].defaultPort ?? (this.protocol === "https:" ? 443 : 80);
-      }
-      set defaultPort(v3) {
-        if (this[INTERNAL]) {
-          this[INTERNAL].defaultPort = v3;
-        }
-      }
-      get protocol() {
-        return this[INTERNAL].protocol ?? (this.isSecureEndpoint() ? "https:" : "http:");
-      }
-      set protocol(v3) {
-        if (this[INTERNAL]) {
-          this[INTERNAL].protocol = v3;
-        }
-      }
-    };
-  }
-});
-
-// ../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/parse-proxy-response.js
-function parseProxyResponse(socket) {
-  return new Promise((resolve, reject) => {
-    let buffersLength = 0;
-    const buffers = [];
-    function read() {
-      const b3 = socket.read();
-      if (b3)
-        ondata(b3);
-      else
-        socket.once("readable", read);
-    }
-    function cleanup() {
-      socket.removeListener("end", onend);
-      socket.removeListener("error", onerror);
-      socket.removeListener("readable", read);
-    }
-    function onend() {
-      cleanup();
-      debug("onend");
-      reject(new Error("Proxy connection ended before receiving CONNECT response"));
-    }
-    function onerror(err) {
-      cleanup();
-      debug("onerror %o", err);
-      reject(err);
-    }
-    function ondata(b3) {
-      buffers.push(b3);
-      buffersLength += b3.length;
-      const buffered = Buffer.concat(buffers, buffersLength);
-      const endOfHeaders = buffered.indexOf("\r\n\r\n");
-      if (endOfHeaders === -1) {
-        debug("have not received end of HTTP headers yet...");
-        read();
-        return;
-      }
-      const headerParts = buffered.slice(0, endOfHeaders).toString("ascii").split("\r\n");
-      const firstLine = headerParts.shift();
-      if (!firstLine) {
-        socket.destroy();
-        return reject(new Error("No header received from proxy CONNECT response"));
-      }
-      const firstLineParts = firstLine.split(" ");
-      const statusCode = +firstLineParts[1];
-      const statusText = firstLineParts.slice(2).join(" ");
-      const headers = {};
-      for (const header of headerParts) {
-        if (!header)
-          continue;
-        const firstColon = header.indexOf(":");
-        if (firstColon === -1) {
-          socket.destroy();
-          return reject(new Error(`Invalid header from proxy CONNECT response: "${header}"`));
-        }
-        const key = header.slice(0, firstColon).toLowerCase();
-        const value = header.slice(firstColon + 1).trimStart();
-        const current = headers[key];
-        if (typeof current === "string") {
-          headers[key] = [current, value];
-        } else if (Array.isArray(current)) {
-          current.push(value);
-        } else {
-          headers[key] = value;
-        }
-      }
-      debug("got proxy server response: %o %o", firstLine, headers);
-      cleanup();
-      resolve({
-        connect: {
-          statusCode,
-          statusText,
-          headers
-        },
-        buffered
-      });
-    }
-    socket.on("error", onerror);
-    socket.on("end", onend);
-    read();
-  });
-}
-var import_debug, debug;
-var init_parse_proxy_response = __esm({
-  "../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/parse-proxy-response.js"() {
-    import_debug = __toESM(require_src(), 1);
-    debug = (0, import_debug.default)("https-proxy-agent:parse-proxy-response");
-  }
-});
-
-// ../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/index.js
-var dist_exports = {};
-__export(dist_exports, {
-  HttpsProxyAgent: () => HttpsProxyAgent
-});
-import * as net3 from "net";
-import * as tls from "tls";
-import assert2 from "assert";
-import { URL as URL2 } from "url";
-function resume(socket) {
-  socket.resume();
-}
-function omit2(obj2, ...keys) {
-  const ret2 = {};
-  let key;
-  for (key in obj2) {
-    if (!keys.includes(key)) {
-      ret2[key] = obj2[key];
-    }
-  }
-  return ret2;
-}
-var import_debug2, debug2, setServernameFromNonIpHost, HttpsProxyAgent;
-var init_dist2 = __esm({
-  "../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/index.js"() {
-    import_debug2 = __toESM(require_src(), 1);
-    init_dist();
-    init_parse_proxy_response();
-    debug2 = (0, import_debug2.default)("https-proxy-agent");
-    setServernameFromNonIpHost = (options) => {
-      if (options.servername === void 0 && options.host && !net3.isIP(options.host)) {
-        return {
-          ...options,
-          servername: options.host
-        };
-      }
-      return options;
-    };
-    HttpsProxyAgent = class extends Agent2 {
-      constructor(proxy, opts) {
-        super(opts);
-        this.options = { path: void 0 };
-        this.proxy = typeof proxy === "string" ? new URL2(proxy) : proxy;
-        this.proxyHeaders = opts?.headers ?? {};
-        debug2("Creating new HttpsProxyAgent instance: %o", this.proxy.href);
-        const host = (this.proxy.hostname || this.proxy.host).replace(/^\[|\]$/g, "");
-        const port2 = this.proxy.port ? parseInt(this.proxy.port, 10) : this.proxy.protocol === "https:" ? 443 : 80;
-        this.connectOpts = {
-          // Attempt to negotiate http/1.1 for proxy servers that support http/2
-          ALPNProtocols: ["http/1.1"],
-          ...opts ? omit2(opts, "headers") : null,
-          host,
-          port: port2
-        };
-      }
-      /**
-       * Called when the node-core HTTP client library is creating a
-       * new HTTP request.
-       */
-      async connect(req, opts) {
-        const { proxy } = this;
-        if (!opts.host) {
-          throw new TypeError('No "host" provided');
-        }
-        let socket;
-        if (proxy.protocol === "https:") {
-          debug2("Creating `tls.Socket`: %o", this.connectOpts);
-          socket = tls.connect(setServernameFromNonIpHost(this.connectOpts));
-        } else {
-          debug2("Creating `net.Socket`: %o", this.connectOpts);
-          socket = net3.connect(this.connectOpts);
-        }
-        const headers = typeof this.proxyHeaders === "function" ? this.proxyHeaders() : { ...this.proxyHeaders };
-        const host = net3.isIPv6(opts.host) ? `[${opts.host}]` : opts.host;
-        let payload = `CONNECT ${host}:${opts.port} HTTP/1.1\r
-`;
-        if (proxy.username || proxy.password) {
-          const auth = `${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`;
-          headers["Proxy-Authorization"] = `Basic ${Buffer.from(auth).toString("base64")}`;
-        }
-        headers.Host = `${host}:${opts.port}`;
-        if (!headers["Proxy-Connection"]) {
-          headers["Proxy-Connection"] = this.keepAlive ? "Keep-Alive" : "close";
-        }
-        for (const name of Object.keys(headers)) {
-          payload += `${name}: ${headers[name]}\r
-`;
-        }
-        const proxyResponsePromise = parseProxyResponse(socket);
-        socket.write(`${payload}\r
-`);
-        const { connect: connect4, buffered } = await proxyResponsePromise;
-        req.emit("proxyConnect", connect4);
-        this.emit("proxyConnect", connect4, req);
-        if (connect4.statusCode === 200) {
-          req.once("socket", resume);
-          if (opts.secureEndpoint) {
-            debug2("Upgrading socket connection to TLS");
-            return tls.connect({
-              ...omit2(setServernameFromNonIpHost(opts), "host", "path", "port"),
-              socket
-            });
-          }
-          return socket;
-        }
-        socket.destroy();
-        const fakeSocket = new net3.Socket({ writable: false });
-        fakeSocket.readable = true;
-        req.once("socket", (s) => {
-          debug2("Replaying proxy buffer for failed request");
-          assert2(s.listenerCount("data") > 0);
-          s.push(buffered);
-          s.push(null);
-        });
-        return fakeSocket;
-      }
-    };
-    HttpsProxyAgent.protocols = ["http", "https"];
-  }
-});
-
 // src/instagram/hikerApiClient.ts
 var hikerApiClient_exports = {};
 __export(hikerApiClient_exports, {
   HikerApiClient: () => HikerApiClient,
   HikerCacheMissError: () => HikerCacheMissError
 });
-import * as https from "https";
+import * as https2 from "https";
 function hikerGet(path6, token) {
   return new Promise((resolve, reject) => {
-    const req = https.request(
+    const req = https2.request(
       {
         hostname: HIKER_HOST,
         path: path6,
@@ -120978,12 +120638,12 @@ var require_ipv4 = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Address4 = void 0;
     var common = __importStar(require_common2());
-    var constants = __importStar(require_constants5());
+    var constants2 = __importStar(require_constants5());
     var address_error_1 = require_address_error();
-    var isCorrect4 = common.isCorrect(constants.BITS);
+    var isCorrect4 = common.isCorrect(constants2.BITS);
     var Address4 = class _Address4 {
       constructor(address) {
-        this.groups = constants.GROUPS;
+        this.groups = constants2.GROUPS;
         this.parsedAddress = [];
         this.parsedSubnet = "";
         this.subnet = "/32";
@@ -120992,15 +120652,15 @@ var require_ipv4 = __commonJS({
         this.isCorrect = isCorrect4;
         this.isInSubnet = common.isInSubnet;
         this.address = address;
-        const subnet = constants.RE_SUBNET_STRING.exec(address);
+        const subnet = constants2.RE_SUBNET_STRING.exec(address);
         if (subnet) {
           this.parsedSubnet = subnet[0].replace("/", "");
           this.subnetMask = parseInt(this.parsedSubnet, 10);
           this.subnet = `/${this.subnetMask}`;
-          if (this.subnetMask < 0 || this.subnetMask > constants.BITS) {
+          if (this.subnetMask < 0 || this.subnetMask > constants2.BITS) {
             throw new address_error_1.AddressError("Invalid subnet mask.");
           }
-          address = address.replace(constants.RE_SUBNET_STRING, "");
+          address = address.replace(constants2.RE_SUBNET_STRING, "");
         }
         this.addressMinusSuffix = address;
         this.parsedAddress = this.parse(address);
@@ -121028,7 +120688,7 @@ var require_ipv4 = __commonJS({
        */
       parse(address) {
         const groups = address.split(".");
-        if (!address.match(constants.RE_ADDRESS)) {
+        if (!address.match(constants2.RE_ADDRESS)) {
           throw new address_error_1.AddressError("Invalid IPv4 address.");
         }
         return groups;
@@ -121051,7 +120711,7 @@ var require_ipv4 = __commonJS({
        * address.subnetMask; // 24
        */
       static fromAddressAndMask(address, mask) {
-        const bits = common.prefixLengthFromMask(new _Address4(mask).bigInt(), constants.BITS);
+        const bits = common.prefixLengthFromMask(new _Address4(mask).bigInt(), constants2.BITS);
         return new _Address4(`${address}/${bits}`);
       }
       /**
@@ -121065,9 +120725,9 @@ var require_ipv4 = __commonJS({
        */
       static fromAddressAndWildcardMask(address, wildcardMask) {
         const wildcard = new _Address4(wildcardMask).bigInt();
-        const allOnes = (BigInt(1) << BigInt(constants.BITS)) - BigInt(1);
+        const allOnes = (BigInt(1) << BigInt(constants2.BITS)) - BigInt(1);
         const mask = wildcard ^ allOnes;
-        const bits = common.prefixLengthFromMask(mask, constants.BITS);
+        const bits = common.prefixLengthFromMask(mask, constants2.BITS);
         return new _Address4(`${address}/${bits}`);
       }
       /**
@@ -121085,7 +120745,7 @@ var require_ipv4 = __commonJS({
        */
       static fromWildcard(input) {
         const groups = input.split(".");
-        if (groups.length !== constants.GROUPS) {
+        if (groups.length !== constants2.GROUPS) {
           throw new address_error_1.AddressError("Wildcard pattern must have 4 octets");
         }
         let firstWildcard = -1;
@@ -121100,7 +120760,7 @@ var require_ipv4 = __commonJS({
         }
         const trailing = firstWildcard === -1 ? 0 : groups.length - firstWildcard;
         const replaced = groups.map((g) => g === "*" ? "0" : g);
-        const subnetBits = constants.BITS - trailing * 8;
+        const subnetBits = constants2.BITS - trailing * 8;
         return new _Address4(`${replaced.join(".")}/${subnetBits}`);
       }
       /**
@@ -121170,7 +120830,7 @@ var require_ipv4 = __commonJS({
       toGroup6() {
         const output = [];
         let i2;
-        for (i2 = 0; i2 < constants.GROUPS; i2 += 2) {
+        for (i2 = 0; i2 < constants2.GROUPS; i2 += 2) {
           output.push(`${common.stringToPaddedHex(this.parsedAddress[i2])}${common.stringToPaddedHex(this.parsedAddress[i2 + 1])}`);
         }
         return output.join(":");
@@ -121187,7 +120847,7 @@ var require_ipv4 = __commonJS({
        * @returns {bigint}
        */
       _startAddress() {
-        return BigInt(`0b${this.mask() + "0".repeat(constants.BITS - this.subnetMask)}`);
+        return BigInt(`0b${this.mask() + "0".repeat(constants2.BITS - this.subnetMask)}`);
       }
       /**
        * The first address in the range given by this address' subnet.
@@ -121211,7 +120871,7 @@ var require_ipv4 = __commonJS({
        * @returns {bigint}
        */
       _endAddress() {
-        return BigInt(`0b${this.mask() + "1".repeat(constants.BITS - this.subnetMask)}`);
+        return BigInt(`0b${this.mask() + "1".repeat(constants2.BITS - this.subnetMask)}`);
       }
       /**
        * The last address in the range given by this address' subnet
@@ -121236,7 +120896,7 @@ var require_ipv4 = __commonJS({
        * @returns {Address4}
        */
       subnetMaskAddress() {
-        return _Address4.fromBigInt(BigInt(`0b${"1".repeat(this.subnetMask)}${"0".repeat(constants.BITS - this.subnetMask)}`));
+        return _Address4.fromBigInt(BigInt(`0b${"1".repeat(this.subnetMask)}${"0".repeat(constants2.BITS - this.subnetMask)}`));
       }
       /**
        * The Cisco-style wildcard mask, e.g. `0.0.0.255` for a `/24`. This is
@@ -121245,7 +120905,7 @@ var require_ipv4 = __commonJS({
        * @returns {Address4}
        */
       wildcardMask() {
-        return _Address4.fromBigInt(BigInt(`0b${"0".repeat(this.subnetMask)}${"1".repeat(constants.BITS - this.subnetMask)}`));
+        return _Address4.fromBigInt(BigInt(`0b${"0".repeat(this.subnetMask)}${"1".repeat(constants2.BITS - this.subnetMask)}`));
       }
       /**
        * The network address in CIDR string form, e.g. `192.168.1.0/24` for
@@ -121387,7 +121047,7 @@ var require_ipv4 = __commonJS({
        */
       binaryZeroPad() {
         if (this._binaryZeroPad === void 0) {
-          this._binaryZeroPad = this.bigInt().toString(2).padStart(constants.BITS, "0");
+          this._binaryZeroPad = this.bigInt().toString(2).padStart(constants2.BITS, "0");
         }
         return this._binaryZeroPad;
       }
@@ -121397,7 +121057,7 @@ var require_ipv4 = __commonJS({
        */
       groupForV6() {
         const segments = this.parsedAddress;
-        return this.address.replace(constants.RE_ADDRESS, `<span class="hover-group group-v4 group-6">${segments.slice(0, 2).join(".")}</span>.<span class="hover-group group-v4 group-7">${segments.slice(2, 4).join(".")}</span>`);
+        return this.address.replace(constants2.RE_ADDRESS, `<span class="hover-group group-v4 group-6">${segments.slice(0, 2).join(".")}</span>.<span class="hover-group group-v4 group-7">${segments.slice(2, 4).join(".")}</span>`);
       }
     };
     exports2.Address4 = Address4;
@@ -122779,7 +122439,7 @@ var require_helpers3 = __commonJS({
     var constants_1 = require_constants4();
     var stream = __require("stream");
     var ip_address_1 = require_ip_address();
-    var net7 = __require("net");
+    var net6 = __require("net");
     function validateSocksClientOptions(options, acceptedCommands = ["connect", "bind", "associate"]) {
       if (!constants_1.SocksCommand[options.command]) {
         throw new util_1.SocksClientError(constants_1.ERRORS.InvalidSocksCommand, options);
@@ -122862,10 +122522,10 @@ var require_helpers3 = __commonJS({
     }
     exports2.int32ToIpv4 = int32ToIpv4;
     function ipToBuffer(ip) {
-      if (net7.isIPv4(ip)) {
+      if (net6.isIPv4(ip)) {
         const address = new ip_address_1.Address4(ip);
         return Buffer.from(address.toArray());
-      } else if (net7.isIPv6(ip)) {
+      } else if (net6.isIPv6(ip)) {
         const address = new ip_address_1.Address6(ip);
         return Buffer.from(address.canonicalForm().split(":").map((segment) => segment.padStart(4, "0")).join(""), "hex");
       } else {
@@ -122958,7 +122618,7 @@ var require_socksclient = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.SocksClientError = exports2.SocksClient = void 0;
     var events_1 = __require("events");
-    var net7 = __require("net");
+    var net6 = __require("net");
     var smart_buffer_1 = require_smartbuffer();
     var constants_1 = require_constants4();
     var helpers_1 = require_helpers3();
@@ -123081,10 +122741,10 @@ var require_socksclient = __commonJS({
         const buff = new smart_buffer_1.SmartBuffer();
         buff.writeUInt16BE(0);
         buff.writeUInt8(options.frameNumber || 0);
-        if (net7.isIPv4(options.remoteHost.host)) {
+        if (net6.isIPv4(options.remoteHost.host)) {
           buff.writeUInt8(constants_1.Socks5HostType.IPv4);
           buff.writeUInt32BE((0, helpers_1.ipv4ToInt32)(options.remoteHost.host));
-        } else if (net7.isIPv6(options.remoteHost.host)) {
+        } else if (net6.isIPv6(options.remoteHost.host)) {
           buff.writeUInt8(constants_1.Socks5HostType.IPv6);
           buff.writeBuffer((0, helpers_1.ipToBuffer)(options.remoteHost.host));
         } else {
@@ -123147,7 +122807,7 @@ var require_socksclient = __commonJS({
         if (existingSocket) {
           this.socket = existingSocket;
         } else {
-          this.socket = new net7.Socket();
+          this.socket = new net6.Socket();
         }
         this.socket.once("close", this.onClose);
         this.socket.once("error", this.onError);
@@ -123278,7 +122938,7 @@ var require_socksclient = __commonJS({
         buff.writeUInt8(4);
         buff.writeUInt8(constants_1.SocksCommand[this.options.command]);
         buff.writeUInt16BE(this.options.destination.port);
-        if (net7.isIPv4(this.options.destination.host)) {
+        if (net6.isIPv4(this.options.destination.host)) {
           buff.writeBuffer((0, helpers_1.ipToBuffer)(this.options.destination.host));
           buff.writeStringNT(userId);
         } else {
@@ -123456,10 +123116,10 @@ var require_socksclient = __commonJS({
         buff.writeUInt8(5);
         buff.writeUInt8(constants_1.SocksCommand[this.options.command]);
         buff.writeUInt8(0);
-        if (net7.isIPv4(this.options.destination.host)) {
+        if (net6.isIPv4(this.options.destination.host)) {
           buff.writeUInt8(constants_1.Socks5HostType.IPv4);
           buff.writeBuffer((0, helpers_1.ipToBuffer)(this.options.destination.host));
-        } else if (net7.isIPv6(this.options.destination.host)) {
+        } else if (net6.isIPv6(this.options.destination.host)) {
           buff.writeUInt8(constants_1.Socks5HostType.IPv6);
           buff.writeBuffer((0, helpers_1.ipToBuffer)(this.options.destination.host));
         } else {
@@ -123628,15 +123288,144 @@ var require_build = __commonJS({
   }
 });
 
+// ../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/helpers.js
+var init_helpers = __esm({
+  "../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/helpers.js"() {
+  }
+});
+
+// ../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/index.js
+import * as net3 from "net";
+import * as http4 from "http";
+import { Agent as HttpsAgent } from "https";
+var INTERNAL, Agent2;
+var init_dist = __esm({
+  "../../node_modules/.pnpm/agent-base@9.0.0/node_modules/agent-base/dist/index.js"() {
+    init_helpers();
+    INTERNAL = /* @__PURE__ */ Symbol("AgentBaseInternalState");
+    Agent2 = class extends http4.Agent {
+      constructor(opts) {
+        super(opts);
+        this[INTERNAL] = {};
+      }
+      /**
+       * Determine whether this is an `http` or `https` request.
+       */
+      isSecureEndpoint(options) {
+        if (options) {
+          if (typeof options.secureEndpoint === "boolean") {
+            return options.secureEndpoint;
+          }
+          if (typeof options.protocol === "string") {
+            return options.protocol === "https:";
+          }
+        }
+        const { stack } = new Error();
+        if (typeof stack !== "string")
+          return false;
+        return stack.split("\n").some((l2) => l2.indexOf("(https.js:") !== -1 || l2.indexOf("node:https:") !== -1);
+      }
+      // In order to support async signatures in `connect()` and Node's native
+      // connection pooling in `http.Agent`, the array of sockets for each origin
+      // has to be updated synchronously. This is so the length of the array is
+      // accurate when `addRequest()` is next called. We achieve this by creating a
+      // fake socket and adding it to `sockets[origin]` and incrementing
+      // `totalSocketCount`.
+      incrementSockets(name) {
+        if (this.maxSockets === Infinity && this.maxTotalSockets === Infinity) {
+          return null;
+        }
+        if (!this.sockets[name]) {
+          this.sockets[name] = [];
+        }
+        const fakeSocket = new net3.Socket({ writable: false });
+        this.sockets[name].push(fakeSocket);
+        this.totalSocketCount++;
+        return fakeSocket;
+      }
+      decrementSockets(name, socket) {
+        if (!this.sockets[name] || socket === null) {
+          return;
+        }
+        const sockets = this.sockets[name];
+        const index = sockets.indexOf(socket);
+        if (index !== -1) {
+          sockets.splice(index, 1);
+          this.totalSocketCount--;
+          if (sockets.length === 0) {
+            delete this.sockets[name];
+          }
+        }
+      }
+      // In order to properly update the socket pool, we need to call `getName()` on
+      // the core `https.Agent` if it is a secureEndpoint.
+      getName(options) {
+        const secureEndpoint = this.isSecureEndpoint(options);
+        if (secureEndpoint) {
+          return HttpsAgent.prototype.getName.call(this, options);
+        }
+        return super.getName(options);
+      }
+      createSocket(req, options, cb) {
+        const connectOpts = {
+          ...options,
+          secureEndpoint: this.isSecureEndpoint(options)
+        };
+        const name = this.getName(connectOpts);
+        const fakeSocket = this.incrementSockets(name);
+        Promise.resolve().then(() => this.connect(req, connectOpts)).then((socket) => {
+          this.decrementSockets(name, fakeSocket);
+          if (typeof socket.addRequest === "function") {
+            try {
+              return socket.addRequest(req, connectOpts);
+            } catch (err) {
+              return cb(err);
+            }
+          }
+          this[INTERNAL].currentSocket = socket;
+          super.createSocket(req, options, cb);
+        }, (err) => {
+          this.decrementSockets(name, fakeSocket);
+          cb(err);
+        });
+      }
+      createConnection() {
+        const socket = this[INTERNAL].currentSocket;
+        this[INTERNAL].currentSocket = void 0;
+        if (!socket) {
+          throw new Error("No socket was returned in the `connect()` function");
+        }
+        return socket;
+      }
+      get defaultPort() {
+        return this[INTERNAL].defaultPort ?? (this.protocol === "https:" ? 443 : 80);
+      }
+      set defaultPort(v3) {
+        if (this[INTERNAL]) {
+          this[INTERNAL].defaultPort = v3;
+        }
+      }
+      get protocol() {
+        return this[INTERNAL].protocol ?? (this.isSecureEndpoint() ? "https:" : "http:");
+      }
+      set protocol(v3) {
+        if (this[INTERNAL]) {
+          this[INTERNAL].protocol = v3;
+        }
+      }
+    };
+  }
+});
+
 // ../../node_modules/.pnpm/socks-proxy-agent@10.0.0/node_modules/socks-proxy-agent/dist/index.js
-var dist_exports2 = {};
-__export(dist_exports2, {
+var dist_exports = {};
+__export(dist_exports, {
   SocksProxyAgent: () => SocksProxyAgent
 });
 import * as dns2 from "dns";
-import * as net6 from "net";
+import * as net4 from "net";
 import * as tls3 from "tls";
-import { URL as URL3 } from "url";
+import { URL as URL2 } from "url";
 function parseSocksURL(url2) {
   let lookup2 = false;
   let type = 5;
@@ -123684,7 +123473,7 @@ function parseSocksURL(url2) {
   }
   return { lookup: lookup2, proxy };
 }
-function omit3(obj2, ...keys) {
+function omit2(obj2, ...keys) {
   const ret2 = {};
   let key;
   for (key in obj2) {
@@ -123694,15 +123483,15 @@ function omit3(obj2, ...keys) {
   }
   return ret2;
 }
-var import_socks, import_debug3, debug3, setServernameFromNonIpHost2, SocksProxyAgent;
-var init_dist3 = __esm({
+var import_socks, import_debug, debug, setServernameFromNonIpHost, SocksProxyAgent;
+var init_dist2 = __esm({
   "../../node_modules/.pnpm/socks-proxy-agent@10.0.0/node_modules/socks-proxy-agent/dist/index.js"() {
     import_socks = __toESM(require_build(), 1);
     init_dist();
-    import_debug3 = __toESM(require_src(), 1);
-    debug3 = (0, import_debug3.default)("socks-proxy-agent");
-    setServernameFromNonIpHost2 = (options) => {
-      if (options.servername === void 0 && options.host && !net6.isIP(options.host)) {
+    import_debug = __toESM(require_src(), 1);
+    debug = (0, import_debug.default)("socks-proxy-agent");
+    setServernameFromNonIpHost = (options) => {
+      if (options.servername === void 0 && options.host && !net4.isIP(options.host)) {
         return {
           ...options,
           servername: options.host
@@ -123713,7 +123502,7 @@ var init_dist3 = __esm({
     SocksProxyAgent = class extends Agent2 {
       constructor(uri, opts) {
         super(opts);
-        const url2 = typeof uri === "string" ? new URL3(uri) : uri;
+        const url2 = typeof uri === "string" ? new URL2(uri) : uri;
         const { proxy, lookup: lookup2 } = parseSocksURL(url2);
         this.shouldLookup = lookup2;
         this.proxy = proxy;
@@ -123760,21 +123549,21 @@ var init_dist3 = __esm({
           if (tlsSocket)
             tlsSocket.destroy();
         };
-        debug3("Creating socks proxy connection: %o", socksOpts);
+        debug("Creating socks proxy connection: %o", socksOpts);
         const { socket } = await import_socks.SocksClient.createConnection(socksOpts);
-        debug3("Successfully created socks proxy connection");
+        debug("Successfully created socks proxy connection");
         if (timeout !== null) {
           socket.setTimeout(timeout);
           socket.on("timeout", () => cleanup());
         }
         if (opts.secureEndpoint) {
-          debug3("Upgrading socket connection to TLS");
+          debug("Upgrading socket connection to TLS");
           const tlsSocket = tls3.connect({
-            ...omit3(setServernameFromNonIpHost2(opts), "host", "path", "port"),
+            ...omit2(setServernameFromNonIpHost(opts), "host", "path", "port"),
             socket
           });
           tlsSocket.once("error", (error40) => {
-            debug3("Socket TLS error", error40.message);
+            debug("Socket TLS error", error40.message);
             cleanup(tlsSocket);
           });
           return tlsSocket;
@@ -123789,6 +123578,217 @@ var init_dist3 = __esm({
       "socks5",
       "socks5h"
     ];
+  }
+});
+
+// ../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/parse-proxy-response.js
+function parseProxyResponse(socket) {
+  return new Promise((resolve, reject) => {
+    let buffersLength = 0;
+    const buffers = [];
+    function read() {
+      const b3 = socket.read();
+      if (b3)
+        ondata(b3);
+      else
+        socket.once("readable", read);
+    }
+    function cleanup() {
+      socket.removeListener("end", onend);
+      socket.removeListener("error", onerror);
+      socket.removeListener("readable", read);
+    }
+    function onend() {
+      cleanup();
+      debug2("onend");
+      reject(new Error("Proxy connection ended before receiving CONNECT response"));
+    }
+    function onerror(err) {
+      cleanup();
+      debug2("onerror %o", err);
+      reject(err);
+    }
+    function ondata(b3) {
+      buffers.push(b3);
+      buffersLength += b3.length;
+      const buffered = Buffer.concat(buffers, buffersLength);
+      const endOfHeaders = buffered.indexOf("\r\n\r\n");
+      if (endOfHeaders === -1) {
+        debug2("have not received end of HTTP headers yet...");
+        read();
+        return;
+      }
+      const headerParts = buffered.slice(0, endOfHeaders).toString("ascii").split("\r\n");
+      const firstLine = headerParts.shift();
+      if (!firstLine) {
+        socket.destroy();
+        return reject(new Error("No header received from proxy CONNECT response"));
+      }
+      const firstLineParts = firstLine.split(" ");
+      const statusCode = +firstLineParts[1];
+      const statusText = firstLineParts.slice(2).join(" ");
+      const headers = {};
+      for (const header of headerParts) {
+        if (!header)
+          continue;
+        const firstColon = header.indexOf(":");
+        if (firstColon === -1) {
+          socket.destroy();
+          return reject(new Error(`Invalid header from proxy CONNECT response: "${header}"`));
+        }
+        const key = header.slice(0, firstColon).toLowerCase();
+        const value = header.slice(firstColon + 1).trimStart();
+        const current = headers[key];
+        if (typeof current === "string") {
+          headers[key] = [current, value];
+        } else if (Array.isArray(current)) {
+          current.push(value);
+        } else {
+          headers[key] = value;
+        }
+      }
+      debug2("got proxy server response: %o %o", firstLine, headers);
+      cleanup();
+      resolve({
+        connect: {
+          statusCode,
+          statusText,
+          headers
+        },
+        buffered
+      });
+    }
+    socket.on("error", onerror);
+    socket.on("end", onend);
+    read();
+  });
+}
+var import_debug2, debug2;
+var init_parse_proxy_response = __esm({
+  "../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/parse-proxy-response.js"() {
+    import_debug2 = __toESM(require_src(), 1);
+    debug2 = (0, import_debug2.default)("https-proxy-agent:parse-proxy-response");
+  }
+});
+
+// ../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/index.js
+var dist_exports2 = {};
+__export(dist_exports2, {
+  HttpsProxyAgent: () => HttpsProxyAgent
+});
+import * as net5 from "net";
+import * as tls4 from "tls";
+import assert2 from "assert";
+import { URL as URL3 } from "url";
+function resume(socket) {
+  socket.resume();
+}
+function omit3(obj2, ...keys) {
+  const ret2 = {};
+  let key;
+  for (key in obj2) {
+    if (!keys.includes(key)) {
+      ret2[key] = obj2[key];
+    }
+  }
+  return ret2;
+}
+var import_debug3, debug3, setServernameFromNonIpHost2, HttpsProxyAgent;
+var init_dist3 = __esm({
+  "../../node_modules/.pnpm/https-proxy-agent@9.0.0/node_modules/https-proxy-agent/dist/index.js"() {
+    import_debug3 = __toESM(require_src(), 1);
+    init_dist();
+    init_parse_proxy_response();
+    debug3 = (0, import_debug3.default)("https-proxy-agent");
+    setServernameFromNonIpHost2 = (options) => {
+      if (options.servername === void 0 && options.host && !net5.isIP(options.host)) {
+        return {
+          ...options,
+          servername: options.host
+        };
+      }
+      return options;
+    };
+    HttpsProxyAgent = class extends Agent2 {
+      constructor(proxy, opts) {
+        super(opts);
+        this.options = { path: void 0 };
+        this.proxy = typeof proxy === "string" ? new URL3(proxy) : proxy;
+        this.proxyHeaders = opts?.headers ?? {};
+        debug3("Creating new HttpsProxyAgent instance: %o", this.proxy.href);
+        const host = (this.proxy.hostname || this.proxy.host).replace(/^\[|\]$/g, "");
+        const port2 = this.proxy.port ? parseInt(this.proxy.port, 10) : this.proxy.protocol === "https:" ? 443 : 80;
+        this.connectOpts = {
+          // Attempt to negotiate http/1.1 for proxy servers that support http/2
+          ALPNProtocols: ["http/1.1"],
+          ...opts ? omit3(opts, "headers") : null,
+          host,
+          port: port2
+        };
+      }
+      /**
+       * Called when the node-core HTTP client library is creating a
+       * new HTTP request.
+       */
+      async connect(req, opts) {
+        const { proxy } = this;
+        if (!opts.host) {
+          throw new TypeError('No "host" provided');
+        }
+        let socket;
+        if (proxy.protocol === "https:") {
+          debug3("Creating `tls.Socket`: %o", this.connectOpts);
+          socket = tls4.connect(setServernameFromNonIpHost2(this.connectOpts));
+        } else {
+          debug3("Creating `net.Socket`: %o", this.connectOpts);
+          socket = net5.connect(this.connectOpts);
+        }
+        const headers = typeof this.proxyHeaders === "function" ? this.proxyHeaders() : { ...this.proxyHeaders };
+        const host = net5.isIPv6(opts.host) ? `[${opts.host}]` : opts.host;
+        let payload = `CONNECT ${host}:${opts.port} HTTP/1.1\r
+`;
+        if (proxy.username || proxy.password) {
+          const auth = `${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`;
+          headers["Proxy-Authorization"] = `Basic ${Buffer.from(auth).toString("base64")}`;
+        }
+        headers.Host = `${host}:${opts.port}`;
+        if (!headers["Proxy-Connection"]) {
+          headers["Proxy-Connection"] = this.keepAlive ? "Keep-Alive" : "close";
+        }
+        for (const name of Object.keys(headers)) {
+          payload += `${name}: ${headers[name]}\r
+`;
+        }
+        const proxyResponsePromise = parseProxyResponse(socket);
+        socket.write(`${payload}\r
+`);
+        const { connect: connect6, buffered } = await proxyResponsePromise;
+        req.emit("proxyConnect", connect6);
+        this.emit("proxyConnect", connect6, req);
+        if (connect6.statusCode === 200) {
+          req.once("socket", resume);
+          if (opts.secureEndpoint) {
+            debug3("Upgrading socket connection to TLS");
+            return tls4.connect({
+              ...omit3(setServernameFromNonIpHost2(opts), "host", "path", "port"),
+              socket
+            });
+          }
+          return socket;
+        }
+        socket.destroy();
+        const fakeSocket = new net5.Socket({ writable: false });
+        fakeSocket.readable = true;
+        req.once("socket", (s) => {
+          debug3("Replaying proxy buffer for failed request");
+          assert2(s.listenerCount("data") > 0);
+          s.push(buffered);
+          s.push(null);
+        });
+        return fakeSocket;
+      }
+    };
+    HttpsProxyAgent.protocols = ["http", "https"];
   }
 });
 
@@ -124156,7 +124156,7 @@ var init_jarveeParser = __esm({
 
 // src/index.ts
 var import_express4 = __toESM(require_express2(), 1);
-import { createServer as createServer2 } from "http";
+import { createServer } from "http";
 import path5 from "path";
 import fs5 from "fs";
 
@@ -148178,7 +148178,7 @@ var DatabaseStorage = class {
         ipAddress: call.ipAddress ?? "",
         durationMs: call.durationMs ?? 0,
         isError: call.isError ?? false,
-        transport: call.transport ?? "ja3"
+        transport: call.transport ?? "node-tls-http2"
       }).returning();
       if (++this._apiCallInsertCount % 50 === 0) {
         try {
@@ -150059,8 +150059,8 @@ function h3(t2) {
 }
 
 // src/instagram/instagramWebClient.ts
-import * as https3 from "https";
-import * as http2 from "http";
+import * as https4 from "https";
+import * as http3 from "http";
 import * as fs2 from "fs";
 import * as path3 from "path";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -150070,7 +150070,367 @@ var import_instagram_private_api2 = __toESM(require_dist2(), 1);
 
 // src/instagram/tlsTransport.ts
 var import_instagram_private_api = __toESM(require_dist2(), 1);
-import * as net4 from "node:net";
+
+// src/instagram/http2ProxyTransport.ts
+import * as http from "node:http";
+import * as https from "node:https";
+import * as http2 from "node:http2";
+import * as tls from "node:tls";
+import * as zlib from "node:zlib";
+var DEFAULT_TIMEOUT_MS = 3e4;
+var MAX_REDIRECTS = 5;
+var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
+  "connection",
+  "keep-alive",
+  "proxy-connection",
+  "transfer-encoding",
+  "upgrade",
+  "host"
+]);
+var SENSITIVE_HEADERS = /* @__PURE__ */ new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+  "x-csrftoken"
+]);
+function parseProxyUrl(proxyUrl) {
+  let parsed;
+  try {
+    parsed = new URL(proxyUrl);
+  } catch {
+    throw new Error("HTTP/2 transport requires a fully qualified HTTP proxy URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`HTTP/2 transport does not support proxy protocol ${parsed.protocol}`);
+  }
+  if (!parsed.hostname) throw new Error("HTTP proxy URL is missing a hostname");
+  return parsed;
+}
+function proxyAuthorization(proxy) {
+  if (!proxy.username && !proxy.password) return void 0;
+  const username = decodeURIComponent(proxy.username);
+  const password = decodeURIComponent(proxy.password);
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
+function openConnectTunnel(proxyUrl, targetHost, targetPort, timeoutMs) {
+  const proxy = parseProxyUrl(proxyUrl);
+  const isTlsProxy = proxy.protocol === "https:";
+  const transport = isTlsProxy ? https : http;
+  const auth = proxyAuthorization(proxy);
+  const targetAuthority = `${targetHost}:${targetPort}`;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const request3 = transport.request({
+      hostname: proxy.hostname,
+      port: Number(proxy.port || (isTlsProxy ? 443 : 80)),
+      method: "CONNECT",
+      path: targetAuthority,
+      headers: {
+        Host: targetAuthority,
+        ...auth ? { "Proxy-Authorization": auth } : {}
+      },
+      ...isTlsProxy ? { rejectUnauthorized: false, servername: proxy.hostname } : {}
+    });
+    const timer = setTimeout(
+      () => request3.destroy(new Error("proxy_connect_timeout")),
+      timeoutMs
+    );
+    const finish = (error40, socket) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      request3.removeAllListeners("connect");
+      request3.removeAllListeners("response");
+      request3.removeAllListeners("error");
+      if (error40) reject(error40);
+      else if (socket) resolve(socket);
+      else reject(new Error("proxy CONNECT completed without a tunnel socket"));
+    };
+    request3.once("connect", (response, socket, head) => {
+      if (response.statusCode !== 200) {
+        response.resume();
+        socket.destroy();
+        finish(new Error(`proxy_connect_http_${response.statusCode ?? 0}`));
+        return;
+      }
+      if (head.length) socket.unshift(head);
+      finish(void 0, socket);
+    });
+    request3.once("response", (response) => {
+      response.resume();
+      finish(new Error(`proxy_connect_rejected_http_${response.statusCode ?? 0}`));
+    });
+    request3.once("error", (error40) => finish(error40));
+    request3.end();
+  });
+}
+function waitForSocketSecure(socket, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (socket.alpnProtocol) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      socket.destroy(new Error("target_tls_timeout"));
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.removeListener("secureConnect", onSecure);
+      socket.removeListener("error", onError);
+    };
+    const onSecure = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error40) => {
+      cleanup();
+      reject(error40);
+    };
+    socket.once("secureConnect", onSecure);
+    socket.once("error", onError);
+  });
+}
+function waitForHttp2Connect(session, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      session.destroy(new Error("http2_session_timeout"));
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      session.removeListener("connect", onConnect);
+      session.removeListener("error", onError);
+    };
+    const onConnect = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error40) => {
+      cleanup();
+      reject(error40);
+    };
+    session.once("connect", onConnect);
+    session.once("error", onError);
+  });
+}
+async function createHttp2ProxySession(targetUrl, proxyUrl, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const target = new URL(targetUrl);
+  if (target.protocol !== "https:") {
+    throw new Error("HTTP/2 proxy transport only supports HTTPS target URLs");
+  }
+  const targetPort = Number(target.port || 443);
+  let tunnel;
+  let socket;
+  let session;
+  try {
+    tunnel = await openConnectTunnel(proxyUrl, target.hostname, targetPort, timeoutMs);
+    socket = tls.connect({
+      socket: tunnel,
+      servername: target.hostname,
+      ALPNProtocols: ["h2"],
+      // Existing proxy paths permit inspection certificates. Keep that behavior
+      // while using Node's default TLS implementation and protocol negotiation.
+      rejectUnauthorized: false
+    });
+    await waitForSocketSecure(socket, timeoutMs);
+    if (socket.alpnProtocol !== "h2") {
+      throw new Error(`HTTP/2 was not negotiated (ALPN=${socket.alpnProtocol || "none"})`);
+    }
+    session = http2.connect(target.origin, {
+      createConnection: () => socket,
+      settings: { enablePush: false }
+    });
+    session.on("error", () => {
+    });
+    await waitForHttp2Connect(session, timeoutMs);
+    return {
+      targetOrigin: target.origin,
+      proxyUrl,
+      session,
+      socket,
+      closed: false
+    };
+  } catch (error40) {
+    session?.destroy();
+    socket?.destroy();
+    tunnel?.destroy();
+    throw error40;
+  }
+}
+async function closeHttp2ProxySession(handle) {
+  if (!handle || handle.closed) return;
+  handle.closed = true;
+  if (handle.session.closed || handle.session.destroyed) return;
+  await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      handle.session.destroy();
+      resolve();
+    }, 1500);
+    handle.session.once("close", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    handle.session.close();
+  });
+}
+function normalizedResponseHeaders(headers) {
+  const normalized = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.startsWith(":") || value == null) continue;
+    if (Array.isArray(value)) normalized[name] = value.map(String);
+    else if (typeof value === "string" || typeof value === "number") normalized[name] = String(value);
+  }
+  return normalized;
+}
+function responseBodyBytes(body, headers) {
+  const rawEncoding = headers["content-encoding"];
+  const encoding = (Array.isArray(rawEncoding) ? rawEncoding[0] : rawEncoding)?.split(",")[0].trim().toLowerCase();
+  try {
+    if (encoding === "gzip") return zlib.gunzipSync(body);
+    if (encoding === "deflate") {
+      try {
+        return zlib.inflateSync(body);
+      } catch {
+        return zlib.inflateRawSync(body);
+      }
+    }
+    if (encoding === "br") return zlib.brotliDecompressSync(body);
+  } catch {
+  }
+  return body;
+}
+function makeRequestHeaders(url2, method, inputHeaders, body) {
+  const headers = {
+    ":method": method.toUpperCase(),
+    ":scheme": "https",
+    ":authority": url2.host,
+    ":path": `${url2.pathname}${url2.search}`
+  };
+  for (const [name, rawValue] of Object.entries(inputHeaders)) {
+    if (rawValue == null) continue;
+    const normalizedName = name.toLowerCase();
+    if (normalizedName.startsWith(":") || HOP_BY_HOP_HEADERS.has(normalizedName)) continue;
+    if (normalizedName === "te" && String(rawValue).toLowerCase() !== "trailers") continue;
+    headers[normalizedName] = rawValue;
+  }
+  if (!headers["accept-encoding"]) headers["accept-encoding"] = "gzip, deflate, br";
+  if (body.length > 0) headers["content-length"] = String(body.length);
+  else delete headers["content-length"];
+  return headers;
+}
+function requestOnSession(handle, url2, method, inputHeaders, body, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (handle.closed || handle.session.closed || handle.session.destroyed) {
+      reject(new Error("HTTP/2 proxy session is closed"));
+      return;
+    }
+    let status = 0;
+    let responseHeaders = {};
+    const chunks = [];
+    let settled = false;
+    const stream = handle.session.request(
+      makeRequestHeaders(url2, method, inputHeaders, body)
+    );
+    const timer = setTimeout(() => {
+      stream.close(http2.constants.NGHTTP2_CANCEL);
+      finish(new Error("request_timeout"));
+    }, timeoutMs);
+    const finish = (error40, response) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      handle.session.removeListener("error", onSessionError);
+      if (error40) reject(error40);
+      else if (response) resolve(response);
+      else reject(new Error("HTTP/2 request ended without a response"));
+    };
+    const onSessionError = (error40) => finish(error40);
+    handle.session.once("error", onSessionError);
+    stream.once("response", (headers) => {
+      status = Number(headers[":status"] ?? 0);
+      responseHeaders = normalizedResponseHeaders(headers);
+    });
+    stream.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    stream.once("error", (error40) => finish(error40));
+    stream.once("end", () => {
+      const raw = Buffer.concat(chunks);
+      finish(void 0, {
+        status,
+        headers: responseHeaders,
+        body: responseBodyBytes(raw, responseHeaders)
+      });
+    });
+    if (!stream.writableEnded) {
+      if (body.length > 0) stream.end(body);
+      else stream.end();
+    }
+  });
+}
+function headerString(headers, name) {
+  const value = headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+async function requestHttp2ThroughProxy(options) {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let currentUrl = new URL(options.url);
+  if (currentUrl.protocol !== "https:") {
+    throw new Error("HTTP/2 proxy transport only supports HTTPS target URLs");
+  }
+  const headers = { ...options.headers };
+  let method = options.method.toUpperCase();
+  let body = options.body == null ? Buffer.alloc(0) : Buffer.isBuffer(options.body) ? options.body : Buffer.from(options.body, "utf8");
+  const ownedSessions = /* @__PURE__ */ new Set();
+  try {
+    for (let redirectCount = 0; ; redirectCount++) {
+      let handle;
+      if (options.session && options.session.proxyUrl === options.proxyUrl && options.session.targetOrigin === currentUrl.origin && !options.session.closed) {
+        handle = options.session;
+      } else {
+        handle = await createHttp2ProxySession(currentUrl.href, options.proxyUrl, timeoutMs);
+        ownedSessions.add(handle);
+      }
+      const response = await requestOnSession(
+        handle,
+        currentUrl,
+        method,
+        headers,
+        body,
+        timeoutMs
+      );
+      const location2 = headerString(response.headers, "location");
+      if (!options.followRedirects || !location2 || ![301, 302, 303, 307, 308].includes(response.status) || redirectCount >= MAX_REDIRECTS) {
+        return response;
+      }
+      let nextUrl;
+      try {
+        nextUrl = new URL(location2, currentUrl);
+      } catch {
+        return response;
+      }
+      if (nextUrl.protocol !== "https:") return response;
+      if (nextUrl.origin !== currentUrl.origin) {
+        for (const name of Object.keys(headers)) {
+          if (SENSITIVE_HEADERS.has(name.toLowerCase())) delete headers[name];
+        }
+      }
+      if (response.status === 303 || (response.status === 301 || response.status === 302) && method === "POST") {
+        method = "GET";
+        body = Buffer.alloc(0);
+        for (const name of Object.keys(headers)) {
+          if (name.toLowerCase() === "content-length" || name.toLowerCase() === "content-type") {
+            delete headers[name];
+          }
+        }
+      }
+      currentUrl = nextUrl;
+    }
+  } finally {
+    await Promise.all([...ownedSessions].map(closeHttp2ProxySession));
+  }
+}
+
+// src/instagram/tlsTransport.ts
 function parseInstagramJson(rawBody) {
   let output = "";
   let inString = false;
@@ -150127,69 +150487,67 @@ function parseInstagramJson(rawBody) {
   }
   return JSON.parse(output);
 }
-async function findFreeTcpPort(fallback = 9119) {
-  return new Promise((resolve) => {
-    const srv = net4.createServer();
-    srv.unref();
-    srv.on("error", () => resolve(fallback));
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port2 = typeof addr === "object" && addr ? addr.port : fallback;
-      srv.close(() => resolve(port2));
-    });
-  });
-}
-var OKHTTP4_JA3 = "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-51-43-17513-27-21,29-23-24,0";
-var CHROME120_JA3 = "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0";
-var _client = null;
-var _initPromise = null;
-var _initFailed = false;
-async function getClient() {
-  if (_initFailed) return null;
-  if (_client) return _client;
-  if (_initPromise) return _initPromise;
-  _initPromise = (async () => {
-    try {
-      const { default: initCycleTLS } = await import("cycletls");
-      const port2 = await findFreeTcpPort();
-      const client = await initCycleTLS({ port: port2 });
-      _client = client;
-      console.log("[tlsTrans] CycleTLS initialised \u2014 OkHttp4 JA3 fingerprint active");
-      const cleanup = () => {
-        try {
-          _client?.exit();
-        } catch {
-        }
-      };
-      process.once("exit", cleanup);
-      process.once("SIGTERM", cleanup);
-      process.once("SIGINT", cleanup);
-      return _client;
-    } catch (err) {
-      console.warn(
-        `[tlsTrans] CycleTLS init failed \u2014 falling back to Node.js TLS: ${err?.message ?? err}`
-      );
-      _initFailed = true;
-      return null;
-    }
-  })();
-  return _initPromise;
-}
-function warmupTls() {
-  getClient().catch(() => {
-  });
-}
 function proxyHost(proxyUrl) {
   try {
     return new URL(proxyUrl).hostname;
   } catch {
-    return proxyUrl;
+    return "unknown";
   }
 }
-function extractSetCookies(headers) {
+function responseCookies(headers) {
   const raw = headers["set-cookie"];
-  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  return list.map((c3) => c3.split(";")[0]);
+  const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return values.map((cookie) => cookie.split(";")[0]);
+}
+function getCookieString(options, url2) {
+  if (!options.jar) return "";
+  try {
+    const innerJar = options.jar["_jar"];
+    if (innerJar?.getCookiesSync) {
+      return innerJar.getCookiesSync(url2).map((cookie) => `${cookie.key}=${cookie.value}`).join("; ");
+    }
+    if (typeof options.jar.getCookieStringSync === "function") {
+      return options.jar.getCookieStringSync(url2) ?? "";
+    }
+  } catch {
+  }
+  return "";
+}
+function parseJsonOrRaw(rawBody) {
+  try {
+    return parseInstagramJson(rawBody);
+  } catch {
+    return null;
+  }
+}
+function logGenericFailure(label, method, path6, status, json2, body, cookieStr) {
+  if (status !== 200 || !json2 || typeof json2 !== "object" || json2.status !== "fail" || "spam" in json2 || "feedback_required" in json2 || !/something went wrong|sorry/i.test(String(json2.message ?? ""))) {
+    return;
+  }
+  const cookieCsrf = cookieStr.match(/csrftoken=([^;]+)/)?.[1];
+  let signedCsrf;
+  let signedUuid;
+  const match = body.match(/signed_body=([^&]+)/);
+  if (match) {
+    const raw = match[1];
+    const dotIndex = raw.indexOf(".");
+    const jsonPart = dotIndex === -1 ? raw : raw.slice(dotIndex + 1);
+    try {
+      const payload = JSON.parse(jsonPart);
+      signedCsrf = payload._csrftoken;
+      signedUuid = payload._uuid;
+    } catch {
+    }
+  }
+  const csrfMismatch = signedCsrf != null && cookieCsrf != null && signedCsrf !== cookieCsrf;
+  console.warn(
+    `[${label}][DIAG] ${method} ${path6} \u2014 generic rejection (HTTP 200, status:fail). cookie_csrf=${cookieCsrf ?? "MISSING"} signed_csrf=${signedCsrf ?? "n/a"} csrf_MISMATCH=${csrfMismatch} uuid=${signedUuid ?? "n/a"} req_body_preview=${body.slice(0, 300)}`
+  );
+  if (csrfMismatch) {
+    console.error(
+      `[${label}][DIAG] CSRF token mismatch: signed body and Cookie header carry different values.`
+    );
+  }
 }
 async function tlsRequest(opts) {
   const {
@@ -150200,207 +150558,64 @@ async function tlsRequest(opts) {
     body,
     cookieJar = [],
     proxyUrl,
-    forceNodeTls = false,
-    ja3Override,
-    agentOverride
+    sessionOverride
   } = opts;
   if (!proxyUrl) {
     throw new Error(
       `[IP-LEAK BLOCKED] TLS request ${method} ${path6} refused \u2014 no proxy configured. Assign a proxy to this account before performing any actions.`
     );
   }
+  const url2 = new URL(path6, `https://${host}`);
+  const cookieStr = cookieJar.join("; ");
   const allHeaders = {
     ...headers,
-    ...cookieJar.length ? { Cookie: cookieJar.join("; ") } : {}
-    // NOTE: Content-Length is NOT added here for the CycleTLS path — Go's fhttp
-    // transport derives it automatically from the body string. Passing it as a
-    // regular header produces a duplicate Content-Length which some Instagram
-    // servers reject. It IS added for the forceNodeTls (Node.js HTTPS) path below.
+    ...cookieStr ? { Cookie: cookieStr } : {}
   };
-  const client = await getClient();
-  if (!forceNodeTls) {
-    if (!client) {
-      throw new Error(
-        `[TLS-BLOCKED] CycleTLS failed to initialise \u2014 refusing to use Node.js TLS (exposes bot fingerprint). Check that the CycleTLS Go binary is present and restart the server.`
-      );
-    }
-    const url2 = `https://${host}${path6}`;
-    const userAgent = allHeaders["User-Agent"] ?? "";
-    const {
-      "User-Agent": _ua,
-      "Accept-Encoding": _ae,
-      "Host": _host,
-      "Connection": _conn,
-      "Content-Length": _cl,
-      ...headersWithoutUA
-    } = allHeaders;
-    const isFriendshipCall = path6.includes("/friendships/");
-    if (isFriendshipCall) {
-      const maskedProxy = proxyUrl.replace(/:[^:@]+@/, ":***@").replace(/^(https?:\/\/)[^:]+:/, "$1***:");
-      console.warn(
-        `[tls:WIRE] ${method} ${url2} via proxy=${maskedProxy}
-  userAgent: ${userAgent.slice(0, 80)}
-  headers: ${JSON.stringify(headersWithoutUA, null, 2)}
-  body(full): ${body ?? ""}`
-      );
-    }
-    const t02 = Date.now();
-    let resp;
-    try {
-      resp = await client(
-        url2,
-        {
-          body: body ?? "",
-          ja3: ja3Override ?? OKHTTP4_JA3,
-          userAgent,
-          headers: headersWithoutUA,
-          responseType: "text",
-          proxy: proxyUrl,
-          timeout: 30,
-          disableRedirect: false,
-          // Some proxy providers do SSL inspection (MITM) inside the CONNECT
-          // tunnel — they present their own cert instead of Instagram's.
-          // CycleTLS's Go binary verifies certs strictly by default, so it
-          // rejects the proxy cert and returns status=0 with an empty body.
-          // Setting insecureSkipVerify gives the Go binary the same leniency
-          // so it can route through MITM proxies.
-          insecureSkipVerify: true
-        },
-        method.toLowerCase()
-      );
-    } catch (err) {
-      const ph = proxyHost(proxyUrl);
-      console.error(
-        `[tls:req] ${method} ${host}${path6} FAILED after ${Date.now() - t02}ms \u2014 proxy=${ph} err=${err?.message ?? err}`
-      );
-      throw err;
-    }
-    const elapsed = Date.now() - t02;
-    if (elapsed > 1e4) {
-      console.warn(
-        `[tls:req] ${method} ${host}${path6} SLOW ${elapsed}ms via proxy=${proxyHost(proxyUrl)} status=${resp.status}`
-      );
-    }
-    if (resp.status !== 0) {
-      const cookies = extractSetCookies(resp.headers);
-      const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
-      let json2 = null;
-      try {
-        json2 = parseInstagramJson(rawBody);
-      } catch {
-        if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json2 = resp.data;
-      }
-      if (isFriendshipCall) {
-        console.warn(
-          `[tls:WIRE] ${method} ${url2} \u2192 HTTP ${resp.status} elapsed=${elapsed}ms
-  resp_headers: ${JSON.stringify(resp.headers)}
-  resp_body(full): ${rawBody}`
-        );
-      }
-      if (resp.status === 200 && json2 && typeof json2 === "object" && json2.status === "fail" && !("spam" in json2) && !("feedback_required" in json2) && /something went wrong|sorry/i.test(String(json2.message ?? ""))) {
-        const cookieStr = cookieJar.join("; ");
-        const cookieCsrf = cookieStr.match(/csrftoken=([^;]+)/)?.[1];
-        let signedCsrf;
-        let signedUuid;
-        if (typeof body === "string" && body.includes("signed_body=")) {
-          const m2 = body.match(/signed_body=([^&]+)/);
-          if (m2) {
-            const raw = m2[1];
-            const dotIdx = raw.indexOf(".");
-            const jsonPart = dotIdx !== -1 ? raw.slice(dotIdx + 1) : raw;
-            try {
-              const payload = JSON.parse(jsonPart);
-              signedCsrf = payload._csrftoken;
-              signedUuid = payload._uuid;
-            } catch {
-            }
-          }
-        }
-        const csrfMismatch = signedCsrf != null && cookieCsrf != null && signedCsrf !== cookieCsrf;
-        console.warn(
-          `[tls:req][DIAG] ${method} ${host}${path6} \u2014 generic rejection (HTTP 200, status:fail). cookie_csrf=${cookieCsrf ?? "MISSING"} signed_csrf=${signedCsrf ?? "n/a"} csrf_MISMATCH=${csrfMismatch} uuid=${signedUuid ?? "n/a"} req_body_preview=${(body ?? "").slice(0, 300)}`
-        );
-        if (csrfMismatch) {
-          console.error(
-            `[tls:req][DIAG] *** CSRF TOKEN MISMATCH *** signed with csrf=${signedCsrf} but Cookie header has csrf=${cookieCsrf}. This is the root cause of "something went wrong" on write calls.`
-          );
-        }
-      }
-      return { status: resp.status, cookies, json: json2, rawBody, responseHeaders: resp.headers };
-    }
-    const cycleTlsErr = resp.data != null ? typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data) : "";
-    throw new Error(
-      `[TLS-BLOCKED] CycleTLS returned status 0 for ${method} ${host}${path6} (proxy blocked Go subprocess \u2014 check proxy settings). err=${cycleTlsErr.slice(0, 200) || "(empty)"}`
-    );
-  }
-  if (body) allHeaders["Content-Length"] = String(Buffer.byteLength(body, "utf8"));
-  console.log(`[tls:req] forceNodeTls \u2014 using Node.js TLS for ${method} ${host}${path6}`);
-  const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
-  const https4 = await import("node:https");
-  const zlib = await import("node:zlib");
-  const ownedAgent = agentOverride == null;
-  const agent = agentOverride ?? new HttpsProxyAgent2(proxyUrl, { keepAlive: true, maxSockets: 1 });
-  const t0 = Date.now();
+  const startedAt = Date.now();
+  const isFriendshipCall = path6.includes("/friendships/");
   try {
-    const res = await new Promise((resolve, reject) => {
-      const req = https4.request(
-        { host, port: 443, path: path6, method, headers: allHeaders, agent, rejectUnauthorized: false },
-        (r2) => {
-          const chunks = [];
-          r2.on("data", (chunk) => chunks.push(chunk));
-          r2.on("end", () => {
-            let raw = Buffer.concat(chunks);
-            const enc = r2.headers["content-encoding"];
-            try {
-              if (enc === "gzip") raw = zlib.gunzipSync(raw);
-              else if (enc === "deflate") raw = zlib.inflateSync(raw);
-              else if (enc === "br") raw = zlib.brotliDecompressSync(raw);
-            } catch {
-            }
-            resolve({ status: r2.statusCode ?? 0, headers: r2.headers, body: raw.toString("utf8") });
-          });
-          r2.on("error", reject);
-        }
-      );
-      req.on("error", reject);
-      req.setTimeout(25e3, () => req.destroy(new Error("request_timeout")));
-      if (body) req.write(body);
-      req.end();
+    const response = await requestHttp2ThroughProxy({
+      url: url2.href,
+      method,
+      headers: allHeaders,
+      body: body ?? "",
+      proxyUrl,
+      timeoutMs: 3e4,
+      session: sessionOverride,
+      followRedirects: true
     });
-    const elapsed = Date.now() - t0;
-    if (elapsed > 1e4) {
+    const rawBody = response.body.toString("utf8");
+    const json2 = parseJsonOrRaw(rawBody);
+    const cookies = responseCookies(response.headers);
+    if (Date.now() - startedAt > 1e4) {
       console.warn(
-        `[tls:fallback] ${method} ${host}${path6} SLOW ${elapsed}ms via proxy=${proxyHost(proxyUrl)} status=${res.status}`
+        `[tls:req] ${method} ${host}${path6} SLOW ${Date.now() - startedAt}ms via proxy=${proxyHost(proxyUrl)} status=${response.status}`
       );
     }
-    const rawSC = res.headers["set-cookie"];
-    const cookies = (Array.isArray(rawSC) ? rawSC : rawSC ? [rawSC] : []).map((c3) => c3.split(";")[0]);
-    let json2 = null;
-    try {
-      json2 = parseInstagramJson(res.body);
-    } catch {
+    if (isFriendshipCall) {
+      console.warn(
+        `[tls:WIRE] ${method} ${url2.href} \u2192 HTTP ${response.status} elapsed=${Date.now() - startedAt}ms protocol=h2`
+      );
     }
-    return { status: res.status, cookies, json: json2, rawBody: res.body, responseHeaders: res.headers };
-  } catch (err) {
-    const ph = proxyHost(proxyUrl);
+    logGenericFailure("tls:req", method, path6, response.status, json2, body ?? "", cookieStr);
+    return {
+      status: response.status,
+      cookies,
+      json: json2,
+      rawBody,
+      responseHeaders: response.headers
+    };
+  } catch (error40) {
     console.error(
-      `[tls:fallback] ${method} ${host}${path6} FAILED after ${Date.now() - t0}ms \u2014 proxy=${ph} code=${err?.code ?? "?"} msg=${err?.message ?? err}`
+      `[tls:req] ${method} ${host}${path6} FAILED after ${Date.now() - startedAt}ms via proxy=${proxyHost(proxyUrl)} err=${error40?.message ?? error40}`
     );
-    throw err;
-  } finally {
-    if (ownedAgent) agent.destroy?.();
+    throw error40;
   }
 }
-function patchIgClientTls(ig, proxyUrl) {
+function patchIgClientTls(ig, proxyUrl, sessionOverride) {
   if (!proxyUrl) return;
-  const _reqObj = ig.request;
-  _reqObj.faultTolerantRequest = async function(options) {
-    const client = await getClient();
-    if (!client) {
-      throw new import_instagram_private_api.IgNetworkError(new Error(
-        "[TLS-BLOCKED] CycleTLS failed to initialise \u2014 refusing to use Node.js TLS (exposes bot fingerprint). Check that the CycleTLS Go binary is present and restart the server."
-      ));
-    }
+  const requestObject = ig.request;
+  requestObject.faultTolerantRequest = async function(options) {
     const baseUrl = options.baseUrl ?? "https://i.instagram.com/";
     const rawUrl = options.url ?? options.uri ?? "";
     let fullUrl;
@@ -150411,84 +150626,59 @@ function patchIgClientTls(ig, proxyUrl) {
     }
     if (options.qs && typeof options.qs === "object" && Object.keys(options.qs).length > 0) {
       const params = new URLSearchParams(
-        Object.entries(options.qs).filter(([, v3]) => v3 != null).map(([k2, v3]) => [k2, String(v3)])
+        Object.entries(options.qs).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)])
       );
       fullUrl += (fullUrl.includes("?") ? "&" : "?") + params.toString();
     }
-    let cookieStr = "";
-    if (options.jar) {
-      try {
-        const innerJar = options.jar["_jar"];
-        if (innerJar?.getCookiesSync) {
-          cookieStr = innerJar.getCookiesSync(fullUrl).map((c3) => `${c3.key}=${c3.value}`).join("; ");
-        } else if (typeof options.jar.getCookieString === "function") {
-          cookieStr = options.jar.getCookieString(fullUrl) ?? "";
-        }
-      } catch {
-      }
-    }
+    const cookieStr = getCookieString(options, fullUrl);
     const headers = {};
     if (options.headers) {
-      for (const [k2, v3] of Object.entries(options.headers)) {
-        if (v3 != null) headers[k2] = String(v3);
+      for (const [key, value] of Object.entries(options.headers)) {
+        if (value != null) headers[key] = String(value);
       }
     }
-    if (cookieStr) headers["Cookie"] = cookieStr;
-    const method = (options.method ?? "GET").toUpperCase();
+    if (cookieStr) headers.Cookie = cookieStr;
+    const method = String(options.method ?? "GET").toUpperCase();
     let body = "";
     if (method !== "GET" && options.form && typeof options.form === "object") {
-      body = Object.entries(options.form).filter(([, v3]) => v3 != null).map(([k2, v3]) => `${k2}=${String(v3)}`).join("&");
+      body = Object.entries(options.form).filter(([, value]) => value != null).map(([key, value]) => `${key}=${String(value)}`).join("&");
       headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
-      headers["Content-Length"] = String(Buffer.byteLength(body));
     } else if (options.body) {
       body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
     }
-    const userAgent = headers["User-Agent"] ?? "";
-    const {
-      "User-Agent": _ua,
-      "Accept-Encoding": _ae,
-      "Host": _host,
-      "Connection": _conn,
-      ...headersWithoutUA
-    } = headers;
-    const t0 = Date.now();
-    let resp;
+    const startedAt = Date.now();
+    let response;
     try {
-      resp = await client(
-        fullUrl,
-        {
-          body,
-          ja3: OKHTTP4_JA3,
-          userAgent,
-          headers: headersWithoutUA,
-          responseType: "text",
-          proxy: proxyUrl,
-          timeout: 30,
-          disableRedirect: false,
-          // Allow MITM proxies that present their own cert inside the CONNECT
-          // tunnel (matches the same flag in tlsRequest used by mobileSessionPost).
-          insecureSkipVerify: true
-        },
-        method.toLowerCase()
-      );
-    } catch (err) {
+      response = await requestHttp2ThroughProxy({
+        url: fullUrl,
+        method,
+        headers,
+        body,
+        proxyUrl,
+        timeoutMs: 3e4,
+        session: sessionOverride,
+        followRedirects: true
+      });
+    } catch (error40) {
       console.error(
-        `[tls:ig] ${method} ${rawUrl} FAILED after ${Date.now() - t0}ms \u2014 err=${err?.message ?? err}`
+        `[tls:ig] ${method} ${rawUrl} FAILED after ${Date.now() - startedAt}ms err=${error40?.message ?? error40}`
       );
-      throw new import_instagram_private_api.IgNetworkError(err);
+      throw new import_instagram_private_api.IgNetworkError(error40);
     }
-    if (Date.now() - t0 > 1e4) {
-      console.warn(`[tls:ig] ${method} ${rawUrl} SLOW ${Date.now() - t0}ms status=${resp.status}`);
+    if (Date.now() - startedAt > 1e4) {
+      console.warn(
+        `[tls:ig] ${method} ${rawUrl} SLOW ${Date.now() - startedAt}ms status=${response.status}`
+      );
     }
+    const setCookies = response.headers["set-cookie"];
+    const cookieValues = Array.isArray(setCookies) ? setCookies : setCookies ? [setCookies] : [];
     if (options.jar) {
       try {
         const innerJar = options.jar["_jar"];
-        const rawSetCookie = resp.headers["set-cookie"];
-        const setCookies = Array.isArray(rawSetCookie) ? rawSetCookie : rawSetCookie ? [rawSetCookie] : [];
         if (innerJar?.setCookieSync) {
-          for (const cs of setCookies) {
+          for (const cookie of cookieValues) {
             try {
-              innerJar.setCookieSync(cs, fullUrl, {});
+              innerJar.setCookieSync(cookie, fullUrl, {});
             } catch {
             }
           }
@@ -150496,92 +150686,35 @@ function patchIgClientTls(ig, proxyUrl) {
       } catch {
       }
     }
-    const getResponseHeader = (name) => {
-      const key = Object.keys(resp.headers).find((k2) => k2.toLowerCase() === name);
-      return key ? resp.headers[key] : void 0;
+    const getResponseHeader = (name) => response.headers[name.toLowerCase()];
+    const firstHeader = (name) => {
+      const value = getResponseHeader(name);
+      return Array.isArray(value) ? value[0] : value;
     };
-    const rawIgAuth = getResponseHeader("ig-set-authorization");
-    if (rawIgAuth) {
-      const authVal = Array.isArray(rawIgAuth) ? rawIgAuth[0] : rawIgAuth;
-      if (authVal && !authVal.endsWith(":") && /^(?:Bearer )?IGT:2:/i.test(authVal)) {
-        ig.state.authorization = authVal;
-      }
+    const authorization = firstHeader("ig-set-authorization");
+    if (authorization && !authorization.endsWith(":") && /^(?:Bearer )?IGT:2:/i.test(authorization)) {
+      ig.state.authorization = authorization;
     }
-    const rawIgClaim = getResponseHeader("ig-set-www-claim");
-    if (rawIgClaim) {
-      const claimVal = Array.isArray(rawIgClaim) ? rawIgClaim[0] : rawIgClaim;
-      if (claimVal && claimVal !== "0") {
-        ig.state.igWWWClaim = claimVal;
-      }
-    }
-    const rawPasswordKeyId = getResponseHeader("ig-set-password-encryption-key-id");
-    if (rawPasswordKeyId) {
-      const keyId = Array.isArray(rawPasswordKeyId) ? rawPasswordKeyId[0] : rawPasswordKeyId;
-      if (keyId) ig.state.passwordEncryptionKeyId = keyId;
-    }
-    const rawPasswordPubKey = getResponseHeader("ig-set-password-encryption-pub-key");
-    if (rawPasswordPubKey) {
-      const pubKey = Array.isArray(rawPasswordPubKey) ? rawPasswordPubKey[0] : rawPasswordPubKey;
-      if (pubKey) ig.state.passwordEncryptionPubKey = pubKey;
-    }
-    const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
-    let parsedBody = rawBody;
-    try {
-      parsedBody = parseInstagramJson(rawBody);
-    } catch {
-      if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) {
-        parsedBody = resp.data;
-      }
-    }
-    if (resp.status === 200 && parsedBody && typeof parsedBody === "object" && parsedBody.status === "fail" && !("spam" in parsedBody) && !("feedback_required" in parsedBody) && /something went wrong|sorry/i.test(String(parsedBody.message ?? ""))) {
-      let signedCsrf;
-      let signedUuid;
-      if (typeof body === "string" && body.includes("signed_body=")) {
-        const m2 = body.match(/signed_body=([^&]+)/);
-        if (m2) {
-          const raw = decodeURIComponent(m2[1]);
-          const dotIdx = raw.indexOf(".");
-          const jsonPart = dotIdx !== -1 ? raw.slice(dotIdx + 1) : raw;
-          try {
-            const payload = JSON.parse(jsonPart);
-            signedCsrf = payload._csrftoken;
-            signedUuid = payload._uuid;
-          } catch {
-            const rawAlt = m2[1];
-            const dotIdx2 = rawAlt.indexOf(".");
-            const jsonPart2 = dotIdx2 !== -1 ? rawAlt.slice(dotIdx2 + 1) : rawAlt;
-            try {
-              const payload2 = JSON.parse(jsonPart2);
-              signedCsrf = payload2._csrftoken;
-              signedUuid = payload2._uuid;
-            } catch {
-            }
-          }
-        }
-      }
-      const cookieCsrfMatch = cookieStr.match(/csrftoken=([^;]+)/);
-      const cookieCsrf = cookieCsrfMatch?.[1];
-      const csrfMismatch = signedCsrf != null && cookieCsrf != null && signedCsrf !== cookieCsrf;
-      console.warn(
-        `[tls:ig][DIAG] ${method} ${rawUrl} \u2014 generic technical rejection (HTTP 200, status:"fail", no block fields). cookie_csrf=${cookieCsrf ?? "MISSING"} signed_body_csrf=${signedCsrf ?? "n/a"} csrf_MISMATCH=${csrfMismatch} signed_body_uuid=${signedUuid ?? "n/a"} content-type_sent=${headersWithoutUA["Content-Type"] ?? "none"} body_len=${body.length} req_body_preview=${body.slice(0, 300)}`
-      );
-      if (csrfMismatch) {
-        console.error(
-          `[tls:ig][DIAG] *** CSRF TOKEN MISMATCH CONFIRMED *** \u2014 the signed_body was signed with csrftoken=${signedCsrf} but the Cookie header on this exact request carried csrftoken=${cookieCsrf}. This is almost certainly the root cause of "something went wrong" \u2014 the client.state cached csrftoken used for signing is stale relative to the tough-cookie jar's current csrftoken (likely rotated by a prior Set-Cookie response).`
-        );
-      }
-    }
+    const claim = firstHeader("ig-set-www-claim");
+    if (claim && claim !== "0") ig.state.igWWWClaim = claim;
+    const passwordKeyId = firstHeader("ig-set-password-encryption-key-id");
+    if (passwordKeyId) ig.state.passwordEncryptionKeyId = passwordKeyId;
+    const passwordPublicKey = firstHeader("ig-set-password-encryption-pub-key");
+    if (passwordPublicKey) ig.state.passwordEncryptionPubKey = passwordPublicKey;
+    const rawBody = response.body.toString("utf8");
+    const parsedBody = parseJsonOrRaw(rawBody) ?? rawBody;
+    logGenericFailure("tls:ig", method, rawUrl, response.status, parsedBody, body, cookieStr);
     return {
-      statusCode: resp.status,
-      headers: resp.headers,
+      statusCode: response.status,
+      headers: response.headers,
       body: parsedBody,
       request: {
         method,
         uri: {
           path: (() => {
             try {
-              const u = new URL(fullUrl);
-              return u.pathname + u.search;
+              const parsed = new URL(fullUrl);
+              return parsed.pathname + parsed.search;
             } catch {
               return rawUrl;
             }
@@ -150591,95 +150724,42 @@ function patchIgClientTls(ig, proxyUrl) {
     };
   };
 }
-async function tlsMultipartPost(host, path6, headers, body, proxyUrl, forceNodeHttps = false, agentOverride) {
+async function tlsMultipartPost(host, path6, headers, body, proxyUrl, sessionOverride) {
   if (!proxyUrl) {
     throw new Error(
       `[IP-LEAK BLOCKED] TLS multipart POST ${host}${path6} refused \u2014 no proxy configured.`
     );
   }
-  const client = await getClient();
-  if (client && !forceNodeHttps) {
-    const url2 = `https://${host}${path6}`;
-    const userAgent = headers["User-Agent"] ?? "";
-    const { "User-Agent": _ua, ...headersWithoutUA } = headers;
-    try {
-      const resp = await client(
-        url2,
-        {
-          body: body.toString("binary"),
-          ja3: OKHTTP4_JA3,
-          userAgent,
-          headers: headersWithoutUA,
-          responseType: "text",
-          proxy: proxyUrl,
-          timeout: 60,
-          disableRedirect: false
-        },
-        "post"
-      );
-      const rawBody = typeof resp.data === "string" ? resp.data : Buffer.isBuffer(resp.data) ? resp.data.toString("utf8") : resp.data != null ? JSON.stringify(resp.data) : "";
-      let json2 = null;
-      try {
-        json2 = parseInstagramJson(rawBody);
-      } catch {
-        if (resp.data != null && typeof resp.data === "object" && !Buffer.isBuffer(resp.data)) json2 = resp.data;
-      }
-      if (json2 === null) {
-        const preview = rawBody.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
-        console.warn(`[tls:multipart] POST ${host}${path6} status=${resp.status} \u2014 non-JSON response: ${preview}`);
-      }
-      const rawCookies = resp.headers?.["set-cookie"] ?? resp.headers?.["Set-Cookie"];
-      const cookies = Array.isArray(rawCookies) ? rawCookies : rawCookies ? [rawCookies] : [];
-      return { json: json2, cookies };
-    } catch (err) {
-      console.error(`[tls:multipart] POST ${host}${path6} FAILED \u2014 err=${err?.message ?? err}`);
-      throw err;
-    }
-  }
-  const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
-  const https4 = await import("node:https");
-  const ownedAgent = agentOverride == null;
-  const agent = agentOverride ?? new HttpsProxyAgent2(proxyUrl, { keepAlive: true, maxSockets: 1 });
   try {
-    const res = await new Promise((resolve, reject) => {
-      const req = https4.request(
-        { host, port: 443, path: path6, method: "POST", headers, agent },
-        (r2) => {
-          const chunks = [];
-          r2.on("data", (chunk) => chunks.push(chunk));
-          r2.on("end", () => resolve({
-            status: r2.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString("utf8"),
-            cookies: r2.headers["set-cookie"] ?? []
-          }));
-          r2.on("error", reject);
-        }
-      );
-      req.on("error", reject);
-      req.setTimeout(9e4, () => req.destroy(new Error("request_timeout")));
-      req.write(body);
-      req.end();
+    const response = await requestHttp2ThroughProxy({
+      url: new URL(path6, `https://${host}`).href,
+      method: "POST",
+      headers,
+      body,
+      proxyUrl,
+      timeoutMs: 9e4,
+      session: sessionOverride,
+      followRedirects: true
     });
-    let json2 = null;
-    try {
-      json2 = parseInstagramJson(res.body);
-    } catch {
-      const preview = res.body.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
-      console.warn(`[tls:node-https] POST ${host}${path6} status=${res.status} \u2014 non-JSON response: ${preview}`);
+    const rawBody = response.body.toString("utf8");
+    const json2 = parseJsonOrRaw(rawBody);
+    const rawCookies = response.headers["set-cookie"];
+    const cookies = Array.isArray(rawCookies) ? rawCookies : rawCookies ? [rawCookies] : [];
+    if (json2 === null) {
+      const preview = rawBody.slice(0, 400).replace(/[\r\n]+/g, " ").trim();
+      console.warn(
+        `[tls:multipart] POST ${host}${path6} status=${response.status} \u2014 non-JSON response: ${preview}`
+      );
     }
-    if (json2 !== null) {
-      const msg = json2.message ? ` msg="${json2.message}"` : "";
-      const errType = json2.error_type ? ` err_type="${json2.error_type}"` : "";
-      console.log(`[tls:node-https] POST ${host}${path6} status=${res.status} json.status="${json2.status ?? "?"}" upload_id="${json2.upload_id ?? "none"}"${msg}${errType}`);
-    }
-    return { json: json2, cookies: res.cookies };
-  } finally {
-    if (ownedAgent) agent.destroy?.();
+    return { json: json2, cookies };
+  } catch (error40) {
+    console.error(`[tls:multipart] POST ${host}${path6} FAILED \u2014 err=${error40?.message ?? error40}`);
+    throw error40;
   }
 }
 
 // src/instagram/browserSession.ts
-import https2 from "https";
+import https3 from "https";
 
 // src/instagram/totp.ts
 import { createHmac } from "crypto";
@@ -150715,7 +150795,7 @@ function generateTotp(base32Secret, digits = 6, period = 30) {
 // src/instagram/browserSession.ts
 import fs from "fs";
 import path2 from "path";
-import net5 from "net";
+import net2 from "net";
 import tls2 from "tls";
 init_userAgents();
 var IS_ELECTRON_EB = !!process.env.EB_IPC_PORT;
@@ -150756,7 +150836,7 @@ function classifyEbChallengeUrl(url2) {
 }
 function testProxyReachable(host, port2, timeoutMs = 2500) {
   return new Promise((resolve) => {
-    const sock = net5.createConnection({ host, port: port2 });
+    const sock = net2.createConnection({ host, port: port2 });
     const timer = setTimeout(() => {
       sock.destroy();
       resolve({ ok: false, errorCode: "TIMEOUT" });
@@ -150970,7 +151050,7 @@ function resolveProxyGeo(proxyHost2, proxyPort, proxyUser, proxyPass, timeoutMs 
         resolve(v3);
       }
     };
-    const sock = net5.createConnection({ host: proxyHost2, port: proxyPort });
+    const sock = net2.createConnection({ host: proxyHost2, port: proxyPort });
     const timer = setTimeout(() => {
       sock.destroy();
       done(NULL_GEO);
@@ -153242,7 +153322,7 @@ function _httpGetOneHopViaProxy(url2, headers, proxy) {
     } catch (e) {
       return reject(e);
     }
-    const sock = net5.connect(proxy.port, proxy.host);
+    const sock = net2.connect(proxy.port, proxy.host);
     let connectBuf = "";
     let tunnelReady = false;
     sock.setTimeout(15e3, () => {
@@ -153324,7 +153404,7 @@ function _httpGetOneHop(url2, headers, proxy) {
     } catch (e) {
       return reject(e);
     }
-    const req = https2.request(
+    const req = https3.request(
       {
         method: "GET",
         hostname: urlObj.hostname,
@@ -156935,7 +157015,6 @@ async function browserFill2fa(profileId, code) {
 }
 
 // src/instagram/instagramWebClient.ts
-warmupTls();
 function countryToLocale(cc) {
   const map2 = {
     // English-speaking
@@ -157068,7 +157147,7 @@ async function lookupProxyGeoInfo(proxyHost2) {
   return new Promise((resolve) => {
     const fallback = { offset: -18e3, locale: "en_US" };
     const timer = setTimeout(() => resolve(fallback), 5e3);
-    const req = http2.get(
+    const req = http3.get(
       `http://ip-api.com/json/${encodeURIComponent(proxyHost2)}?fields=offset,countryCode`,
       (res) => {
         const chunks = [];
@@ -157352,7 +157431,7 @@ var InstagramWebClient = class {
   proxy       : ${scheme}://${u.hostname}:${port2}
   hard-gate   : \u2713 constructor blocks if proxy absent
   tls-gate    : \u2713 tlsRequest blocks if proxy absent
-  cycleTLS    : \u2713 patchIgClientTls throws if CycleTLS fails (no Node.js TLS fallback)`
+  transport   : \u2713 API requests use standard TLS + HTTP/2 through the configured proxy`
       );
     } catch {
       console.warn(`[api-shield:${profileId}] \u26A0 could not parse proxyUrl for shield log`);
@@ -158853,8 +158932,7 @@ var InstagramWebClient = class {
       headers: followHeaders,
       body,
       cookieJar: this.mobileCookieJar,
-      proxyUrl: this.proxyUrl,
-      ja3Override: this._deviceAuthorization ? void 0 : CHROME120_JA3
+      proxyUrl: this.proxyUrl
     });
     if (res.cookies.length) {
       this.mobileCookieJar = mergeCookies(this.mobileCookieJar, res.cookies);
@@ -161568,7 +161646,7 @@ Content-Disposition: form-data; name="${part.name}"`;
           Accept: "image/*,*/*"
         }
       };
-      https3.get(options, (res) => {
+      https4.get(options, (res) => {
         const chunks = [];
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => resolve(Buffer.concat(chunks)));
@@ -161582,7 +161660,7 @@ Content-Disposition: form-data; name="${part.name}"`;
   // This is the only supported upload protocol for the mobile private API.
   // The old /api/v1/media/upload/ multipart endpoint does not exist and
   // returns a non-JSON HTML error page.
-  async _mobileRupload(mediaType, buffer, uploadId, sharedAgent) {
+  async _mobileRupload(mediaType, buffer, uploadId, sharedSession) {
     const TAG = `[UPLOAD:rupload @${this.username ?? this.profileId}]`;
     const authorization = this._deviceAuthorization;
     const hasMobileSession = this.mobileCookieJar.some((c3) => c3.startsWith("sessionid=")) || !!authorization;
@@ -161661,7 +161739,14 @@ Content-Disposition: form-data; name="${part.name}"`;
     let json2;
     let ruploadCookies = [];
     try {
-      ({ json: json2, cookies: ruploadCookies } = await tlsMultipartPost("i.instagram.com", ruploadPath, headers, buffer, this.proxyUrl, true, sharedAgent));
+      ({ json: json2, cookies: ruploadCookies } = await tlsMultipartPost(
+        "i.instagram.com",
+        ruploadPath,
+        headers,
+        buffer,
+        this.proxyUrl,
+        sharedSession
+      ));
     } catch (netErr) {
       console.error(`${TAG} \u2717 NETWORK ERROR during rupload: ${netErr?.message ?? netErr}`);
       if (netErr?.message?.includes("ECONNREFUSED")) console.error(`${TAG}   \u25BA Proxy refused connection or Instagram unreachable`);
@@ -161728,15 +161813,9 @@ Content-Disposition: form-data; name="${part.name}"`;
       });
     }, `Get feed of @${username}`);
   }
-  // ── Configure (publish) a media upload — SAME Node.js HTTPS stack as rupload ──
-  // ROOT CAUSE of "upload id is missing" (confirmed from production logs v1.1.56):
-  //   rupload uses tlsMultipartPost(forceNodeHttps=true) → Node.js HTTPS / OpenSSL TLS.
-  //   configure was using mobileSessionPost → igReq → CycleTLS (OkHttp4 JA3).
-  //   Instagram links the upload to the exact TLS session that performed it.
-  //   A configure arriving via a DIFFERENT TLS fingerprint cannot find the upload
-  //   and returns the misleading "upload id is missing" HTTP 500.
-  //   This is NOT about the upload_id value — the upload truly succeeded. The
-  //   configure just can't match it because the fingerprint differs.
+  // ── Configure (publish) a media upload ────────────────────────────────────
+  // When a shared HTTP/2 session is supplied, rupload and configure use the same
+  // proxy tunnel and TLS connection.
   //
   // Parses manufacturer/model/android version from the full mobile UA string.
   // UA format: "Instagram X.X Android (33/13; 500dpi; 1440x3088; Samsung; SM-G975U; ...)"
@@ -161756,7 +161835,7 @@ Content-Disposition: form-data; name="${part.name}"`;
       return fallback;
     }
   }
-  async _configureViaIgClient(uploadId, caption, isVideo, imgBuffer, sharedAgent) {
+  async _configureViaIgClient(uploadId, caption, isVideo, imgBuffer, sharedSession) {
     const TAG = `[UPLOAD:configure @${this.username ?? this.profileId}]`;
     console.log(`${TAG} \u2500\u2500 CONFIGURE PRE-FLIGHT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
     console.log(`${TAG}   uploadId=${uploadId} isVideo=${isVideo} captionLen=${caption?.length ?? 0}`);
@@ -161877,7 +161956,7 @@ Content-Disposition: form-data; name="${part.name}"`;
     console.log(`${TAG}   upload_id in body: "${uploadId}"`);
     console.log(`${TAG}   _uid: "${ownUserId || "EMPTY"}" _csrftoken: "${csrf.slice(0, 8)}\u2026" _uuid: "${uuid3.slice(0, 8)}\u2026"`);
     const authorization = this._deviceAuthorization;
-    console.log(`${TAG}   Cookie count: ${this.mobileCookieJar.length} auth=${authorization ? "\u2713 Bearer" : "\u2717 none"} TLS=NodeHTTPS(mustMatchRupload) sharedAgent=${sharedAgent ? "\u2713" : "\u2717"}`);
+    console.log(`${TAG}   Cookie count: ${this.mobileCookieJar.length} auth=${authorization ? "\u2713 Bearer" : "\u2717 none"} TLS=standard+h2 sharedSession=${sharedSession ? "\u2713" : "\u2717"}`);
     let res;
     try {
       res = await igReq({
@@ -161888,11 +161967,7 @@ Content-Disposition: form-data; name="${part.name}"`;
         body: bodyStr,
         cookieJar: this.mobileCookieJar,
         proxyUrl: this.proxyUrl,
-        // Node.js HTTPS (forceNodeTls=true) — must match rupload's TLS stack (also Node.js HTTPS).
-        // agentOverride shares the same HttpsProxyAgent (proxy tunnel) with rupload so
-        // Instagram routes configure to the exact same backend shard as the rupload.
-        forceNodeTls: true,
-        agentOverride: sharedAgent
+        sessionOverride: sharedSession
       });
     } catch (netErr) {
       console.error(`${TAG} \u2717 NETWORK ERROR during configure: ${netErr?.message ?? netErr}`);
@@ -161942,7 +162017,7 @@ Content-Disposition: form-data; name="${part.name}"`;
     console.error(`${TAG}   Full response: ${JSON.stringify(json2).slice(0, 800)}`);
     if (errMsg.includes("upload id") || errMsg.includes("upload_id")) {
       console.error(`${TAG}   \u25BA DIAGNOSIS: "upload id is missing" \u2014 rupload succeeded but configure cannot find it.`);
-      console.error(`${TAG}     Cause 1: TLS stack mismatch (rupload used Node.js HTTPS, configure used CycleTLS)`);
+      console.error(`${TAG}     Cause 1: rupload and configure may have used different proxy connections`);
       console.error(`${TAG}     Cause 2: rur cookie was missing \u2192 configure landed on different Instagram shard`);
       console.error(`${TAG}     Cause 3: uploadId expired (configure called too long after rupload)`);
       console.error(`${TAG}     Cause 4: image_compression rupload header triggered server-side MozJPEG path that stores upload on different internal key`);
@@ -162288,16 +162363,14 @@ Content-Disposition: form-data; name="${part.name}"`;
         console.log(`${TAG}   rur already in mobileCookieJar \u2014 skipping API pre-seed`);
       }
       const runAttempt = async (attemptNum) => {
-        let attemptAgent = void 0;
-        if (this.proxyUrl) {
-          const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
-          attemptAgent = new HttpsProxyAgent2(this.proxyUrl, { keepAlive: true, maxSockets: 1 });
-          console.log(`${TAG}   [attempt ${attemptNum}] Created fresh HttpsProxyAgent`);
-        }
+        let attemptSession;
         const uploadId = String(Date.now());
         console.log(`${TAG}   [attempt ${attemptNum}] Generated uploadId=${uploadId}`);
         try {
-          const confirmedId = await this._mobileRupload("photo", imageBuffer, uploadId, attemptAgent);
+          if (!this.proxyUrl) throw new Error("No HTTP proxy configured for media upload");
+          attemptSession = await createHttp2ProxySession("https://i.instagram.com/", this.proxyUrl);
+          console.log(`${TAG}   [attempt ${attemptNum}] Created standard TLS + HTTP/2 session`);
+          const confirmedId = await this._mobileRupload("photo", imageBuffer, uploadId, attemptSession);
           if (!confirmedId) {
             console.error(`${TAG} [attempt ${attemptNum}] \u2717 rupload returned null`);
             this._lastConfigureError = "rupload rejected \u2014 session expired or auth failure (see rupload log above)";
@@ -162306,7 +162379,7 @@ Content-Disposition: form-data; name="${part.name}"`;
             return null;
           }
           console.log(`${TAG}   [attempt ${attemptNum}] Rupload OK confirmedId=${confirmedId}. Firing configure.`);
-          let mid = await this._configureViaIgClient(confirmedId, caption, false, imageBuffer, attemptAgent);
+          let mid = await this._configureViaIgClient(confirmedId, caption, false, imageBuffer, attemptSession);
           if (mid) {
             console.log(`${TAG} [attempt ${attemptNum}] \u2713 configure OK media_id=${mid}`);
           } else {
@@ -162323,8 +162396,8 @@ Content-Disposition: form-data; name="${part.name}"`;
           }
           return mid;
         } finally {
-          attemptAgent?.destroy?.();
-          console.log(`${TAG}   [attempt ${attemptNum}] Destroyed HttpsProxyAgent`);
+          await closeHttp2ProxySession(attemptSession);
+          console.log(`${TAG}   [attempt ${attemptNum}] Closed HTTP/2 session`);
         }
       };
       let mediaId = await runAttempt(1);
@@ -162363,26 +162436,27 @@ Content-Disposition: form-data; name="${part.name}"`;
       }
       const uploadId = String(Date.now());
       console.log(`${TAG}   Generated uploadId=${uploadId}`);
-      const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
-      const sharedAgent = new HttpsProxyAgent2(this.proxyUrl, { keepAlive: true, maxSockets: 1 });
-      console.log(`${TAG}   Created shared HttpsProxyAgent for video rupload+configure tunnel`);
+      let sharedSession;
       let mediaId = null;
       try {
-        const confirmedUploadId = await this._mobileRupload("video", videoBuffer, uploadId, sharedAgent);
+        if (!this.proxyUrl) throw new Error("No HTTP proxy configured for video upload");
+        sharedSession = await createHttp2ProxySession("https://i.instagram.com/", this.proxyUrl);
+        console.log(`${TAG}   Created shared standard TLS + HTTP/2 session`);
+        const confirmedUploadId = await this._mobileRupload("video", videoBuffer, uploadId, sharedSession);
         if (!confirmedUploadId) {
           console.error(`${TAG} \u2717 Video rupload failed \u2014 cannot proceed to configure`);
           return null;
         }
         console.log(`${TAG}   Video rupload OK \u2014 confirmedUploadId=${confirmedUploadId}. Firing configure immediately (no delay).`);
-        mediaId = await this._configureViaIgClient(confirmedUploadId, caption, true, void 0, sharedAgent);
+        mediaId = await this._configureViaIgClient(confirmedUploadId, caption, true, void 0, sharedSession);
         if (mediaId) {
           console.log(`${TAG} \u2713 uploadVideo succeeded \u2014 media_id=${mediaId}`);
         } else {
           console.error(`${TAG} \u2717 uploadVideo configure failed \u2014 error="${this._lastConfigureError}"`);
         }
       } finally {
-        sharedAgent.destroy?.();
-        console.log(`${TAG}   Destroyed shared HttpsProxyAgent`);
+        await closeHttp2ProxySession(sharedSession);
+        console.log(`${TAG}   Closed shared HTTP/2 session`);
       }
       return mediaId;
     }, `Upload video (${videoBuffer.length}B) caption="${caption.slice(0, 30)}"`, (result) => result !== null);
@@ -163014,7 +163088,10 @@ async function createInstagramAccountViaApi(params) {
       igLib.state.constants.APP_VERSION = MOBILE_VERSION;
       igLib.state.constants.APP_VERSION_CODE = MOBILE_VERSION_CODE;
       patchDeviceStringVersionCode(igLib, MOBILE_VERSION_CODE);
-      if (proxyUrl) igLib.state.proxyUrl = proxyUrl;
+      if (proxyUrl) {
+        igLib.state.proxyUrl = proxyUrl;
+        patchIgClientTls(igLib, proxyUrl);
+      }
       step("Library: running preLoginFlow (launcher \u2192 qe)...");
       try {
         await igLib.launcher.preLoginSync();
@@ -163118,8 +163195,7 @@ async function createInstagramAccountViaApi(params) {
         },
         body: webBody,
         cookieJar,
-        proxyUrl,
-        forceNodeTls: true
+        proxyUrl
       });
       cookieJar = mergeCookies(cookieJar, webRes.cookies);
       const wj = webRes.json;
@@ -163345,7 +163421,7 @@ async function logApiCall(profileId, username, operationName, status, source, na
       navChain,
       ipAddress,
       durationMs,
-      transport: "ja3"
+      transport: "node-tls-http2"
     });
   } catch {
   }
@@ -166460,7 +166536,7 @@ ${err?.stack ?? ""}`);
           source: state.client.apiCallSource,
           durationMs,
           isError: isError2 ?? false,
-          transport: isTransportCall ? "ja3" : "Equinox"
+          transport: isTransportCall ? "node-tls-http2" : "Equinox"
         }).catch(() => {
         });
       });
@@ -172064,9 +172140,9 @@ async function registerInstagramRoutes(httpServer2, app2) {
       if (!tunnelPort) return res.json({ alive: false, latencyMs: 0, error: "Tunnel not running \u2014 select the adapter to start it" });
       const start2 = Date.now();
       try {
-        const net7 = await import("net");
+        const net6 = await import("net");
         await new Promise((resolve, reject) => {
-          const sock = (net7.default ?? net7).createConnection({ host: "127.0.0.1", port: tunnelPort, timeout: 5e3 });
+          const sock = (net6.default ?? net6).createConnection({ host: "127.0.0.1", port: tunnelPort, timeout: 5e3 });
           let buf = "";
           sock.once("connect", () => {
             sock.write("CONNECT 1.1.1.1:80 HTTP/1.1\r\nHost: 1.1.1.1:80\r\n\r\n");
@@ -172091,9 +172167,9 @@ async function registerInstagramRoutes(httpServer2, app2) {
     }
     const start = Date.now();
     try {
-      const net7 = await import("net");
+      const net6 = await import("net");
       await new Promise((resolve, reject) => {
-        const sock = (net7.default ?? net7).createConnection({
+        const sock = (net6.default ?? net6).createConnection({
           host: proxy.host,
           port: Number(proxy.port),
           timeout: 5e3
@@ -174291,7 +174367,7 @@ ${stamp}` : stamp;
           resolveSource(call.source ?? ""),
           ipPort,
           String(call.durationMs ?? ""),
-          call.source === "HikerAPI" ? "HikerAPI" : call.transport === "ja3" ? "JA3 (OkHttp4)" : call.transport ? call.transport : "\u2014"
+          call.source === "HikerAPI" ? "HikerAPI" : call.transport === "ja3" ? "JA3 (historical)" : call.transport ? call.transport : "\u2014"
         ].map(esc2).join(",");
       });
       const content = [headers.map(esc2).join(","), ...csvRows].join("\r\n");
@@ -174628,12 +174704,12 @@ ${stamp}` : stamp;
     } catch {
     }
     const apiUA = profile.userAgentApi ?? null;
-    const https4 = await import("node:https");
+    const https5 = await import("node:https");
     async function proxyGet(url2, agent, timeoutMs = 9e3) {
       const parsed = new URL(url2);
       return new Promise((resolve) => {
         try {
-          const r2 = https4.request(
+          const r2 = https5.request(
             {
               host: parsed.hostname,
               port: 443,
@@ -174670,10 +174746,10 @@ ${stamp}` : stamp;
         let agent;
         try {
           if (proxyType === "socks5") {
-            const { SocksProxyAgent: SocksProxyAgent2 } = await Promise.resolve().then(() => (init_dist3(), dist_exports2));
+            const { SocksProxyAgent: SocksProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
             agent = new SocksProxyAgent2(proxyUrl);
           } else {
-            const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
+            const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist3(), dist_exports2));
             agent = new HttpsProxyAgent2(proxyUrl, { keepAlive: false });
           }
         } catch (e) {
@@ -174705,10 +174781,10 @@ ${stamp}` : stamp;
         }
         return { status: "pass", label: `Exit IP matches proxy host (${exitIp})`, detail };
       })(),
-      // ── Check 3: TLS / JA3 fingerprint ──────────────────────────────────
+      // ── Check 3: standard TLS + HTTP/2 ──────────────────────────────────
       (async () => {
         if (!proxyUrl) {
-          return { status: "fail", label: "No proxy \u2014 cannot test TLS fingerprint", detail: { cycleTls: false } };
+          return { status: "fail", label: "No proxy \u2014 cannot test TLS/HTTP2 transport", detail: { transport: "node-tls-http2" } };
         }
         try {
           const r2 = await tlsRequest({
@@ -174721,22 +174797,16 @@ ${stamp}` : stamp;
           const probeIp = r2.rawBody?.trim() || null;
           return {
             status: "pass",
-            label: `CycleTLS active \u2014 OkHttp4 JA3 in use. Write calls use Chrome 120 JA3.`,
+            label: "Standard TLS + HTTP/2 request succeeded through proxy",
             detail: {
-              cycleTls: true,
-              okHttp4Ja3: OKHTTP4_JA3,
-              chrome120Ja3: CHROME120_JA3,
-              writeCallsPolicy: "friendships/create, media/like \u2192 CHROME120_JA3 (no Bearer required)",
-              readCallsPolicy: "bootstrap, verify, feed \u2192 OKHTTP4_JA3",
+              transport: "node-tls-http2",
+              negotiatedProtocol: "h2",
               probeExitIp: probeIp
             }
           };
         } catch (e) {
           const msg = String(e?.message ?? e);
-          if (msg.includes("CycleTLS failed") || msg.includes("TLS-BLOCKED")) {
-            return { status: "fail", label: "CycleTLS not available \u2014 OpenSSL JA3 exposed (bot signal)", detail: { cycleTls: false, error: msg.slice(0, 200) } };
-          }
-          return { status: "warn", label: `TLS probe error: ${msg.slice(0, 100)}`, detail: { cycleTls: null, error: msg.slice(0, 200) } };
+          return { status: "warn", label: `TLS/HTTP2 probe error: ${msg.slice(0, 100)}`, detail: { transport: "node-tls-http2", error: msg.slice(0, 200) } };
         }
       })(),
       // ── Check 2: Header Consistency ──────────────────────────────────────
@@ -174753,7 +174823,7 @@ ${stamp}` : stamp;
         let geo = { timezone: null, countryCode: null };
         if (proxyType === "socks5") {
           try {
-            const { SocksProxyAgent: SocksProxyAgent2 } = await Promise.resolve().then(() => (init_dist3(), dist_exports2));
+            const { SocksProxyAgent: SocksProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
             const socksAgent = new SocksProxyAgent2(proxyUrl);
             const raw = await proxyGet("https://ip-api.com/json/?fields=timezone,countryCode", socksAgent, 7e3);
             if (raw) {
@@ -174910,7 +174980,7 @@ ${stamp}` : stamp;
       checks: {
         ip: { title: "Proxy IP", ...ipResult },
         headers: { title: "Header Consistency", ...headerResult },
-        tls: { title: "TLS / JA3", ...tlsResult },
+        tls: { title: "TLS / HTTP/2", ...tlsResult },
         deviceIds: { title: "Device IDs", ...deviceIdResult },
         mobileHeaders: { title: "Mobile App Header Set", ...mobileHeaderResult }
       }
@@ -174922,12 +174992,12 @@ ${stamp}` : stamp;
       if (!Array.isArray(profileIds2) || profileIds2.length === 0) {
         return res.status(400).json({ error: "profileIds required" });
       }
-      const https4 = await import("node:https");
+      const https5 = await import("node:https");
       async function proxyGet(url2, agent, timeoutMs = 9e3) {
         const parsed = new URL(url2);
         return new Promise((resolve) => {
           try {
-            const req2 = https4.request(
+            const req2 = https5.request(
               {
                 host: parsed.hostname,
                 port: 443,
@@ -175017,10 +175087,10 @@ ${stamp}` : stamp;
         let agent;
         try {
           if (proxyType === "socks5") {
-            const { SocksProxyAgent: SocksProxyAgent2 } = await Promise.resolve().then(() => (init_dist3(), dist_exports2));
+            const { SocksProxyAgent: SocksProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
             agent = new SocksProxyAgent2(proxyUrl);
           } else {
-            const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
+            const { HttpsProxyAgent: HttpsProxyAgent2 } = await Promise.resolve().then(() => (init_dist3(), dist_exports2));
             agent = new HttpsProxyAgent2(proxyUrl, { keepAlive: false });
           }
         } catch {
@@ -177845,7 +177915,7 @@ process.stderr.write = function(chunk, encodingOrCb, cb) {
   return _origStderrWrite(chunk, encodingOrCb, cb);
 };
 console.log(`[server] Log file: ${SERVER_LOG_PATH}`);
-var httpServer = createServer2(app_default);
+var httpServer = createServer(app_default);
 registerInstagramRoutes(httpServer, app_default).then(() => {
   const frontendDist = process.env.FRONTEND_DIST_PATH || path5.join(process.cwd(), "artifacts", "dannys-bot", "dist", "public");
   if (fs5.existsSync(frontendDist)) {

@@ -1,37 +1,22 @@
 ---
-name: tlsRequest CycleTLS header stripping
-description: Why tlsRequest must strip Host, Connection, Content-Length before passing to CycleTLS — or Instagram returns "something went wrong" on every write call
+name: HTTP/2 request header normalization
+description: Keep hop-by-hop headers out of HTTP/2 requests and derive Content-Length from transmitted bytes
 ---
 
 ## The rule
 
-`tlsRequest()` in `tlsTransport.ts` must strip `Host`, `Connection`, and `Content-Length` from the header map before passing to CycleTLS, in addition to `User-Agent` and `Accept-Encoding`.
+HTTP/2 requests must omit `Host` and hop-by-hop headers such as `Connection`; authority is carried by `:authority`. Derive `Content-Length` from the exact transmitted body instead of trusting a caller-provided value.
 
 ## Why
 
-CycleTLS uses Go's `fhttp` transport which negotiates HTTP/2 with Instagram's servers. HTTP/2 has strict rules:
+HTTP/2 has strict rules:
 
-- **Host** → replaced by `:authority` pseudo-header derived from the URL. Passing `Host` as a regular header alongside the auto-generated `:authority` causes a header conflict. Instagram rejects with HTTP 200 `status:"fail"` "We're sorry, but something went wrong."
-- **Connection** → hop-by-hop header, FORBIDDEN in HTTP/2 (RFC 7540 §8.1.2.2). IgApiClient injects `Connection: close` via `getDefaultHeaders()`. This was the confirmed cause of the friendship.create "something went wrong" through the IgApiClient path.
-- **Content-Length** → Go's fhttp sets this automatically from the body string. Passing it manually produces a duplicate Content-Length header which Instagram can reject.
+- **Host** is replaced by the `:authority` pseudo-header. Passing `Host` as a regular header alongside it can cause a conflict.
+- **Connection** is a hop-by-hop header forbidden in HTTP/2.
+- **Content-Length** must match the transmitted bytes. Binary uploads must use the Buffer byte length, not a string length or stale caller value.
+
+An earlier HTTP/2 path sent headers that conflict with pseudo-headers or violate HTTP/2's hop-by-hop restrictions, causing generic request failures.
 
 ## How to apply
 
-In the CycleTLS path of `tlsRequest` (the `if (!forceNodeTls)` branch), destructure out all five headers before using `headersWithoutUA`:
-
-```js
-const {
-  "User-Agent": _ua,
-  "Accept-Encoding": _ae,
-  "Host": _host,
-  "Connection": _conn,
-  "Content-Length": _cl,
-  ...headersWithoutUA
-} = allHeaders;
-```
-
-Do NOT add Content-Length to `allHeaders` at the top of `tlsRequest` — only the Node.js forceNodeTls path needs it, and Node.js sets it automatically from `req.write(body)` anyway.
-
-`patchIgClientTls` (the IgApiClient path) already does this correctly. The bug was that `tlsRequest` (used by all direct `igReq()` calls) was missing these strips.
-
-**Why:** This was confirmed as the root cause of "something went wrong" on every follow/unfollow/DM call after switching from Node.js HTTPS to CycleTLS. The Node.js HTTPS path uses HTTP/1.1 where Host and Content-Length are valid regular headers; HTTP/2 treats them differently.
+Normalize headers before building an HTTP/2 request. Keep valid end-to-end headers such as `User-Agent` and `Accept-Encoding`. Set Content-Length from the Buffer byte length for a non-empty body, and omit it for an empty body.

@@ -83,13 +83,15 @@ import { randomUUID, createCipheriv, createHmac, publicEncrypt, randomBytes, con
 import { generateSync as totpGenerate } from "otplib";
 import { userAgents as UA_POOL } from "../shared/userAgents";
 import { IgApiClient, IgCheckpointError, IgLoginTwoFactorRequiredError, IgLoginBadPasswordError } from "instagram-private-api";
-import { tlsRequest, tlsMultipartPost, patchIgClientTls, warmupTls, CHROME120_JA3 } from "./tlsTransport.js";
+import {
+  tlsRequest,
+  tlsMultipartPost,
+  patchIgClientTls,
+  createHttp2ProxySession,
+  closeHttp2ProxySession,
+  type Http2ProxySession,
+} from "./tlsTransport.js";
 import { localeToAcceptLanguage } from "./browserSession.js";
-
-
-// Warm up the CycleTLS Go subprocess at module load so the first real request
-// doesn't pay the ~300 ms startup cost.
-warmupTls();
 
 // ── Proxy IP geo lookup ───────────────────────────────────────────────────────
 // Queries ip-api.com for the UTC offset AND country code of the proxy's exit
@@ -245,15 +247,10 @@ async function igReq(opts: {
   body?: string;
   cookieJar?: string[];
   proxyUrl?: string;
-  /** Pass through to tlsRequest — bypasses CycleTLS when true (see tlsRequest docs). */
-  forceNodeTls?: boolean;
-  /** Override the JA3 fingerprint. Pass CHROME120_JA3 for EB-session write calls. */
-  ja3Override?: string;
+  sessionOverride?: Http2ProxySession;
 }): Promise<{ status: number; cookies: string[]; json: any; rawBody: string; responseHeaders: Record<string, string | string[] | undefined> }> {
-  // Delegate entirely to tlsTransport.ts which routes all Instagram API calls
-  // through the CycleTLS OkHttp4 TLS stack (or falls back to Node.js HTTPS if
-  // the CycleTLS binary is unavailable). IP-leak prevention and slow-request
-  // logging are both enforced inside tlsRequest().
+  // Delegate to the standard TLS + HTTP/2 transport. Proxy enforcement and
+  // response parsing are handled inside tlsRequest().
   return tlsRequest(opts);
 }
 
@@ -620,7 +617,7 @@ export class InstagramWebClient {
         `  proxy       : ${scheme}://${u.hostname}:${port}\n` +
         `  hard-gate   : ✓ constructor blocks if proxy absent\n` +
         `  tls-gate    : ✓ tlsRequest blocks if proxy absent\n` +
-        `  cycleTLS    : ✓ patchIgClientTls throws if CycleTLS fails (no Node.js TLS fallback)`
+        `  transport   : ✓ API requests use standard TLS + HTTP/2 through the configured proxy`
       );
     } catch {
       // malformed proxyUrl — hard gate above would have thrown already, but
@@ -2432,12 +2429,9 @@ export class InstagramWebClient {
 
     const followHeaders = this._buildMobileHeaders(csrf, "application/x-www-form-urlencoded; charset=UTF-8");
 
-    // When auth is MISSING and we are using Chrome120 JA3, strip ALL headers that
-    // identify this as an Android client.  Instagram checks BOTH the TLS JA3 fingerprint
-    // AND the HTTP headers when deciding whether to apply the Bearer-token gate.
-    // Sending Chrome JA3 + Android headers = detectable contradiction → Bearer gate still fires.
-    // Stripping ALL Android-specific headers makes the request look like a pure Chrome/web
-    // client, which eliminates the contradiction and bypasses the Bearer gate.
+    // When auth is missing, omit app-only headers that require an authenticated
+    // mobile session. The request still uses the same standard TLS + HTTP/2
+    // transport; this branch only controls its HTTP headers.
     //
     // Headers stripped when auth=MISSING:
     //   X-IG-Android-ID       — Android device ID, Chrome browsers never send this
@@ -2462,15 +2456,9 @@ export class InstagramWebClient {
 
     console.log(`[webClient] follow ${userId}: via _followViaMobileSession (signed body, _buildMobileHeaders, csrf=${csrf.slice(0, 8)}…, auth=${this._deviceAuthorization ? "present" : "MISSING"}, claim=${followHeaders["X-IG-WWW-Claim"] ?? "omitted"})`);
 
-    // JA3 fingerprint must match whichever header set was sent above.
-    // - auth PRESENT: headers above keep the full Android/Bloks/Pigeon set, so this
-    //   call must go out on the default OkHttp4/Android JA3 (ja3Override omitted) —
-    //   real Android app v431+ sends Bearer + Android headers + Android JA3 together.
-    // - auth MISSING: Android-specific headers were stripped above, so Chrome JA3
-    //   is used instead — Instagram's backend requires a Bearer token for write calls
-    //   from an Android-JA3 client (real Android apps always carry one). Sending
-    //   Android JA3 without a Bearer token, or Chrome JA3 with Android headers, are
-    //   both detectable contradictions; only one consistent identity is used per call.
+    // Keep mobile-only headers aligned with the credentials available on this
+    // session. The transport itself uses the same ordinary TLS + HTTP/2 path in
+    // either case; header selection never changes the TLS connection profile.
     const res = await igReq({
       host: "i.instagram.com",
       path: `/api/v1/friendships/create/${userId}/`,
@@ -2479,7 +2467,6 @@ export class InstagramWebClient {
       body,
       cookieJar: this.mobileCookieJar,
       proxyUrl: this.proxyUrl,
-      ja3Override: this._deviceAuthorization ? undefined : CHROME120_JA3,
     });
 
     // Merge cookies/headers back (same as mobileSessionPost)
@@ -3101,12 +3088,8 @@ export class InstagramWebClient {
     }
 
     // ── Phase 2b: news/inbox — notifications badge warm-up ───────────────────
-    // Previously this called ig.news.inbox() through patchIgClientTls, but the
-    // CycleTLS Go subprocess returns status 0 (no response) for authenticated
-    // IgApiClient calls through certain proxies — while mobileSessionGet (which
-    // uses igReq → tlsRequest directly) works fine for the same proxy.
-    // Using mobileSessionGet here avoids the CycleTLS/IgApiClient proxy
-    // compatibility gap while still firing the same news/inbox endpoint.
+    // Keep this on mobileSessionGet so its existing cookie/status handling is
+    // preserved; it now uses the same standard TLS + HTTP/2 transport as the SDK.
     let warmupOk = false;
     try {
       await this.timed("NotificationsBadge", async () => {
@@ -5893,7 +5876,7 @@ export class InstagramWebClient {
     mediaType: "photo" | "video",
     buffer: Buffer,
     uploadId: string,
-    sharedAgent?: any,
+    sharedSession?: Http2ProxySession,
   ): Promise<string | null> {
     const TAG = `[UPLOAD:rupload @${this.username ?? this.profileId}]`;
     const authorization = this._deviceAuthorization;
@@ -5986,18 +5969,20 @@ export class InstagramWebClient {
     let json: any;
     let ruploadCookies: string[] = [];
     try {
-      // Node.js HTTPS (forceNodeHttps=true) is REQUIRED for binary uploads.
-      // CycleTLS serialises the body through JSON, re-encoding Latin-1 bytes > 127
-      // as multi-byte UTF-8 sequences — this corrupts the JPEG/MP4 buffer and causes
-      // Instagram to return ProcessingFailedError (retriable:false) at the rupload step.
-      // Node.js req.write(Buffer) sends raw bytes without any re-encoding.
-      // Shard routing (the old reason to match TLS stacks) is handled by the rur cookie
-      // injected from the browser session into mobileCookieJar before this call —
-      // both rupload and configure send that cookie and land on the same backend shard.
+      // The HTTP/2 transport writes this Buffer directly, preserving the JPEG/MP4
+      // bytes. Reuse the same session for configure when supplied so both steps
+      // stay on the same proxy tunnel.
       // NOTE: we post via the mobile private API only. The embedded browser is NEVER
       // used as an upload path — the EB exists solely for session establishment and
       // challenge recovery, not for automated posting actions.
-      ({ json, cookies: ruploadCookies } = await tlsMultipartPost("i.instagram.com", ruploadPath, headers, buffer, this.proxyUrl, true, sharedAgent));
+      ({ json, cookies: ruploadCookies } = await tlsMultipartPost(
+        "i.instagram.com",
+        ruploadPath,
+        headers,
+        buffer,
+        this.proxyUrl,
+        sharedSession,
+      ));
     } catch (netErr: any) {
       console.error(`${TAG} ✗ NETWORK ERROR during rupload: ${netErr?.message ?? netErr}`);
       if (netErr?.message?.includes("ECONNREFUSED")) console.error(`${TAG}   ► Proxy refused connection or Instagram unreachable`);
@@ -6085,15 +6070,9 @@ export class InstagramWebClient {
     }, `Get feed of @${username}`);
   }
 
-  // ── Configure (publish) a media upload — SAME Node.js HTTPS stack as rupload ──
-  // ROOT CAUSE of "upload id is missing" (confirmed from production logs v1.1.56):
-  //   rupload uses tlsMultipartPost(forceNodeHttps=true) → Node.js HTTPS / OpenSSL TLS.
-  //   configure was using mobileSessionPost → igReq → CycleTLS (OkHttp4 JA3).
-  //   Instagram links the upload to the exact TLS session that performed it.
-  //   A configure arriving via a DIFFERENT TLS fingerprint cannot find the upload
-  //   and returns the misleading "upload id is missing" HTTP 500.
-  //   This is NOT about the upload_id value — the upload truly succeeded. The
-  //   configure just can't match it because the fingerprint differs.
+  // ── Configure (publish) a media upload ────────────────────────────────────
+  // When a shared HTTP/2 session is supplied, rupload and configure use the same
+  // proxy tunnel and TLS connection.
   //
   // Parses manufacturer/model/android version from the full mobile UA string.
   // UA format: "Instagram X.X Android (33/13; 500dpi; 1440x3088; Samsung; SM-G975U; ...)"
@@ -6119,7 +6098,7 @@ export class InstagramWebClient {
     caption: string,
     isVideo: boolean,
     imgBuffer?: Buffer,
-    sharedAgent?: any,
+    sharedSession?: Http2ProxySession,
   ): Promise<string | null> {
     const TAG = `[UPLOAD:configure @${this.username ?? this.profileId}]`;
     console.log(`${TAG} ── CONFIGURE PRE-FLIGHT ──────────────────────────────`);
@@ -6259,14 +6238,8 @@ export class InstagramWebClient {
     console.log(`${TAG}   Body preview (first 400 chars): ${bodyStr.slice(0, 400)}`);
     console.log(`${TAG}   upload_id in body: "${uploadId}"`);
     console.log(`${TAG}   _uid: "${ownUserId || "EMPTY"}" _csrftoken: "${csrf.slice(0,8)}…" _uuid: "${uuid.slice(0,8)}…"`);
-    // forceNodeTls=true MUST match rupload's TLS stack (tlsMultipartPost also
-    // uses forceNodeTls=true / Node.js HTTPS). Instagram routes rupload and
-    // configure to the same backend shard based on the TLS fingerprint + session.
-    // Using CycleTLS for configure while rupload uses Node.js causes
-    // "upload id is missing" (500) because configure lands on a different shard
-    // that has no record of the rupload. Confirmed on @anais.23164 v1.1.110.
     const authorization = this._deviceAuthorization;
-    console.log(`${TAG}   Cookie count: ${this.mobileCookieJar.length} auth=${authorization ? "✓ Bearer" : "✗ none"} TLS=NodeHTTPS(mustMatchRupload) sharedAgent=${sharedAgent ? "✓" : "✗"}`);
+    console.log(`${TAG}   Cookie count: ${this.mobileCookieJar.length} auth=${authorization ? "✓ Bearer" : "✗ none"} TLS=standard+h2 sharedSession=${sharedSession ? "✓" : "✗"}`);
 
     let res: any;
     try {
@@ -6278,11 +6251,7 @@ export class InstagramWebClient {
         body: bodyStr,
         cookieJar: this.mobileCookieJar,
         proxyUrl: this.proxyUrl,
-        // Node.js HTTPS (forceNodeTls=true) — must match rupload's TLS stack (also Node.js HTTPS).
-        // agentOverride shares the same HttpsProxyAgent (proxy tunnel) with rupload so
-        // Instagram routes configure to the exact same backend shard as the rupload.
-        forceNodeTls: true,
-        agentOverride: sharedAgent,
+        sessionOverride: sharedSession,
       });
     } catch (netErr: any) {
       console.error(`${TAG} ✗ NETWORK ERROR during configure: ${netErr?.message ?? netErr}`);
@@ -6343,7 +6312,7 @@ export class InstagramWebClient {
     // ── Known configure error patterns ──────────────────────────────────────
     if (errMsg.includes("upload id") || errMsg.includes("upload_id")) {
       console.error(`${TAG}   ► DIAGNOSIS: "upload id is missing" — rupload succeeded but configure cannot find it.`);
-      console.error(`${TAG}     Cause 1: TLS stack mismatch (rupload used Node.js HTTPS, configure used CycleTLS)`);
+      console.error(`${TAG}     Cause 1: rupload and configure may have used different proxy connections`);
       console.error(`${TAG}     Cause 2: rur cookie was missing → configure landed on different Instagram shard`);
       console.error(`${TAG}     Cause 3: uploadId expired (configure called too long after rupload)`);
       console.error(`${TAG}     Cause 4: image_compression rupload header triggered server-side MozJPEG path that stores upload on different internal key`);
@@ -6716,13 +6685,10 @@ export class InstagramWebClient {
       //    rur is present, both rupload AND configure include it in their Cookie
       //    header and Instagram's LB routes both to the same backend shard.  This
       //    is the Jarvee approach and is the most reliable shard-affinity mechanism.
-      //    Without this pre-seed, rur is absent and shard routing depends entirely
-      //    on layer 2 (shared agent), which breaks when a slow upload exhausts the
-      //    proxy TCP tunnel keep-alive.
-      //  SECONDARY — Shared HttpsProxyAgent: rupload and configure reuse the same
-      //    proxy tunnel so Instagram's load balancer routes both requests to the
-      //    same backend shard.  Helps but not sufficient alone when rur is missing
-      //    (Instagram can close the backend connection after a slow upload).
+      //    Without this pre-seed, rur is absent and shard routing depends more on
+      //    layer 2 (the shared HTTP/2 session and proxy tunnel).
+      //  SECONDARY — Shared HTTP/2 session: rupload and configure reuse the same
+      //    proxy tunnel and TLS connection.
       //  TERTIARY — rur overwrite: _mobileRupload ALWAYS overwrites the rur entry
       //    in mobileCookieJar if the rupload response Set-Cookie contains one.
       if (!this.mobileCookieJar.some(c => c.startsWith("rur="))) {
@@ -6763,19 +6729,17 @@ export class InstagramWebClient {
       }
       // ── Attempt helper — one full rupload + configure cycle ─────────────────
       // Returns the media_id string on success, null on failure.
-      // Each attempt creates its own shared agent so a dead connection from a
-      // previous slow upload never carries over.
+      // Each attempt creates its own shared HTTP/2 session so a closed connection
+      // from a previous slow upload never carries over.
       const runAttempt = async (attemptNum: number): Promise<string | null> => {
-        let attemptAgent: any = undefined;
-        if (this.proxyUrl) {
-          const { HttpsProxyAgent } = await import("https-proxy-agent");
-          attemptAgent = new HttpsProxyAgent(this.proxyUrl, { keepAlive: true, maxSockets: 1 });
-          console.log(`${TAG}   [attempt ${attemptNum}] Created fresh HttpsProxyAgent`);
-        }
+        let attemptSession: Http2ProxySession | undefined;
         const uploadId = String(Date.now());
         console.log(`${TAG}   [attempt ${attemptNum}] Generated uploadId=${uploadId}`);
         try {
-          const confirmedId = await this._mobileRupload("photo", imageBuffer, uploadId, attemptAgent);
+          if (!this.proxyUrl) throw new Error("No HTTP proxy configured for media upload");
+          attemptSession = await createHttp2ProxySession("https://i.instagram.com/", this.proxyUrl);
+          console.log(`${TAG}   [attempt ${attemptNum}] Created standard TLS + HTTP/2 session`);
+          const confirmedId = await this._mobileRupload("photo", imageBuffer, uploadId, attemptSession);
           if (!confirmedId) {
             console.error(`${TAG} [attempt ${attemptNum}] ✗ rupload returned null`);
             this._lastConfigureError = "rupload rejected — session expired or auth failure (see rupload log above)";
@@ -6786,7 +6750,7 @@ export class InstagramWebClient {
             return null;
           }
           console.log(`${TAG}   [attempt ${attemptNum}] Rupload OK confirmedId=${confirmedId}. Firing configure.`);
-          let mid = await this._configureViaIgClient(confirmedId, caption, false, imageBuffer, attemptAgent);
+          let mid = await this._configureViaIgClient(confirmedId, caption, false, imageBuffer, attemptSession);
           if (mid) {
             console.log(`${TAG} [attempt ${attemptNum}] ✓ configure OK media_id=${mid}`);
           } else {
@@ -6806,8 +6770,8 @@ export class InstagramWebClient {
           }
           return mid;
         } finally {
-          (attemptAgent as any)?.destroy?.();
-          console.log(`${TAG}   [attempt ${attemptNum}] Destroyed HttpsProxyAgent`);
+          await closeHttp2ProxySession(attemptSession);
+          console.log(`${TAG}   [attempt ${attemptNum}] Closed HTTP/2 session`);
         }
       };
 
@@ -6868,15 +6832,16 @@ export class InstagramWebClient {
       const uploadId = String(Date.now());
       console.log(`${TAG}   Generated uploadId=${uploadId}`);
 
-      // Shared agent ensures rupload and configure hit the same backend shard.
-      const { HttpsProxyAgent } = await import("https-proxy-agent");
-      const sharedAgent = new HttpsProxyAgent(this.proxyUrl!, { keepAlive: true, maxSockets: 1 });
-      console.log(`${TAG}   Created shared HttpsProxyAgent for video rupload+configure tunnel`);
-
+      // Reuse one HTTP/2 session for rupload and configure on this attempt.
+      let sharedSession: Http2ProxySession | undefined;
       let mediaId: string | null = null;
       try {
+        if (!this.proxyUrl) throw new Error("No HTTP proxy configured for video upload");
+        sharedSession = await createHttp2ProxySession("https://i.instagram.com/", this.proxyUrl);
+        console.log(`${TAG}   Created shared standard TLS + HTTP/2 session`);
+
         // Step 1 — rupload binary protocol
-        const confirmedUploadId = await this._mobileRupload("video", videoBuffer, uploadId, sharedAgent);
+        const confirmedUploadId = await this._mobileRupload("video", videoBuffer, uploadId, sharedSession);
         if (!confirmedUploadId) {
           console.error(`${TAG} ✗ Video rupload failed — cannot proceed to configure`);
           return null;
@@ -6884,15 +6849,15 @@ export class InstagramWebClient {
         console.log(`${TAG}   Video rupload OK — confirmedUploadId=${confirmedUploadId}. Firing configure immediately (no delay).`);
 
         // Step 2 — configure fires immediately after rupload (no apiThrottle)
-        mediaId = await this._configureViaIgClient(confirmedUploadId, caption, true, undefined, sharedAgent);
+        mediaId = await this._configureViaIgClient(confirmedUploadId, caption, true, undefined, sharedSession);
         if (mediaId) {
           console.log(`${TAG} ✓ uploadVideo succeeded — media_id=${mediaId}`);
         } else {
           console.error(`${TAG} ✗ uploadVideo configure failed — error="${this._lastConfigureError}"`);
         }
       } finally {
-        (sharedAgent as any).destroy?.();
-        console.log(`${TAG}   Destroyed shared HttpsProxyAgent`);
+        await closeHttp2ProxySession(sharedSession);
+        console.log(`${TAG}   Closed shared HTTP/2 session`);
       }
       return mediaId;
     }, `Upload video (${videoBuffer.length}B) caption="${caption.slice(0, 30)}"`, (result) => result !== null);
@@ -7781,12 +7746,10 @@ export async function createInstagramAccountViaApi(params: {
       igLib.state.constants.APP_VERSION      = MOBILE_VERSION;
       igLib.state.constants.APP_VERSION_CODE = MOBILE_VERSION_CODE;
       patchDeviceStringVersionCode(igLib, MOBILE_VERSION_CODE);
-      if (proxyUrl) igLib.state.proxyUrl = proxyUrl;
-      // Do NOT call patchIgClientTls here — for account creation we want the library
-      // to use its native Node.js HTTPS stack (not CycleTLS OkHttp4 JA3).  There is
-      // no existing device fingerprint to preserve for a new account, and using
-      // Node.js TLS avoids the OkHttp4 JA3 fingerprint that triggers Instagram's
-      // bot detection on the account creation endpoint.
+      if (proxyUrl) {
+        igLib.state.proxyUrl = proxyUrl;
+        patchIgClientTls(igLib, proxyUrl);
+      }
 
       // Run the standard pre-login warm-up (launcher.preLoginSync → qe.syncLoginExperiments).
       // Non-fatal — continue even if it throws so we still attempt account.create().
@@ -7898,7 +7861,6 @@ export async function createInstagramAccountViaApi(params: {
         body: webBody,
         cookieJar,
         proxyUrl,
-        forceNodeTls: true,
       });
       cookieJar = mergeCookies(cookieJar, webRes.cookies);
       const wj = webRes.json;

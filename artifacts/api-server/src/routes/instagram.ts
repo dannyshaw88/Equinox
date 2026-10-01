@@ -90,7 +90,7 @@ import {
   patchApiUALocale,
   type ProxyConfig,
 } from "../instagram/browserSession";
-import { tlsRequest, CHROME120_JA3, OKHTTP4_JA3 } from "../instagram/tlsTransport";
+import { tlsRequest } from "../instagram/tlsTransport";
 import { automationEngine } from "../instagram/automationEngine";
 import { MOBILE_VERSION_CODE } from "../instagram/instagramWebClient";
 import { userAgents as UA_POOL } from "../shared/userAgents";
@@ -3421,7 +3421,7 @@ export async function registerInstagramRoutes(
           ipPort,
           String(call.durationMs ?? ""),
           call.source === "HikerAPI" ? "HikerAPI" :
-          call.transport === "ja3" ? "JA3 (OkHttp4)" :
+          call.transport === "ja3" ? "JA3 (historical)" :
           call.transport ? call.transport : "—",
         ].map(esc).join(",");
       });
@@ -3787,7 +3787,7 @@ export async function registerInstagramRoutes(
   // which reflects headers as really sent (including ones added by the network
   // layer after JS/webRequest hooks run). Login for this product happens entirely
   // through the real EB browser window (doAutoLogin in ebManager.ts) — never
-  // through the CycleTLS/API path — so this is the only check that inspects what
+  // through the mobile API transport — so this is the only check that inspects what
   // Instagram's server-side fingerprinting actually sees during login.
   app.get("/api/profiles/:id/header-check", async (req, res) => {
     const profileId = Number(req.params.id);
@@ -3824,7 +3824,7 @@ export async function registerInstagramRoutes(
   //   1. Proxy IP   — hit an IP-echo service through the proxy; confirm exit IP
   //   2. Headers    — geo-resolve proxy → compare expected Accept-Language /
   //                   X-IG-App-Locale / X-IG-Timezone-Offset vs proxy country
-  //   3. TLS / JA3  — verify CycleTLS (OkHttp4) is active via a live probe
+  //   3. TLS / HTTP/2 — verify the standard HTTP/2 transport through the proxy
   //   4. Device IDs — parse igDeviceState; validate uuid/phone_id/igDid format
   app.get("/api/profiles/:id/api-leak-check", async (req, res) => {
     const profileId = Number(req.params.id);
@@ -3950,10 +3950,10 @@ export async function registerInstagramRoutes(
         return { status: "pass", label: `Exit IP matches proxy host (${exitIp})`, detail };
       })(),
 
-      // ── Check 3: TLS / JA3 fingerprint ──────────────────────────────────
+      // ── Check 3: standard TLS + HTTP/2 ──────────────────────────────────
       (async (): Promise<TlsCheckResult> => {
         if (!proxyUrl) {
-          return { status: "fail", label: "No proxy — cannot test TLS fingerprint", detail: { cycleTls: false } };
+          return { status: "fail", label: "No proxy — cannot test TLS/HTTP2 transport", detail: { transport: "node-tls-http2" } };
         }
         try {
           const r = await tlsRequest({
@@ -3966,22 +3966,16 @@ export async function registerInstagramRoutes(
           const probeIp = r.rawBody?.trim() || null;
           return {
             status: "pass",
-            label: `CycleTLS active — OkHttp4 JA3 in use. Write calls use Chrome 120 JA3.`,
+            label: "Standard TLS + HTTP/2 request succeeded through proxy",
             detail: {
-              cycleTls: true,
-              okHttp4Ja3: OKHTTP4_JA3,
-              chrome120Ja3: CHROME120_JA3,
-              writeCallsPolicy: "friendships/create, media/like → CHROME120_JA3 (no Bearer required)",
-              readCallsPolicy:  "bootstrap, verify, feed → OKHTTP4_JA3",
+              transport: "node-tls-http2",
+              negotiatedProtocol: "h2",
               probeExitIp: probeIp,
             },
           };
         } catch (e: any) {
           const msg = String(e?.message ?? e);
-          if (msg.includes("CycleTLS failed") || msg.includes("TLS-BLOCKED")) {
-            return { status: "fail", label: "CycleTLS not available — OpenSSL JA3 exposed (bot signal)", detail: { cycleTls: false, error: msg.slice(0, 200) } };
-          }
-          return { status: "warn", label: `TLS probe error: ${msg.slice(0, 100)}`, detail: { cycleTls: null, error: msg.slice(0, 200) } };
+          return { status: "warn", label: `TLS/HTTP2 probe error: ${msg.slice(0, 100)}`, detail: { transport: "node-tls-http2", error: msg.slice(0, 200) } };
         }
       })(),
 
@@ -4198,7 +4192,7 @@ export async function registerInstagramRoutes(
       checks: {
         ip:            { title: "Proxy IP",                 ...ipResult },
         headers:       { title: "Header Consistency",       ...headerResult },
-        tls:           { title: "TLS / JA3",                ...tlsResult },
+        tls:           { title: "TLS / HTTP/2",             ...tlsResult },
         deviceIds:     { title: "Device IDs",               ...deviceIdResult },
         mobileHeaders: { title: "Mobile App Header Set",    ...mobileHeaderResult },
       },
