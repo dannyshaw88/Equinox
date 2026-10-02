@@ -25,7 +25,7 @@ import { ImageSettingsDialog } from "@/components/tools/ImageSettingsDialog";
 import { ToolConfigPanel } from "@/components/tools/ToolConfigPanel";
 import { UnfollowToolPanel } from "@/components/tools/UnfollowToolPanel";
 import { ContactToolPanel } from "@/components/tools/ContactToolPanel";
-import { randomiseNumericSettings } from "@/lib/randomiseNumericSettings";
+import { HUMAN_SESSION_NUMERIC_RULES, randomiseNumericSettings } from "@/lib/randomiseNumericSettings";
 
 interface HumanSessionPanelProps {
   tool: Tool;
@@ -1027,11 +1027,11 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
             size="sm"
             className="ml-auto shrink-0"
             aria-label="Randomise all numeric Human Session settings"
-            title="Randomise every numeric and percentage setting in the Human Session Tool"
+            title="Randomise Human Session, Unfollow, Contact, and Follow Inject Browsing numeric settings"
             onClick={() => {
-              setSettings((current) => randomiseNumericSettings(current));
+              setSettings((current) => randomiseNumericSettings(current, HUMAN_SESSION_NUMERIC_RULES));
               setRandomiseValuesSignal((current) => current + 1);
-              toast({ title: "Settings randomised", description: "Every numeric and percentage setting currently available in this Human Session Tool has been randomised." });
+              toast({ title: "Settings randomised", description: "Randomised Human Session, Unfollow, Contact, and Follow Inject Browsing numeric settings." });
             }}
           >
             <ArrowLeftRight className="w-4 h-4 mr-1.5" />

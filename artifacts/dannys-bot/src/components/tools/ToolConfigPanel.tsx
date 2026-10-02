@@ -18,7 +18,7 @@ import { useBrowserWindows } from "@/contexts/BrowserWindowsContext";
 import { CopySettingsDialog, type CopyOptionGroup } from "@/components/tools/CopySettingsDialog";
 import { copyToolSettingsToProfiles } from "@/lib/copyToolSettings";
 import { api } from "@shared/routes";
-import { randomiseNumericSettings, randomIntegerBetween } from "@/lib/randomiseNumericSettings";
+import { FOLLOW_INJECT_BROWSING_NUMERIC_RULES, randomiseNumericSettings } from "@/lib/randomiseNumericSettings";
 interface ToolConfigPanelProps {
   tool: Tool;
   profile: Profile;
@@ -459,7 +459,6 @@ export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyO
   const isMounted = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRandomiseSettingsSignal = useRef(0);
-  const lastRandomiseSourcesSignal = useRef(0);
 
   useEffect(() => {
     if (!isMounted.current) { isMounted.current = true; return; }
@@ -473,22 +472,8 @@ export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyO
   useEffect(() => {
     if (!randomiseValuesSignal || randomiseValuesSignal === lastRandomiseSettingsSignal.current) return;
     lastRandomiseSettingsSignal.current = randomiseValuesSignal;
-    setSettings((current) => randomiseNumericSettings(current));
-    setLocalPriorities({});
+    setSettings((current) => randomiseNumericSettings(current, FOLLOW_INJECT_BROWSING_NUMERIC_RULES));
   }, [randomiseValuesSignal]);
-
-  useEffect(() => {
-    if (!randomiseValuesSignal || randomiseValuesSignal === lastRandomiseSourcesSignal.current || !sources) return;
-    lastRandomiseSourcesSignal.current = randomiseValuesSignal;
-    for (const source of sources) {
-      updateSourceMutation.mutate({
-        id: source.id,
-        toolId: tool.id,
-        rank: randomIntegerBetween(1, 100),
-        enabled: source.enabled !== false,
-      });
-    }
-  }, [randomiseValuesSignal, sources]);
 
   const handleAddSource = (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type Tool, type Profile } from "@shared/schema";
 import { useUpdateTool } from "@/hooks/use-tools";
-import { randomiseNumericSettings } from "@/lib/randomiseNumericSettings";
+import { CONTACT_NUMERIC_RULES, randomiseNumericSettings } from "@/lib/randomiseNumericSettings";
 
 import { ContactNewFollowersPanel } from "./ContactNewFollowersPanel";
 import { ContactUsersPanel } from "./ContactUsersPanel";
@@ -86,9 +86,10 @@ export function ContactToolPanel({ tool, profile, copyOpen: copyOpenProp, onCopy
       contactUsersUnsendMin: 30,
       contactUsersUnsendMax: 60,
       stopOnBlockMinutes: 60,
+      contactExtractCount: 20,
       ...((tool.settings as Record<string, unknown>) ?? {}),
     };
-    const nextSettings = randomiseNumericSettings(currentSettings);
+    const nextSettings = randomiseNumericSettings(currentSettings, CONTACT_NUMERIC_RULES);
     setSettingsOverride(nextSettings);
     updateToolMutation.mutate({ id: tool.id, profileId: tool.profileId, settings: nextSettings });
   }, [randomiseValuesSignal]);

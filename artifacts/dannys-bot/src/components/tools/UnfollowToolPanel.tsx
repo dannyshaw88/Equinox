@@ -12,7 +12,7 @@ import { type Tool, type Profile } from "@shared/schema";
 import { useProfileEngineStatus } from "@/hooks/use-engine-status";
 import { CopySettingsDialog, type CopyOptionGroup } from "@/components/tools/CopySettingsDialog";
 import { copyToolSettingsToProfiles } from "@/lib/copyToolSettings";
-import { randomiseNumericSettings, randomIntegerBetween } from "@/lib/randomiseNumericSettings";
+import { randomiseNumericSettings, UNFOLLOW_NUMERIC_RULES } from "@/lib/randomiseNumericSettings";
 
 interface UnfollowToolPanelProps {
   tool: Tool;
@@ -106,11 +106,7 @@ export function UnfollowToolPanel({ tool, profile, copyOpen: copyOpenProp, onCop
   useEffect(() => {
     if (!randomiseValuesSignal || randomiseValuesSignal === lastRandomiseValuesSignal.current) return;
     lastRandomiseValuesSignal.current = randomiseValuesSignal;
-    setSettings((current) => randomiseNumericSettings(current));
-    const fetchMin = randomIntegerBetween(1, 2000);
-    const fetchMax = randomIntegerBetween(1, 2000);
-    setHikerFetchMin(Math.min(fetchMin, fetchMax));
-    setHikerFetchMax(Math.max(fetchMin, fetchMax));
+    setSettings((current) => randomiseNumericSettings(current, UNFOLLOW_NUMERIC_RULES));
   }, [randomiseValuesSignal]);
 
   const handleCopy = async (targetIds: number[], expandedKeys: string[]) => {
