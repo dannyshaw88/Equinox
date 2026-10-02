@@ -12,6 +12,7 @@ import { type Tool, type Profile } from "@shared/schema";
 import { useProfileEngineStatus } from "@/hooks/use-engine-status";
 import { CopySettingsDialog, type CopyOptionGroup } from "@/components/tools/CopySettingsDialog";
 import { copyToolSettingsToProfiles } from "@/lib/copyToolSettings";
+import { randomiseNumericSettings, randomIntegerBetween } from "@/lib/randomiseNumericSettings";
 
 interface UnfollowToolPanelProps {
   tool: Tool;
@@ -19,6 +20,7 @@ interface UnfollowToolPanelProps {
   copyOpen?: boolean;
   onCopyOpenChange?: (v: boolean) => void;
   hideEnableToggle?: boolean;
+  randomiseValuesSignal?: number;
   skipChanceMin?: number;
   skipChanceMax?: number;
   overrideProfiles?: Profile[];
@@ -52,7 +54,7 @@ const UNFOLLOW_COPY_GROUPS: CopyOptionGroup[] = [
   ]},
 ];
 
-export function UnfollowToolPanel({ tool, profile, copyOpen: copyOpenProp, onCopyOpenChange, hideEnableToggle, skipChanceMin, skipChanceMax, overrideProfiles }: UnfollowToolPanelProps) {
+export function UnfollowToolPanel({ tool, profile, copyOpen: copyOpenProp, onCopyOpenChange, hideEnableToggle, randomiseValuesSignal, skipChanceMin, skipChanceMax, overrideProfiles }: UnfollowToolPanelProps) {
   const updateToolMutation = useUpdateTool();  // settings saves
   const toggleMutation     = useUpdateTool();  // enable/disable toggle separate so it's never blocked
   const { data: allProfiles = [] } = useProfiles();
@@ -63,6 +65,7 @@ export function UnfollowToolPanel({ tool, profile, copyOpen: copyOpenProp, onCop
   const [fetchingFollowings, setFetchingFollowings] = useState(false);
   const [hikerFetchMin, setHikerFetchMin] = useState(50);
   const [hikerFetchMax, setHikerFetchMax] = useState(200);
+  const lastRandomiseValuesSignal = useRef(0);
   const engineStatus = useProfileEngineStatus(tool.profileId);
   const otherProfiles = overrideProfiles ?? allProfiles.filter(p => p.id !== profile.id && !p.locked && !p.isTemplate);
   const hasOtherProfiles = allProfiles.some(p => p.id !== profile.id);
@@ -99,6 +102,16 @@ export function UnfollowToolPanel({ tool, profile, copyOpen: copyOpenProp, onCop
     }, 600);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [settings]);
+
+  useEffect(() => {
+    if (!randomiseValuesSignal || randomiseValuesSignal === lastRandomiseValuesSignal.current) return;
+    lastRandomiseValuesSignal.current = randomiseValuesSignal;
+    setSettings((current) => randomiseNumericSettings(current));
+    const fetchMin = randomIntegerBetween(1, 2000);
+    const fetchMax = randomIntegerBetween(1, 2000);
+    setHikerFetchMin(Math.min(fetchMin, fetchMax));
+    setHikerFetchMax(Math.max(fetchMin, fetchMax));
+  }, [randomiseValuesSignal]);
 
   const handleCopy = async (targetIds: number[], expandedKeys: string[]) => {
     const copyEnabled = expandedKeys.includes("startStop");

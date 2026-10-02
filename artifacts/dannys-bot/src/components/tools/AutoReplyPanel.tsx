@@ -17,6 +17,7 @@ interface Props {
   tool: Tool;
   profile: Profile;
   embedded?: boolean;
+  settingsOverride?: Record<string, unknown> | null;
 }
 
 function applySpintax(text: string): string {
@@ -26,7 +27,7 @@ function applySpintax(text: string): string {
   });
 }
 
-export function AutoReplyPanel({ tool, profile, embedded }: Props) {
+export function AutoReplyPanel({ tool, profile, embedded, settingsOverride }: Props) {
   const updateToolMutation = useUpdateTool();
   const engineStatus = useProfileEngineStatus(tool.profileId);
 
@@ -46,9 +47,22 @@ export function AutoReplyPanel({ tool, profile, embedded }: Props) {
 
   const isMounted = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipOverrideSave = useRef(false);
+
+  useEffect(() => {
+    if (!settingsOverride) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    skipOverrideSave.current = true;
+    setSettings((current) => ({ ...current, ...settingsOverride }));
+  }, [settingsOverride]);
 
   useEffect(() => {
     if (!isMounted.current) { isMounted.current = true; return; }
+    if (skipOverrideSave.current) {
+      skipOverrideSave.current = false;
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       updateToolMutation.mutate({ id: tool.id, profileId: tool.profileId, settings });

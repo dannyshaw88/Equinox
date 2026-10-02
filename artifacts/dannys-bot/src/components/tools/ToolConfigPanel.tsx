@@ -18,12 +18,14 @@ import { useBrowserWindows } from "@/contexts/BrowserWindowsContext";
 import { CopySettingsDialog, type CopyOptionGroup } from "@/components/tools/CopySettingsDialog";
 import { copyToolSettingsToProfiles } from "@/lib/copyToolSettings";
 import { api } from "@shared/routes";
+import { randomiseNumericSettings, randomIntegerBetween } from "@/lib/randomiseNumericSettings";
 interface ToolConfigPanelProps {
   tool: Tool;
   profile: Profile;
   copyOpen?: boolean;
   onCopyOpenChange?: (v: boolean) => void;
   hideEnableToggle?: boolean;
+  randomiseValuesSignal?: number;
   skipChanceMin?: number;
   skipChanceMax?: number;
   executeEveryMin?: number;
@@ -32,7 +34,7 @@ interface ToolConfigPanelProps {
 }
 
 
-export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyOpenChange, hideEnableToggle, skipChanceMin, skipChanceMax, executeEveryMin, executeEveryMax, overrideProfiles }: ToolConfigPanelProps) {
+export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyOpenChange, hideEnableToggle, randomiseValuesSignal, skipChanceMin, skipChanceMax, executeEveryMin, executeEveryMax, overrideProfiles }: ToolConfigPanelProps) {
   const { toast } = useToast();
   const { navigateTo } = useBrowserWindows();
   const updateToolMutation = useUpdateTool();  // settings saves
@@ -456,6 +458,8 @@ export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyO
 
   const isMounted = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRandomiseSettingsSignal = useRef(0);
+  const lastRandomiseSourcesSignal = useRef(0);
 
   useEffect(() => {
     if (!isMounted.current) { isMounted.current = true; return; }
@@ -465,6 +469,26 @@ export function ToolConfigPanel({ tool, profile, copyOpen: copyOpenProp, onCopyO
     }, 600);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [settings]);
+
+  useEffect(() => {
+    if (!randomiseValuesSignal || randomiseValuesSignal === lastRandomiseSettingsSignal.current) return;
+    lastRandomiseSettingsSignal.current = randomiseValuesSignal;
+    setSettings((current) => randomiseNumericSettings(current));
+    setLocalPriorities({});
+  }, [randomiseValuesSignal]);
+
+  useEffect(() => {
+    if (!randomiseValuesSignal || randomiseValuesSignal === lastRandomiseSourcesSignal.current || !sources) return;
+    lastRandomiseSourcesSignal.current = randomiseValuesSignal;
+    for (const source of sources) {
+      updateSourceMutation.mutate({
+        id: source.id,
+        toolId: tool.id,
+        rank: randomIntegerBetween(1, 100),
+        enabled: source.enabled !== false,
+      });
+    }
+  }, [randomiseValuesSignal, sources]);
 
   const handleAddSource = (e: React.FormEvent) => {
     e.preventDefault();

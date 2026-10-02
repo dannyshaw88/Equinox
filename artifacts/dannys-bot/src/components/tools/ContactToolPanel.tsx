@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Tool, type Profile } from "@shared/schema";
+import { useUpdateTool } from "@/hooks/use-tools";
+import { randomiseNumericSettings } from "@/lib/randomiseNumericSettings";
 
 import { ContactNewFollowersPanel } from "./ContactNewFollowersPanel";
 import { ContactUsersPanel } from "./ContactUsersPanel";
@@ -15,6 +17,7 @@ interface Props {
   copyOpen?: boolean;
   onCopyOpenChange?: (v: boolean) => void;
   embedded?: boolean;
+  randomiseValuesSignal?: number;
   overrideProfiles?: Profile[];
 }
 
@@ -57,13 +60,38 @@ const CONTACT_COPY_GROUPS: CopyOptionGroup[] = [
   ]},
 ];
 
-export function ContactToolPanel({ tool, profile, copyOpen: copyOpenProp, onCopyOpenChange, embedded, overrideProfiles }: Props) {
+export function ContactToolPanel({ tool, profile, copyOpen: copyOpenProp, onCopyOpenChange, embedded, randomiseValuesSignal, overrideProfiles }: Props) {
+  const updateToolMutation = useUpdateTool();
   const [copyOpen, _setCopyOpen] = useState(false);
+  const [settingsOverride, setSettingsOverride] = useState<Record<string, unknown> | null>(null);
+  const lastRandomiseValuesSignal = useRef(0);
   const _copyOpen = copyOpenProp ?? copyOpen;
   const _setCopyOpenFn = onCopyOpenChange ?? _setCopyOpen;
   const { data: allProfiles = [] } = useProfiles();
   const { toast } = useToast();
   const otherProfiles = overrideProfiles ?? allProfiles.filter(p => p.id !== tool.profileId && !p.locked && !p.isTemplate);
+
+  useEffect(() => {
+    if (!randomiseValuesSignal || randomiseValuesSignal === lastRandomiseValuesSignal.current) return;
+    lastRandomiseValuesSignal.current = randomiseValuesSignal;
+    const currentSettings = {
+      contactCheckIntervalMin: 30,
+      contactCheckIntervalMax: 60,
+      contactUsersPerCheckMin: 1,
+      contactUsersPerCheckMax: 20,
+      contactUsersSendCountMin: 1,
+      contactUsersSendCountMax: 5,
+      contactUsersDelayBetweenMin: 5,
+      contactUsersDelayBetweenMax: 15,
+      contactUsersUnsendMin: 30,
+      contactUsersUnsendMax: 60,
+      stopOnBlockMinutes: 60,
+      ...((tool.settings as Record<string, unknown>) ?? {}),
+    };
+    const nextSettings = randomiseNumericSettings(currentSettings);
+    setSettingsOverride(nextSettings);
+    updateToolMutation.mutate({ id: tool.id, profileId: tool.profileId, settings: nextSettings });
+  }, [randomiseValuesSignal]);
 
   const START_STOP_KEYS = ["contactNewFollowersEnabled", "contactUsersEnabled", "autoReplyEnabled"];
 
@@ -102,11 +130,11 @@ export function ContactToolPanel({ tool, profile, copyOpen: copyOpenProp, onCopy
 
   return (
     <div className="space-y-0">
-      <ContactNewFollowersPanel tool={tool} profile={profile} embedded={embedded} />
+      <ContactNewFollowersPanel tool={tool} profile={profile} embedded={embedded} settingsOverride={settingsOverride} />
       <div className="border-t border-border/60 my-2" />
-      <AutoReplyPanel tool={tool} profile={profile} embedded={embedded} />
+      <AutoReplyPanel tool={tool} profile={profile} embedded={embedded} settingsOverride={settingsOverride} />
       <div className="border-t border-border/60 my-2" />
-      <ContactUsersPanel tool={tool} profile={profile} embedded={embedded} />
+      <ContactUsersPanel tool={tool} profile={profile} embedded={embedded} settingsOverride={settingsOverride} />
 
       <CopySettingsDialog
         key={_copyOpen ? "open" : "closed"}

@@ -15,6 +15,7 @@ interface Props {
   tool: Tool;
   profile: Profile;
   embedded?: boolean;
+  settingsOverride?: Record<string, unknown> | null;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -29,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
   unsent: "text-gray-500 bg-gray-50 border-gray-200",
 };
 
-export function ContactUsersPanel({ tool, profile, embedded }: Props) {
+export function ContactUsersPanel({ tool, profile, embedded, settingsOverride }: Props) {
   const updateToolMutation = useUpdateTool();
   const queryClient = useQueryClient();
   const engineStatus = useProfileEngineStatus(tool.profileId);
@@ -109,9 +110,22 @@ export function ContactUsersPanel({ tool, profile, embedded }: Props) {
 
   const isMounted = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipOverrideSave = useRef(false);
+
+  useEffect(() => {
+    if (!settingsOverride) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    skipOverrideSave.current = true;
+    setSettings((current) => ({ ...current, ...settingsOverride }));
+  }, [settingsOverride]);
 
   useEffect(() => {
     if (!isMounted.current) { isMounted.current = true; return; }
+    if (skipOverrideSave.current) {
+      skipOverrideSave.current = false;
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       updateToolMutation.mutate({ id: tool.id, profileId: tool.profileId, settings });

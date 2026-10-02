@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Bell, User, RefreshCw, Settings, PlaySquare, BookOpen, Bookmark, Shuffle,
-  MessageSquare, Repeat2, AtSign, Clock, ExternalLink, Image as ImageIcon,
+  MessageSquare, Repeat2, AtSign, Clock, ExternalLink, Image as ImageIcon, ArrowLeftRight,
   ChevronDown, ChevronUp, Heart, Copy, FolderOpen, UserPlus, UserMinus, Zap, Film, Percent, Trash2, Globe, Compass,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -25,6 +25,7 @@ import { ImageSettingsDialog } from "@/components/tools/ImageSettingsDialog";
 import { ToolConfigPanel } from "@/components/tools/ToolConfigPanel";
 import { UnfollowToolPanel } from "@/components/tools/UnfollowToolPanel";
 import { ContactToolPanel } from "@/components/tools/ContactToolPanel";
+import { randomiseNumericSettings } from "@/lib/randomiseNumericSettings";
 
 interface HumanSessionPanelProps {
   tool: Tool;
@@ -67,6 +68,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showReposted, setShowReposted] = useState(false);
+  const [randomiseValuesSignal, setRandomiseValuesSignal] = useState(0);
   const [imageSettingsOpen, setImageSettingsOpen] = useState(false);
   const [spinPreview, setSpinPreview] = useState<string | null>(null);
   const [spinSyntaxMsg, setSpinSyntaxMsg] = useState<string | null>(null);
@@ -1019,6 +1021,22 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
           <span className={`text-sm font-medium ${tool.enabled ? 'text-primary' : 'text-muted-foreground'}`}>
             {tool.enabled ? 'ACTIVE' : 'STOPPED'}
           </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto shrink-0"
+            aria-label="Randomise all numeric Human Session settings"
+            title="Randomise every numeric and percentage setting in the Human Session Tool"
+            onClick={() => {
+              setSettings((current) => randomiseNumericSettings(current));
+              setRandomiseValuesSignal((current) => current + 1);
+              toast({ title: "Settings randomised", description: "Every numeric and percentage setting currently available in this Human Session Tool has been randomised." });
+            }}
+          >
+            <ArrowLeftRight className="w-4 h-4 mr-1.5" />
+            Randomise all
+          </Button>
           {/* ── Execute Every — inline on title row ── */}
           <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
             <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap">Execute Every (min)</span>
@@ -2382,7 +2400,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
               </div>
             </div>
             {followTool.enabled && <div className="p-4">
-              <ToolConfigPanel tool={followTool} profile={profile} hideEnableToggle skipChanceMin={(settings as any).followSkipMin ?? 0} skipChanceMax={(settings as any).followSkipMax ?? 0} executeEveryMin={settings.delayMin ?? 30} executeEveryMax={settings.delayMax ?? 60} />
+              <ToolConfigPanel tool={followTool} profile={profile} hideEnableToggle randomiseValuesSignal={randomiseValuesSignal} skipChanceMin={(settings as any).followSkipMin ?? 0} skipChanceMax={(settings as any).followSkipMax ?? 0} executeEveryMin={settings.delayMin ?? 30} executeEveryMax={settings.delayMax ?? 60} />
             </div>}
           </div>
         </div>
@@ -2436,7 +2454,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
               </div>
             </div>
             {unfollowTool.enabled && <div className="p-4">
-              <UnfollowToolPanel tool={unfollowTool} profile={profile} hideEnableToggle skipChanceMin={(settings as any).unfollowSkipMin ?? 0} skipChanceMax={(settings as any).unfollowSkipMax ?? 0} />
+              <UnfollowToolPanel tool={unfollowTool} profile={profile} hideEnableToggle randomiseValuesSignal={randomiseValuesSignal} skipChanceMin={(settings as any).unfollowSkipMin ?? 0} skipChanceMax={(settings as any).unfollowSkipMax ?? 0} />
             </div>}
           </div>
         </div>
@@ -2490,7 +2508,7 @@ export function HumanSessionPanel({ tool, profile, copyOpen: copyOpenProp, onCop
               </div>
             </div>
             {contactTool.enabled && <div className="p-4">
-              <ContactToolPanel tool={contactTool} profile={profile} embedded />
+              <ContactToolPanel tool={contactTool} profile={profile} embedded randomiseValuesSignal={randomiseValuesSignal} />
             </div>}
           </div>
         </div>
